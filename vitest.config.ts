@@ -7,6 +7,7 @@ export default defineConfig({
       './packages/core/vitest.config.ts',
       './packages/provider-openverse/vitest.config.ts',
       './packages/provider-unsplash/vitest.config.ts',
+      './packages/provider-pexels/vitest.config.ts',
     ],
   },
 })

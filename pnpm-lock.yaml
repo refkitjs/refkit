@@ -33,6 +33,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/provider-pexels:
+    dependencies:
+      '@refkit/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/provider-unsplash:
     dependencies:
       '@refkit/core':
