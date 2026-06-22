@@ -9,5 +9,6 @@
   "types": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run", "test:watch": "vitest watch" },
-  "dependencies": { "@refkit/core": "workspace:*" }
+  "dependencies": { "@refkit/core": "workspace:*" },
+  "devDependencies": { "@refkit/provider-pexels": "workspace:*" }
 }

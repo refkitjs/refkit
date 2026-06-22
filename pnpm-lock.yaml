@@ -32,6 +32,10 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-pexels':
+        specifier: workspace:*
+        version: link:../provider-pexels
 
   packages/provider-pexels:
     dependencies:
