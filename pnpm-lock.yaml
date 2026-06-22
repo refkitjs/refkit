@@ -48,6 +48,10 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-openverse':
+        specifier: workspace:*
+        version: link:../provider-openverse
 
   packages/provider-gutendex:
     dependencies:
