@@ -6,6 +6,7 @@ export default defineConfig({
     projects: [
       './packages/core/vitest.config.ts',
       './packages/provider-openverse/vitest.config.ts',
+      './packages/provider-unsplash/vitest.config.ts',
     ],
   },
 })
