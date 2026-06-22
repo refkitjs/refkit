@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Modality } from './modality'
 import { rightsRecordSchema, type RightsRecord } from './rights'
 
-export interface ReferenceMedia { url: string; width: number; height: number }
+export interface ReferenceMedia { url: string; width?: number; height?: number }
 export interface MediaPreview { url: string; mediaType: string; width?: number; height?: number }
 export interface VisualMeta { width: number; height: number; dominantColors?: string[] }
 export interface TextMeta {
@@ -44,7 +44,7 @@ export const referenceSchema: z.ZodType<Reference> = z.object({
   canonicalUrl: z.string().min(1),
   rights: rightsRecordSchema,
   verifiedAt: z.string().datetime(),
-  thumbnail: z.object({ url: z.string(), width: z.number(), height: z.number() }).optional(),
+  thumbnail: z.object({ url: z.string(), width: z.number().optional(), height: z.number().optional() }).optional(),
   preview: z.object({ url: z.string(), mediaType: z.string(), width: z.number().optional(), height: z.number().optional() }).optional(),
   perceptualHash: z.string().optional(),
   visual: z.object({ width: z.number(), height: z.number(), dominantColors: z.array(z.string()).optional() }).optional(),

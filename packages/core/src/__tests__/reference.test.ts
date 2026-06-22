@@ -35,4 +35,9 @@ describe('referenceSchema / parseReference', () => {
   it('rejects relevance outside 0..1', () => {
     expect(() => parseReference({ ...ref, relevance: 1.5 })).toThrow()
   })
+
+  it('accepts a thumbnail without width/height (providers often omit thumb dims)', () => {
+    const out = parseReference({ ...ref, thumbnail: { url: 'https://x/thumb.jpg' } })
+    expect(out.thumbnail).toEqual({ url: 'https://x/thumb.jpg' })
+  })
 })
