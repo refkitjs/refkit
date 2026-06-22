@@ -8,6 +8,7 @@ interface PoetryDbPoem { title: string; author: string; lines: string[]; linecou
 const EXCERPT_LINES = 8
 
 function toReference(p: PoetryDbPoem): Reference {
+  // PoetryDB has no human-facing HTML page or per-item id; this constructed API URL (returns JSON) is the best stable provenance anchor it offers.
   const canonicalUrl = `https://poetrydb.org/author,title/${encodeURIComponent(p.author)};${encodeURIComponent(p.title)}`
   const rights: RightsRecord = {
     // Project-level inference: PoetryDB curates classic (out-of-copyright) poets; it asserts

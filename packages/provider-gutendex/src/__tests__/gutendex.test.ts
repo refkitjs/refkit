@@ -73,4 +73,25 @@ describe('gutendex provider', () => {
     const noSummary = refs.find(r => r.title?.includes('Modern'))!
     expect(noSummary.text).toBeUndefined()
   })
+
+  it('copyright:null → unknown license → needs-review for commercial use (undetermined copyright, never auto-allowed)', async () => {
+    const nullCopyrightFixture = {
+      count: 1, next: null, previous: null,
+      results: [
+        {
+          id: 55555, title: 'Unknown Copyright Work',
+          authors: [{ name: 'Unknown, Author', birth_year: null, death_year: null }],
+          summaries: [], subjects: [], languages: ['en'],
+          copyright: null, media_type: 'Text',
+          formats: { 'text/plain; charset=utf-8': 'https://www.gutenberg.org/ebooks/55555.txt.utf-8' },
+          download_count: 1,
+        },
+      ],
+    }
+    const refs = await gutendex().search({ text: 'x', modalities: ['text'] }, ctxWith(nullCopyrightFixture))
+    expect(refs).toHaveLength(1)
+    const result = refs[0]
+    expect(result.rights.license).toBe('unknown')
+    expect(evaluateUse(result.rights, 'commercial-product').decision).toBe('needs-review')
+  })
 })

@@ -33,6 +33,7 @@ function toReference(r: GutendexResult): Reference {
   const rights: RightsRecord = {
     license: copyrightToLicense(r.copyright),
     author: r.authors[0]?.name,
+    // PD/permission policy permits redistribution; note a book's cover image can be a separately-copyrighted work — host should treat covers conservatively (not legal advice).
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://www.gutenberg.org/policy/permission.html', sourceUrl: canonicalUrl },
   }
