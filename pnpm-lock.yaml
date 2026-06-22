@@ -38,6 +38,10 @@ importers:
       zod:
         specifier: ^4.3.6
         version: 4.4.3
+    devDependencies:
+      '@refkit/provider-openverse':
+        specifier: workspace:*
+        version: link:../provider-openverse
 
   packages/provider-gutendex:
     dependencies:
