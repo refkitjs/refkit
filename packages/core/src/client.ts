@@ -59,6 +59,9 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     }
 
     const chosen = options.providers.filter(p => p.modalities.some(m => input.modalities.includes(m)))
+    if (chosen.length === 0) {
+      throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`)
+    }
     const settled = await Promise.allSettled(chosen.map(p => p.search(normalizeQuery(input, p), ctx)))
 
     const perSource: Reference[][] = []

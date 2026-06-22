@@ -71,6 +71,9 @@ export function evaluateUse(
 
   reasons.push(`permitted for ${intent} under ${r.license}`)
   // internal-moodboard is lenient: attribution not enforced for internal-only use.
+  if (facts.attributionRequired && intent === 'internal-moodboard') {
+    reasons.push('attribution required by license but not enforced for internal-moodboard use')
+  }
   const decision: Decision =
     facts.attributionRequired && intent !== 'internal-moodboard'
       ? 'allowed-with-attribution'

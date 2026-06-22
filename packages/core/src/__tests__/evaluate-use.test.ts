@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, NOT_LEGAL_ADVICE } from '../evaluate-use'
 import type { RightsRecord } from '../rights'
+import { LICENSE_FACTS } from '../license'
 import type { LicenseId } from '../license'
 
 const rec = (license: LicenseId, extra: Partial<RightsRecord> = {}): RightsRecord => ({
@@ -53,7 +54,9 @@ describe('evaluateUse — strict-deny', () => {
   })
 
   it('internal-moodboard is lenient for known licenses but needs-review for unknown', () => {
-    expect(evaluateUse(rec('CC-BY-4.0'), 'internal-moodboard').decision).toBe('allowed')
+    const v = evaluateUse(rec('CC-BY-4.0'), 'internal-moodboard')
+    expect(v.decision).toBe('allowed')
+    expect(v.reasons.some(r => r.includes('attribution required'))).toBe(true)
     expect(evaluateUse(rec('unknown'), 'internal-moodboard').decision).toBe('needs-review')
   })
 
@@ -64,13 +67,18 @@ describe('evaluateUse — strict-deny', () => {
 
   // P0 DONE-CRITERION: no commercial/AI intent ever returns allowed* unless commercialUse===true
   it('strict-deny invariant: false-positive rate is 0 across the license table', () => {
+    const commercial = new Set(
+      Object.entries(LICENSE_FACTS)
+        .filter(([, f]) => f.commercialUse === true)
+        .map(([id]) => id)
+    )
     const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-SA-4.0', 'PD', 'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown']
     for (const license of licenses) {
       for (const intent of ['commercial-product', 'ai-generation-input'] as const) {
         const v = evaluateUse(rec(license), intent)
         if (v.decision === 'allowed' || v.decision === 'allowed-with-attribution') {
           // it is a positive — assert it is a TRUE positive
-          expect(license === 'CC0-1.0' || license === 'CC-BY-4.0' || license === 'CC-BY-SA-4.0' || license === 'PD' || license === 'unsplash' || license === 'pexels' || license === 'pixabay').toBe(true)
+          expect(commercial.has(license)).toBe(true)
         }
       }
     }

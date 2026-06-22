@@ -25,7 +25,10 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
     })
   }
 
-  const maxScore = Math.max(...score.values()) || 1
+  // `score` always has ≥1 entry here (we only reach this after building it from
+  // non-empty per-source lists; empty input returns [] earlier). Normalize by the
+  // actual max so the top result's relevance is exactly 1.0.
+  const maxScore = Math.max(...score.values())
   const fused: Reference[] = [...score.entries()]
     .map(([key, s]) => ({ ...rep.get(key)!, relevance: s / maxScore }))
     .sort((a, b) => b.relevance - a.relevance)

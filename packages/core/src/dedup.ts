@@ -41,10 +41,16 @@ export function dedupeReferences(refs: Reference[], opts: DedupeOptions = {}): R
 
     let merged = false
     if (threshold > 0 && ref.perceptualHash) {
+      // NOTE (P1): perceptual hashes must be equal-length across providers or they silently
+      // won't hash-dedupe — hammingDistance returns Infinity for unequal lengths.
       for (let i = 0; i < kept.length; i++) {
         const k = kept[i]
         if (k.perceptualHash && hammingDistance(ref.perceptualHash, k.perceptualHash) <= threshold) {
-          if (ref.relevance > k.relevance) kept[i] = ref
+          if (ref.relevance > k.relevance) {
+            byUrl.delete(canonicalizeUrl(k.canonicalUrl))
+            byUrl.set(canonicalizeUrl(ref.canonicalUrl), i)
+            kept[i] = ref
+          }
           merged = true
           break
         }

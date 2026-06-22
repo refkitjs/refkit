@@ -43,7 +43,7 @@ export const referenceSchema: z.ZodType<Reference> = z.object({
   source: z.object({ providerId: z.string().min(1), sourceUrl: z.string().min(1) }),
   canonicalUrl: z.string().min(1),
   rights: rightsRecordSchema,
-  verifiedAt: z.string().min(1),
+  verifiedAt: z.string().datetime(),
   thumbnail: z.object({ url: z.string(), width: z.number(), height: z.number() }).optional(),
   preview: z.object({ url: z.string(), mediaType: z.string(), width: z.number().optional(), height: z.number().optional() }).optional(),
   perceptualHash: z.string().optional(),

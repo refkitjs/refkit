@@ -77,8 +77,40 @@ describe('createRefkit', () => {
   })
 
   it('defaults fetch to globalThis.fetch when options.fetch is omitted', async () => {
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
-    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    let capturedFetch: typeof fetch | undefined
+    const capturingProvider = defineProvider({
+      id: 'cap',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async (_q, ctx) => { capturedFetch = ctx.fetch; return [] },
+    })
+    const rk = createRefkit({ providers: [capturingProvider] })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(capturedFetch).toBe(globalThis.fetch)
+  })
+
+  it('throws a clear Error (not AggregateError) when no provider supports the requested modality', async () => {
+    const imageOnly = provider('img', [ref('img-1', 'https://img/1')])
+    const rk = createRefkit({ providers: [imageOnly] })
+    await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.toThrow(
+      "refkit.search: no registered provider supports modalities [video]"
+    )
+    await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.not.toBeInstanceOf(AggregateError)
+  })
+
+  it('provider fulfills but returns malformed data: onProviderError called, result excluded, no throw', async () => {
+    const onProviderError = vi.fn()
+    const malformedProvider = defineProvider({
+      id: 'bad',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async () => [{ id: '', modality: 'image' } as unknown as Reference],
+    })
+    const goodProvider = provider('good', [ref('good-1', 'https://good/1')])
+    const rk = createRefkit({ providers: [malformedProvider, goodProvider] })
+    const out = await rk.search({ query: 'x', modalities: ['image'], onProviderError })
+    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'bad' }))
+    expect(out.every(r => r.id !== '')).toBe(true)
     expect(out).toHaveLength(1)
   })
 })
