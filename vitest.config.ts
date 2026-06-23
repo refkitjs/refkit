@@ -13,6 +13,8 @@ export default defineConfig({
       './packages/provider-poetrydb/vitest.config.ts',
       './packages/mcp/vitest.config.ts',
       './packages/provider-brave/vitest.config.ts',
+      './packages/provider-flickr/vitest.config.ts',
+      './packages/provider-wikimedia-commons/vitest.config.ts',
     ],
   },
 })
