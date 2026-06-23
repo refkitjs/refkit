@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProviderContext } from '@refkit/core'
-import { pexels } from '../index'
+import { pexels, pexelsVideo } from '../index'
 
 const FIXTURE = {
   total_results: 10000, page: 1, per_page: 1,
@@ -27,5 +27,35 @@ describe('pexels provider', () => {
     expect(r.title).toBe('Brown Rocks During Golden Hour')
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/photos/3573351/x?h=200')
     expect(r.visual).toEqual({ width: 3066, height: 3968, dominantColors: ['#374824'] })
+  })
+})
+
+describe('pexelsVideo provider', () => {
+  const VIDEO_FIXTURE = {
+    videos: [{
+      id: 6394054, width: 2560, height: 1440,
+      url: 'https://www.pexels.com/video/a-cat-6394054/', duration: 12,
+      image: 'https://images.pexels.com/videos/6394054/cat.jpg',
+      user: { name: 'Cottonbro', url: 'https://www.pexels.com/@cottonbro' },
+      video_files: [
+        { quality: 'sd', file_type: 'video/mp4', width: 640, height: 360, link: 'https://player.vimeo.com/x-sd.mp4' },
+        { quality: 'hd', file_type: 'video/mp4', width: 1280, height: 720, link: 'https://player.vimeo.com/x-hd.mp4' },
+      ],
+    }],
+  }
+
+  it('maps a video (license pexels, modality video, HD file preferred, thumbnail from image)', async () => {
+    const refs = await pexelsVideo({ apiKey: 'k' }).search({ text: 'cat', modalities: ['video'] }, ctxWith(VIDEO_FIXTURE))
+    expect(refs).toHaveLength(1)
+    const r = refs[0]
+    expect(r.modality).toBe('video')
+    expect(r.source.providerId).toBe('pexels-video')
+    expect(r.rights.license).toBe('pexels')
+    expect(r.canonicalUrl).toBe('https://www.pexels.com/video/a-cat-6394054/')
+    expect(r.rights.author).toBe('Cottonbro')
+    expect(r.preview?.url).toBe('https://player.vimeo.com/x-hd.mp4') // HD preferred over SD
+    expect(r.preview?.mediaType).toBe('video/mp4')
+    expect(r.thumbnail?.url).toBe('https://images.pexels.com/videos/6394054/cat.jpg')
+    expect(r.visual).toEqual({ width: 2560, height: 1440 })
   })
 })

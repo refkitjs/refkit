@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
-import { openverse, mapOpenverseLicense } from '../index'
+import { openverse, openverseAudio, mapOpenverseLicense } from '../index'
 
 const FIXTURE = {
   results: [
@@ -79,5 +79,30 @@ describe('openverse provider', () => {
     expect(evaluateUse(ncnd.rights, 'commercial-product').decision).toBe('denied')
     // ...while the cc0 item is allowed:
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('allowed')
+  })
+})
+
+describe('openverseAudio provider', () => {
+  const AUDIO = { results: [{
+    id: 'a1', title: 'Piano Melody', creator: 'benpm',
+    foreign_landing_url: 'https://freesound.org/people/benpm/sounds/186942',
+    url: 'https://cdn.freesound.org/previews/186/186942_2594536-hq.mp3',
+    thumbnail: null, license: 'by', license_version: '4.0',
+    license_url: 'https://creativecommons.org/licenses/by/4.0/',
+    filetype: 'mp3', waveform: 'https://api.openverse.org/v1/audio/a1/waveform/',
+  }] }
+
+  it('maps audio to a Reference (modality audio, CC-BY + version, waveform thumbnail, audio mime)', async () => {
+    const refs = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(refs).toHaveLength(1)
+    const r = refs[0]
+    expect(r.modality).toBe('audio')
+    expect(r.source.providerId).toBe('openverse-audio')
+    expect(r.rights.license).toBe('CC-BY')
+    expect(r.rights.licenseVersion).toBe('4.0')
+    expect(r.preview?.url).toBe('https://cdn.freesound.org/previews/186/186942_2594536-hq.mp3')
+    expect(r.preview?.mediaType).toBe('audio/mpeg')
+    expect(r.thumbnail?.url).toContain('waveform')
+    expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
   })
 })
