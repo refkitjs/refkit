@@ -28,14 +28,13 @@ const ctxWith = (body: unknown): ProviderContext => ({
 })
 
 describe('mapOpenverseLicense', () => {
-  it('maps cc0/pdm and version-4.0 CC, flags older versions + NC/ND', () => {
-    expect(mapOpenverseLicense('cc0', '1.0')).toBe('CC0-1.0')
-    expect(mapOpenverseLicense('pdm', '1.0')).toBe('PD')
-    expect(mapOpenverseLicense('by', '4.0')).toBe('CC-BY-4.0')
-    expect(mapOpenverseLicense('by', '2.0')).toBe('unknown')   // older CC not in enum
-    expect(mapOpenverseLicense('by-sa', '4.0')).toBe('CC-BY-SA-4.0')
-    expect(mapOpenverseLicense('by-nc-nd', '2.0')).toBe('proprietary')
-    expect(mapOpenverseLicense('whatever', '4.0')).toBe('unknown')
+  it('maps cc0/pdm and the BY/BY-SA family version-agnostically, NC/ND → proprietary', () => {
+    expect(mapOpenverseLicense('cc0')).toBe('CC0-1.0')
+    expect(mapOpenverseLicense('pdm')).toBe('PD')
+    expect(mapOpenverseLicense('by')).toBe('CC-BY')
+    expect(mapOpenverseLicense('by-sa')).toBe('CC-BY-SA')
+    expect(mapOpenverseLicense('by-nc-nd')).toBe('proprietary')
+    expect(mapOpenverseLicense('whatever')).toBe('unknown')
   })
 })
 
@@ -52,9 +51,10 @@ describe('openverse provider', () => {
     expect(cc0.thumbnail?.url).toBe('https://api.openverse.org/v1/images/aaa/thumb/')
     expect(cc0.visual).toEqual({ width: 1024, height: 683 })
     expect(cc0.rights.rehostPolicy).toBe('cache-allowed')
+    expect(cc0.rights.licenseVersion).toBeUndefined() // version only set for the CC-BY family
   })
 
-  it('older CC-BY (non-4.0) maps to unknown and evaluates to needs-review', async () => {
+  it('older CC-BY (e.g. 2.0) maps to the CC-BY family, version preserved, allowed-with-attribution', async () => {
     const OLDER_CC_FIXTURE = {
       results: [{
         id: 'ccc', title: 'forest', creator: 'Charlie', creator_url: 'https://ex/charlie',
@@ -67,8 +67,9 @@ describe('openverse provider', () => {
     }
     const refs = await openverse().search({ text: 'x', modalities: ['image'] }, ctxWith(OLDER_CC_FIXTURE))
     const result = refs[0]
-    expect(result.rights.license).toBe('unknown')
-    expect(evaluateUse(result.rights, 'commercial-product').decision).toBe('needs-review')
+    expect(result.rights.license).toBe('CC-BY')
+    expect(result.rights.licenseVersion).toBe('2.0')
+    expect(evaluateUse(result.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
   })
 
   it('END-TO-END moat: a real by-nc-nd item maps to proprietary and is denied for commercial use', async () => {

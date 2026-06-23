@@ -23,7 +23,7 @@ describe('evaluateUse — strict-deny', () => {
   })
 
   it('CC-BY → allowed-with-attribution for commercial use', () => {
-    expect(evaluateUse(rec('CC-BY-4.0'), 'commercial-product').decision).toBe('allowed-with-attribution')
+    expect(evaluateUse(rec('CC-BY'), 'commercial-product').decision).toBe('allowed-with-attribution')
   })
 
   it('unknown license → needs-review, low confidence (never allowed)', () => {
@@ -54,7 +54,7 @@ describe('evaluateUse — strict-deny', () => {
   })
 
   it('internal-moodboard is lenient for known licenses but needs-review for unknown', () => {
-    const v = evaluateUse(rec('CC-BY-4.0'), 'internal-moodboard')
+    const v = evaluateUse(rec('CC-BY'), 'internal-moodboard')
     expect(v.decision).toBe('allowed')
     expect(v.reasons.some(r => r.includes('attribution required'))).toBe(true)
     expect(evaluateUse(rec('unknown'), 'internal-moodboard').decision).toBe('needs-review')
@@ -72,7 +72,7 @@ describe('evaluateUse — strict-deny', () => {
         .filter(([, f]) => f.commercialUse === true)
         .map(([id]) => id)
     )
-    const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-SA-4.0', 'PD', 'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown']
+    const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY', 'CC-BY-SA', 'PD', 'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown']
     for (const license of licenses) {
       for (const intent of ['commercial-product', 'ai-generation-input'] as const) {
         const v = evaluateUse(rec(license), intent)

@@ -8,6 +8,9 @@ export type RehostPolicy = 'hotlink-required' | 'cache-allowed' | 'thumbnail-onl
 // (author, rehost quirk, jurisdiction) and an auditable raw anchor live here.
 export interface RightsRecord {
   license: LicenseId
+  /** Precise CC version ("4.0", "3.0", …) for family ids (CC-BY/CC-BY-SA).
+   *  Attribution/audit only — never read by evaluateUse. Omitted for non-CC. */
+  licenseVersion?: string
   /** Per-item attribution datum; attribution text is generated, not stored. */
   author?: string
   rehostPolicy: RehostPolicy
@@ -19,12 +22,13 @@ export interface RightsRecord {
 }
 
 const licenseIdSchema: z.ZodType<LicenseId> = z.enum([
-  'CC0-1.0', 'CC-BY-4.0', 'CC-BY-SA-4.0', 'PD',
+  'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'PD',
   'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown',
 ])
 
 export const rightsRecordSchema: z.ZodType<RightsRecord> = z.object({
   license: licenseIdSchema,
+  licenseVersion: z.string().optional(),
   author: z.string().optional(),
   rehostPolicy: z.enum(['hotlink-required', 'cache-allowed', 'thumbnail-only', 'no-store']),
   jurisdiction: z.string().optional(),

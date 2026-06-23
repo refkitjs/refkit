@@ -12,10 +12,10 @@ describe('LICENSE_FACTS', () => {
     })
   })
 
-  it('CC-BY-SA-4.0 is copyleft (shareAlike) and requires attribution', () => {
-    expect(LICENSE_FACTS['CC-BY-SA-4.0'].shareAlike).toBe(true)
-    expect(LICENSE_FACTS['CC-BY-SA-4.0'].attributionRequired).toBe(true)
-    expect(LICENSE_FACTS['CC-BY-SA-4.0'].commercialUse).toBe(true)
+  it('CC-BY-SA is copyleft (shareAlike) and requires attribution', () => {
+    expect(LICENSE_FACTS['CC-BY-SA'].shareAlike).toBe(true)
+    expect(LICENSE_FACTS['CC-BY-SA'].attributionRequired).toBe(true)
+    expect(LICENSE_FACTS['CC-BY-SA'].commercialUse).toBe(true)
   })
 
   it('unknown license is unknown on every permission (drives strict-deny)', () => {

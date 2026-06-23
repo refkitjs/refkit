@@ -61,7 +61,7 @@ describe('createRefkit', () => {
 
   it('evaluateUse / buildAttribution methods operate on a Reference', () => {
     const rk = createRefkit({ providers: [provider('a', [])] })
-    const r = ref('a-1', 'https://a/1', 'CC-BY-4.0')
+    const r = ref('a-1', 'https://a/1', 'CC-BY')
     expect(rk.evaluateUse(r, 'commercial-product').decision).toBe('allowed-with-attribution')
     expect(rk.buildAttribution(r).required).toBe(true)
   })

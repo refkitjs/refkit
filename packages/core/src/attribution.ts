@@ -8,6 +8,8 @@ export interface Attribution {
 
 export interface AttributionInput {
   license: LicenseId
+  /** Precise CC version for family ids; appended to the license name in the credit line. */
+  licenseVersion?: string
   canonicalUrl: string
   author?: string
   title?: string
@@ -24,12 +26,13 @@ export function buildAttribution(input: AttributionInput): Attribution {
   if (!facts.attributionRequired) return { required: false }
 
   const author = input.author ?? 'Unknown author'
+  const licenseLabel = input.licenseVersion ? `${input.license} ${input.licenseVersion}` : input.license
   const titlePart = input.title ? `"${input.title}" ` : ''
-  const text = `${titlePart}by ${author} is licensed under ${input.license}. Source: ${input.canonicalUrl}`
+  const text = `${titlePart}by ${author} is licensed under ${licenseLabel}. Source: ${input.canonicalUrl}`
 
   const url = escapeHtml(input.canonicalUrl)
   const titleHtml = input.title ? `&quot;${escapeHtml(input.title)}&quot; ` : ''
-  const html = `${titleHtml}by ${escapeHtml(author)} is licensed under ${escapeHtml(input.license)}. <a href="${url}">Source</a>`
+  const html = `${titleHtml}by ${escapeHtml(author)} is licensed under ${escapeHtml(licenseLabel)}. <a href="${url}">Source</a>`
 
   return { required: true, text, html }
 }

@@ -26,15 +26,15 @@ interface OpenverseResult {
 }
 interface OpenverseResponse { results: OpenverseResult[] }
 
-// Combine Openverse's per-item `license` code + `license_version` into our LicenseId.
-// Only CC0/PD and version-4.0 BY/BY-SA are in our permissive enum; older CC versions
-// → 'unknown' (strict-deny → needs-review); NC/ND variants → 'proprietary' (→ denied).
-export function mapOpenverseLicense(code: string, version: string): LicenseId {
+// Map Openverse's per-item `license` code to our LicenseId. The CC version is
+// captured separately (rights.licenseVersion) and doesn't change the permission
+// family, so BY/BY-SA map regardless of version; NC/ND variants → 'proprietary'.
+export function mapOpenverseLicense(code: string): LicenseId {
   switch (code) {
     case 'cc0': return 'CC0-1.0'
     case 'pdm': return 'PD'
-    case 'by': return version === '4.0' ? 'CC-BY-4.0' : 'unknown'
-    case 'by-sa': return version === '4.0' ? 'CC-BY-SA-4.0' : 'unknown'
+    case 'by': return 'CC-BY'
+    case 'by-sa': return 'CC-BY-SA'
     case 'by-nc':
     case 'by-nc-sa':
     case 'by-nc-nd':
@@ -48,8 +48,11 @@ export function mapOpenverseLicense(code: string, version: string): LicenseId {
 }
 
 function toReference(r: OpenverseResult): Reference {
+  const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
-    license: mapOpenverseLicense(r.license, r.license_version),
+    license,
+    // CC version is metadata only (attribution/audit), captured for the BY/BY-SA family.
+    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? r.license_version : undefined,
     author: r.creator ?? undefined,
     // governed by the per-item CC/PD license (Openverse imposes no hotlink/download-trigger requirement)
     rehostPolicy: 'cache-allowed',

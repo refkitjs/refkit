@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { rightsRecordSchema, type RightsRecord } from '../rights'
 
 const valid: RightsRecord = {
-  license: 'CC-BY-4.0',
+  license: 'CC-BY',
+  licenseVersion: '4.0',
   author: 'Jane Doe',
   rehostPolicy: 'cache-allowed',
   raw: { sourceTerms: 'https://creativecommons.org/licenses/by/4.0/', sourceUrl: 'https://example.org/photo/1' },

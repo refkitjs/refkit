@@ -1,7 +1,7 @@
 export type LicenseId =
   | 'CC0-1.0'
-  | 'CC-BY-4.0'
-  | 'CC-BY-SA-4.0'
+  | 'CC-BY'
+  | 'CC-BY-SA'
   | 'PD'
   | 'unsplash'
   | 'pexels'
@@ -26,8 +26,8 @@ export interface LicenseFacts {
 export const LICENSE_FACTS: Record<LicenseId, LicenseFacts> = {
   'CC0-1.0': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: false, shareAlike: false },
   'PD': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: false, shareAlike: false },
-  'CC-BY-4.0': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false },
-  'CC-BY-SA-4.0': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: true },
+  'CC-BY': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false },
+  'CC-BY-SA': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: true },
   // Stock-platform licenses: free to use incl. commercial, no attribution legally
   // required, but NOT redistributable as-is (can't resell/redistribute the asset itself).
   'unsplash': { commercialUse: true, derivatives: true, redistribution: false, attributionRequired: false, shareAlike: false },
