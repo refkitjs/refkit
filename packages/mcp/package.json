@@ -1,14 +1,21 @@
 {
   "name": "@refkit/mcp",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "MCP server for refkit — exposes license-normalized reference search as an agent tool.",
   "type": "module",
   "license": "Apache-2.0",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run", "test:watch": "vitest watch" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "build": "tsup",
+    "prepublishOnly": "tsup"
+  },
   "dependencies": {
     "@refkit/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -16,5 +23,19 @@
   },
   "devDependencies": {
     "@refkit/provider-openverse": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   }
 }

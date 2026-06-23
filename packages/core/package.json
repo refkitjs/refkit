@@ -1,19 +1,26 @@
 {
   "name": "@refkit/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "refkit core — neutral reference-retrieval brain: Reference/RightsRecord contract, license normalization, strict-deny use-gate, RRF merge/dedup, ReferenceProvider interfaces. Zero-network, zero-provider, only zod.",
   "type": "module",
   "license": "Apache-2.0",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "files": ["dist", "LICENSE"],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "publishConfig": {
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
-      ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
     }
   },
   "scripts": {

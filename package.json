@@ -11,12 +11,16 @@
     "build": "pnpm -r --if-present build",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm -r --if-present build && changeset publish"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.6",
+    "@changesets/cli": "^2.27.0"
   }
 }
