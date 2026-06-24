@@ -2,7 +2,7 @@
 
 Neutral, dependency-light **reference-retrieval toolkit for creative work** — search images / video / audio / text as creative references, with **per-result license normalization** so every result carries `source + license + attribution + canonicalUrl`.
 
-![One refkit.search("lion") across four sources — every result arrives license-tagged](docs/hero.svg)
+![One refkit.search("lion"), reranked, across multiple sources — every result arrives license-tagged](docs/hero.png)
 
 > Apache-2.0 · `v0.1.0` — first public release. The API surface (`createRefkit`) is stable; provider coverage is growing.
 
