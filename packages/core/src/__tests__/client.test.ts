@@ -53,9 +53,19 @@ describe('createRefkit', () => {
     expect(out.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
   })
 
-  it('applies the rerank hook post-merge', async () => {
+  it('applies the rerank hook post-merge with { query, refs, signal }', async () => {
+    const ac = new AbortController()
+    let seenQuery = ''
+    let seenSignal: AbortSignal | undefined
     const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2')])] })
-    const out = await rk.search({ query: 'x', modalities: ['image'], rerank: refs => [...refs].reverse() })
+    const out = await rk.search({
+      query: 'x',
+      modalities: ['image'],
+      signal: ac.signal,
+      rerank: ({ query, refs, signal }) => { seenQuery = query; seenSignal = signal; return [...refs].reverse() },
+    })
+    expect(seenQuery).toBe('x')
+    expect(seenSignal).toBe(ac.signal)
     expect(out[0].canonicalUrl).toBe('https://a/2')
   })
 

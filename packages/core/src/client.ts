@@ -1,5 +1,6 @@
 import type { Reference } from './reference'
 import { parseReference } from './reference'
+import type { Reranker } from './rerank'
 import type { Modality } from './modality'
 import type { Intent, Verdict } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
@@ -30,7 +31,7 @@ export interface SearchInput {
   signal?: AbortSignal
   gateFor?: Intent
   onProviderError?: (e: ProviderError) => void
-  rerank?: (refs: Reference[]) => Reference[] | Promise<Reference[]>
+  rerank?: Reranker
 }
 
 export interface RefkitClient {
@@ -92,7 +93,9 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     }
 
     let refs = mergeReferences(perSource, options.merge)
-    if (input.rerank) refs = await input.rerank(refs)
+    if (input.rerank) {
+      refs = await input.rerank({ query: input.query, refs, signal: input.signal ?? options.signal })
+    }
     if (input.gateFor) {
       const intent = input.gateFor
       refs = refs.filter(r => evaluateUse(r.rights, intent).decision.startsWith('allowed'))
