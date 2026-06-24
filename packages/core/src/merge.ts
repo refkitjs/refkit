@@ -25,10 +25,14 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
     })
   }
 
-  // `score` always has ≥1 entry here (we only reach this after building it from
-  // non-empty per-source lists; empty input returns [] earlier). Normalize by the
-  // actual max so the top result's relevance is exactly 1.0.
-  const maxScore = Math.max(...score.values())
+  // Normalize by the actual max so the top result's relevance is exactly 1.0.
+  // Reduce, not Math.max(...score.values()) — the merged pool can be large and a
+  // spread of that many args overflows the call stack. RRF scores are fractional
+  // (1/(k+rank) sums), so we keep the true max (no floor) to hit exactly 1.0. For
+  // empty input score has no entries, so the .map body never runs and the seed
+  // maxScore (-Infinity) is never used in the division.
+  let maxScore = -Infinity
+  for (const s of score.values()) if (s > maxScore) maxScore = s
   const fused: Reference[] = [...score.entries()]
     .map(([key, s]) => ({ ...rep.get(key)!, relevance: s / maxScore }))
     .sort((a, b) => b.relevance - a.relevance)

@@ -40,4 +40,19 @@ describe('mergeReferences (RRF)', () => {
     ])
     expect(out).toHaveLength(1)
   })
+
+  it('returns [] for empty / all-empty input without throwing', () => {
+    expect(mergeReferences([])).toEqual([])
+    expect(mergeReferences([[], []])).toEqual([])
+  })
+
+  it('handles a large pool without a Math.max(...spread) stack overflow', () => {
+    // The fused-score max must not be computed via `Math.max(...scores)`: spreading
+    // ~10^5 args overflows the call stack (RangeError). Pool size here is well past
+    // that threshold so a regression to the spread form fails loudly.
+    const big = Array.from({ length: 200_000 }, (_, i) => make(`p-${i}`, `https://p/${i}`))
+    const out = mergeReferences([big])
+    expect(out).toHaveLength(200_000)
+    expect(out[0].relevance).toBe(1) // top still normalised to exactly 1.0
+  })
 })
