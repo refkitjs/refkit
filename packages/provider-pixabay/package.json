@@ -4,6 +4,7 @@
   "description": "Pixabay provider satellite for refkit — image search, cache-allowed.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "pixabay", "stock-photos", "stock-video", "images", "video"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

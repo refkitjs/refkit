@@ -4,6 +4,7 @@
   "description": "PoetryDB provider satellite for refkit — classic public-domain poems.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "poetrydb", "poetry", "public-domain", "text"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

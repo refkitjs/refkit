@@ -4,6 +4,7 @@
   "description": "Openverse provider satellite for refkit — CC/PD licensed image search, license-normalized.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "openverse", "creative-commons", "public-domain", "images", "audio"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

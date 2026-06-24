@@ -4,6 +4,7 @@
   "description": "Gutendex (Project Gutenberg) provider satellite for refkit — public-domain book references, per-item copyright→license.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "project-gutenberg", "gutendex", "public-domain", "text", "books"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

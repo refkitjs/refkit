@@ -4,6 +4,7 @@
   "description": "Wikimedia Commons provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "wikimedia", "wikimedia-commons", "creative-commons", "public-domain", "images"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

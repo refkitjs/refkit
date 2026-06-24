@@ -4,6 +4,7 @@
   "description": "The Metropolitan Museum of Art provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "met-museum", "metropolitan-museum", "museum", "cc0", "public-domain", "images"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

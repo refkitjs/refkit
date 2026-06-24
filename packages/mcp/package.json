@@ -4,6 +4,7 @@
   "description": "MCP server for refkit — exposes license-normalized reference search as an agent tool.",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": ["refkit", "mcp", "model-context-protocol", "agent", "reference-retrieval", "license", "tool"],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
