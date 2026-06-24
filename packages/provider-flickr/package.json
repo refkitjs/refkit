@@ -1,10 +1,20 @@
 {
   "name": "@refkit/provider-flickr",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Flickr provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
-  "keywords": ["refkit", "reference-retrieval", "license", "attribution", "refkit-provider", "flickr", "creative-commons", "public-domain", "images"],
+  "keywords": [
+    "refkit",
+    "reference-retrieval",
+    "license",
+    "attribution",
+    "refkit-provider",
+    "flickr",
+    "creative-commons",
+    "public-domain",
+    "images"
+  ],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
