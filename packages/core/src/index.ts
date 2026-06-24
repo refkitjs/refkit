@@ -34,3 +34,5 @@ export type {
 export { normalizeQuery } from './query'
 export { createRefkit } from './client'
 export type { RefkitClient, RefkitOptions, SearchInput, ProviderError } from './client'
+export { lexicalReranker, tokenize } from './rerank'
+export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'

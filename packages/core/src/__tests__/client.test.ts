@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRefkit } from '../client'
 import { defineProvider } from '../provider'
+import { lexicalReranker } from '../rerank'
 import type { Reference } from '../reference'
 import type { LicenseId } from '../license'
 
@@ -122,5 +123,13 @@ describe('createRefkit', () => {
     expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'bad' }))
     expect(out.every(r => r.id !== '')).toBe(true)
     expect(out).toHaveLength(1)
+  })
+
+  it('search() applies lexicalReranker end-to-end, ordering by query relevance', async () => {
+    const meadow = { ...ref('a-1', 'https://a/1'), title: 'a quiet meadow' }
+    const city = { ...ref('a-2', 'https://a/2'), title: 'cyberpunk neon city' }
+    const rk = createRefkit({ providers: [provider('a', [meadow, city])] })
+    const out = await rk.search({ query: 'cyberpunk neon', modalities: ['image'], rerank: lexicalReranker() })
+    expect(out[0].canonicalUrl).toBe('https://a/2')
   })
 })

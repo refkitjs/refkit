@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { tokenize, lexicalReranker } from '../rerank'
 import type { Reference } from '../reference'
+import * as refkit from '../index'
 
 const ref = (id: string, title: string, opts: Partial<Reference> = {}): Reference => ({
   id,
@@ -98,5 +99,12 @@ describe('tokenize', () => {
   it('returns [] for empty / stopword-only input', () => {
     expect(tokenize('   the of a   ')).toEqual([])
     expect(tokenize('')).toEqual([])
+  })
+})
+
+describe('public surface', () => {
+  it('exports lexicalReranker and tokenize from the package root', () => {
+    expect(typeof refkit.lexicalReranker).toBe('function')
+    expect(typeof refkit.tokenize).toBe('function')
   })
 })
