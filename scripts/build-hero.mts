@@ -77,9 +77,10 @@ async function dataUri(url: string): Promise<string> {
 }
 
 // ---- live search ----
+const QUERY = 'lion'
 const rk = createRefkit({ providers: [openverse(), wikimediaCommons(), met(), artic()] })
 const results = await rk.search({
-  query: 'lion',
+  query: QUERY,
   modalities: ['image'],
   rerank: lexicalReranker(),
   limit: 40,
@@ -110,7 +111,8 @@ for (const r of picks) {
 if (baked.length < 2) throw new Error(`only ${baked.length} thumbnail(s) baked — aborting`)
 
 // ---- build the SVG ----
-const W = 198, GAP = 32, X0 = 16, esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+const W = 198, GAP = 32, X0 = 16, CY = 70 // CY = card-top y; the search-box header sits above it
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 let defs = '', body = ''
 for (let i = 0; i < baked.length; i++) {
   const { r, href } = baked[i]
@@ -119,21 +121,29 @@ for (let i = 0; i < baked.length; i++) {
   const decision = rk.evaluateUse(r, 'commercial-product').decision
   const { verdict, tint, licColor, vColor } = verdictStyle(decision)
   const src = SOURCE_LABEL[r.source.providerId] ?? `via ${r.source.providerId}`
-  const title = splitTitle(r.title ?? '')
-  defs += `<clipPath id="img${i}"><rect x="${x}" y="10" width="${W}" height="120" rx="14"/></clipPath>`
+  const title = splitTitle((r.title ?? '').replace(/^\d+[\s_.-]+/, '')) // drop filename-prefix numbers like "002 "
+  defs += `<clipPath id="img${i}"><rect x="${x}" y="${CY}" width="${W}" height="120" rx="14"/></clipPath>`
   body += `
-  <rect x="${x}" y="10" width="${W}" height="200" rx="14" fill="#fff" stroke="#e2e8f0"/>
-  <image x="${x}" y="10" width="${W}" height="120" href="${href}" preserveAspectRatio="xMidYMid slice" clip-path="url(#img${i})"/>
-  <text x="${x + 16}" y="150" font-size="11" fill="#94a3b8">${esc(src)}</text>
-  ${title.map((t, j) => `<text x="${x + 16}" y="${172 + j * 18}" font-size="13" font-weight="500" fill="#0f172a">${esc(t)}</text>`).join('')}
-  <text x="${x + 16}" y="204" font-size="13" font-weight="700" fill="${licColor}">${esc(lic)}</text>
-  <rect x="${x + (lic.length > 4 ? 108 : 60)}" y="192" width="${verdict.length * 7 + 16}" height="20" rx="6" fill="${tint}"/>
-  <text x="${x + (lic.length > 4 ? 116 : 68)}" y="206" font-size="11" font-weight="600" fill="${vColor}">${esc(verdict)}</text>`
+  <rect x="${x}" y="${CY}" width="${W}" height="200" rx="14" fill="#fff" stroke="#e2e8f0"/>
+  <image x="${x}" y="${CY}" width="${W}" height="120" href="${href}" preserveAspectRatio="xMidYMid slice" clip-path="url(#img${i})"/>
+  <text x="${x + 16}" y="${CY + 140}" font-size="11" fill="#94a3b8">${esc(src)}</text>
+  ${title.map((t, j) => `<text x="${x + 16}" y="${CY + 162 + j * 18}" font-size="13" font-weight="500" fill="#0f172a">${esc(t)}</text>`).join('')}
+  <text x="${x + 16}" y="${CY + 194}" font-size="13" font-weight="700" fill="${licColor}">${esc(lic)}</text>
+  <rect x="${x + (lic.length > 4 ? 108 : 60)}" y="${CY + 182}" width="${verdict.length * 7 + 16}" height="20" rx="6" fill="${tint}"/>
+  <text x="${x + (lic.length > 4 ? 116 : 68)}" y="${CY + 196}" font-size="11" font-weight="600" fill="${vColor}">${esc(verdict)}</text>`
 }
 
 const VBW = X0 * 2 + baked.length * W + (baked.length - 1) * GAP
-const svg = `<svg viewBox="0 0 ${VBW} 226" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-label="One refkit.search('lion') across ${baked.length} sources, each result license-tagged">
-<defs>${defs}</defs>${body}
+// Header: a search-box mockup showing the actual query, so the strip reads as
+// "one search → license-tagged references", not an unexplained row of photos.
+const header = `
+  <rect x="${X0}" y="16" width="300" height="38" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <circle cx="${X0 + 22}" cy="33" r="6" fill="none" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="${X0 + 26.5}" y1="37.5" x2="${X0 + 31}" y2="42" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+  <text x="${X0 + 40}" y="40" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#475569">refkit.search(<tspan fill="#0f172a" font-weight="700">"${esc(QUERY)}"</tspan>)</text>
+  <text x="${X0 + 316}" y="40" font-size="13" fill="#94a3b8">→ reranked · every result license-tagged</text>`
+const svg = `<svg viewBox="0 0 ${VBW} 286" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-label="refkit.search('${esc(QUERY)}') across ${baked.length} sources, reranked — every result license-tagged">
+<defs>${defs}</defs>${header}${body}
 </svg>\n`
 
 // ---- rasterise to PNG (pure Rust, no browser) ----
