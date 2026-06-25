@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, ProviderOptionsById, SearchMeta } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, ProviderOptionsById, SearchMeta } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
 const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
@@ -12,6 +12,34 @@ const filtersSchema = z.object({
   color: z.string().optional(),
   orientation: z.enum(ORIENTATIONS).optional(),
   language: z.string().optional(),
+})
+
+const searchControlsSchema = z.object({
+  orientation: z.enum(ORIENTATIONS).optional(),
+  color: z.string().optional(),
+  language: z.string().optional(),
+  sort: z.enum(['relevance', 'latest', 'popular', 'interesting']).optional(),
+  safety: z.enum(['strict', 'moderate', 'off']).optional(),
+  license: z.object({
+    commercial: z.boolean().optional(),
+    modification: z.boolean().optional(),
+    allowUnknown: z.boolean().optional(),
+  }).optional(),
+  media: z.object({
+    kind: z.enum(['photo', 'illustration', 'vector', 'film', 'animation']).optional(),
+    size: z.enum(['small', 'medium', 'large']).optional(),
+    minWidth: z.number().int().nonnegative().optional(),
+    minHeight: z.number().int().nonnegative().optional(),
+    duration: z.enum(['short', 'medium', 'long']).optional(),
+  }).optional(),
+  creator: z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+  }).optional(),
+  text: z.object({
+    copyright: z.enum(['public-domain', 'copyrighted', 'any']).optional(),
+  }).optional(),
+  page: z.number().int().positive().optional(),
 })
 
 const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
@@ -77,6 +105,11 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
   poolFactor: z.number(),
   fetchLimit: z.number(),
   appliedFilters: filtersSchema.optional(),
+  controls: z.object({
+    requested: z.array(z.string()),
+    appliedByProvider: z.record(z.string(), z.array(z.string())),
+    ignoredByProvider: z.record(z.string(), z.array(z.string())),
+  }).optional(),
   providerOptions: z.array(z.string()).optional(),
   providers: z.array(z.object({
     providerId: z.string(),
@@ -113,6 +146,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         query: z.string().describe('what to search for, e.g. "cyberpunk alley at night"'),
         modalities: z.array(z.enum(MODALITIES)).optional().describe('default ["image"]'),
         filters: filtersSchema.optional().describe('portable search filters; unsupported filters are silently ignored per provider'),
+        controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
         explain: z.boolean().optional().describe('include provider status, warnings, applied filters, and gate/drop metadata'),
         limit: z.number().int().positive().optional(),
@@ -121,11 +155,12 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       },
       outputSchema: { references: z.array(agentRefSchema), meta: searchMetaSchema.optional() },
     },
-    async ({ query, modalities, filters, providerOptions, explain, limit, intent, gateFor }) => {
+    async ({ query, modalities, filters, controls, providerOptions, explain, limit, intent, gateFor }) => {
       const searchInput = {
         query,
         modalities: modalities ?? ['image'],
         filters: filters as SearchFilters | undefined,
+        controls: controls as SearchControls | undefined,
         providerOptions: providerOptions as ProviderOptionsById | undefined,
         limit,
         gateFor,

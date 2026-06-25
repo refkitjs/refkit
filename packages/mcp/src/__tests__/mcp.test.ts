@@ -113,6 +113,72 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('accepts unified controls and forwards them to core search', async () => {
+    let seen: unknown
+    const fakeProvider = defineProvider({
+      id: 'fake',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      capabilities: { controls: ['orientation', 'color', 'safety'] },
+      search: async (q) => {
+        seen = q.controls
+        return []
+      },
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [fakeProvider] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    await client.callTool({
+      name: 'search_references',
+      arguments: {
+        query: 'sky',
+        modalities: ['image'],
+        controls: { orientation: 'landscape', color: 'blue', safety: 'strict' },
+      },
+    })
+    expect(seen).toEqual({ orientation: 'landscape', color: 'blue', safety: 'strict' })
+    await client.close()
+  })
+
+  it('includes control support metadata when explain is true', async () => {
+    const fakeProvider = defineProvider({
+      id: 'fake',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      capabilities: { controls: ['orientation'] },
+      search: async () => [],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [fakeProvider] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({
+      name: 'search_references',
+      arguments: {
+        query: 'sky',
+        modalities: ['image'],
+        controls: { orientation: 'landscape', color: 'blue' },
+        explain: true,
+      },
+    })
+    const structured = res.structuredContent as {
+      meta?: {
+        controls?: {
+          requested: string[]
+          appliedByProvider: Record<string, string[]>
+          ignoredByProvider: Record<string, string[]>
+        }
+      }
+    }
+    expect(structured.meta?.controls).toEqual({
+      requested: ['orientation', 'color'],
+      appliedByProvider: { fake: ['orientation'] },
+      ignoredByProvider: { fake: ['color'] },
+    })
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',
