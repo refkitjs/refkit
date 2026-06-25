@@ -40,11 +40,12 @@ await serveStdio(createRefkit({
 
 ## The `search_references` tool
 
-Input: `{ query, modalities?, filters?, providerOptions?, explain?, limit?, intent?, gateFor? }`.
+Input: `{ query, modalities?, controls?, filters?, providerOptions?, explain?, limit?, intent?, gateFor? }`.
 
+- `controls` — provider-neutral search controls such as `{ orientation, color, language, sort, safety, license, media }`; providers translate supported controls and report ignored controls when `explain: true`.
 - `intent` — annotate each result with a **use-verdict** for that intended use (no filtering).
 - `gateFor` — return only results whose license allows that intent.
-- `filters` — portable controls such as `{ orientation, color, language }`; unsupported filters are ignored by providers.
+- `filters` — compatibility alias for `controls.orientation`, `controls.color`, and `controls.language`.
 - `explain` — include provider status, partial-result warnings, applied filters, and gate/drop metadata.
 - `providerOptions` — source-specific controls keyed by provider id, for example:
 
@@ -52,12 +53,10 @@ Input: `{ query, modalities?, filters?, providerOptions?, explain?, limit?, inte
 {
   "query": "forest path",
   "modalities": ["image"],
-  "filters": { "orientation": "landscape", "color": "green" },
+  "controls": { "orientation": "landscape", "color": "green", "safety": "strict" },
   "providerOptions": {
-    "unsplash": { "orderBy": "latest", "contentFilter": "high" },
-    "pexels": { "size": "large" },
-    "pixabay": { "safesearch": true, "order": "latest" },
-    "flickr": { "sort": "interestingness-desc", "licenseFilter": "4,5,9,10,11,12" }
+    "unsplash": { "collections": ["abc", "def"] },
+    "flickr": { "tags": ["forest", "path"], "tagMode": "all" }
   }
 }
 ```

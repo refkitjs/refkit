@@ -41,43 +41,49 @@ const safe = await refkit.search({ query: 'forest', modalities: ['image'], gateF
 
 ## Search controls
 
-Portable filters are expressed once and applied only to providers that declare support:
+Portable controls are expressed once and applied only to providers that declare support:
 
 ```ts
 await refkit.search({
   query: 'minimal workspace',
   modalities: ['image'],
-  filters: { orientation: 'landscape', color: 'white', language: 'en-US' },
-})
-```
-
-Provider-specific controls go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers whitelist the upstream parameters they translate:
-
-```ts
-await refkit.search({
-  query: 'mountain trail',
-  modalities: ['image', 'video'],
-  providerOptions: {
-    unsplash: { orderBy: 'latest', contentFilter: 'high' },
-    pexels: { size: 'large', page: 2 },
-    'pexels-video': { size: 'medium' },
-    pixabay: { imageType: 'photo', safesearch: true },
-    'pixabay-video': { videoType: 'film', minWidth: 1920 },
-    flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
+  controls: {
+    orientation: 'landscape',
+    color: 'white',
+    language: 'en-US',
   },
 })
 ```
 
-Currently supported provider options:
+Provider-specific escape hatches go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers whitelist the upstream parameters they translate:
 
-| Provider id | Portable filters | Provider options |
-|---|---|---|
-| `unsplash` | `color`, `orientation`, `language` | `orderBy`, `contentFilter`, `collections`, `lang` |
-| `pexels` | `color`, `orientation`, `language` | `size`, `locale`, `page` |
-| `pexels-video` | `orientation`, `language` | `size`, `locale`, `page` |
-| `pixabay` | `color`, `orientation`, `language` | `imageType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice` |
-| `pixabay-video` | `language` | `videoType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice` |
-| `flickr` | — | `licenseFilter`, `sort`, `safeSearch`, `tags`, `tagMode`, `userId` |
+```ts
+await refkit.search({
+  query: 'mountain trail',
+  modalities: ['image'],
+  controls: { orientation: 'landscape', safety: 'strict' },
+  providerOptions: {
+    flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
+    unsplash: { collections: ['abc', 'def'] },
+  },
+})
+```
+
+Currently supported unified controls:
+
+| Provider id | Unified controls |
+|---|---|
+| `unsplash` | `orientation`, `color`, `language`, `sort`, `safety` |
+| `pexels` | `orientation`, `color`, `language`, `media.size`, `page` |
+| `pexels-video` | `orientation`, `language`, `media.size`, `page` |
+| `pixabay` | `orientation`, `color`, `language`, `sort`, `safety`, `media.kind`, `media.minWidth`, `media.minHeight` |
+| `pixabay-video` | `language`, `sort`, `safety`, `media.kind`, `media.minWidth`, `media.minHeight` |
+| `flickr` | `sort`, `safety`, `license.commercial`, `license.modification`, `license.allowUnknown`, `creator.id` |
+| `brave` | `safety` |
+| `openverse` | `license.commercial`, `license.modification`, `license.allowUnknown` |
+| `openverse-audio` | `license.commercial`, `license.modification`, `license.allowUnknown` |
+| `gutendex` | `language`, `text.copyright`, `page` |
+| `poetrydb`, `wikimedia-commons`, `met`, `artic`, `smithsonian` | no unified controls in this release |
 
 Use `searchWithMeta` when a host UI or agent needs the search explanation layer:
 
@@ -85,9 +91,12 @@ Use `searchWithMeta` when a host UI or agent needs the search explanation layer:
 const { references, meta } = await refkit.searchWithMeta({
   query: 'minimal workspace',
   modalities: ['image'],
+  controls: { orientation: 'landscape', color: 'white' },
   gateFor: 'commercial-product',
 })
 
+meta.controls?.appliedByProvider
+meta.controls?.ignoredByProvider
 meta.providers // provider status: fulfilled / failed / skipped
 meta.gate      // before/after/dropped counts when gateFor is used
 meta.warnings  // partial-result and gate/drop notes

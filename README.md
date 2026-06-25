@@ -55,34 +55,37 @@ const safe = await refkit.search({ query: 'forest', modalities: ['image'], gateF
 
 ## Search controls
 
-Use portable `filters` when the intent is source-agnostic; unsupported filters are silently ignored per provider:
+Use provider-neutral `controls` for the main path. refkit routes each control only to providers that declare support, and `searchWithMeta()` explains which providers applied or ignored each control:
 
 ```ts
 await refkit.search({
   query: 'brutalist library interior',
   modalities: ['image'],
-  filters: { orientation: 'landscape', color: 'blue', language: 'en-US' },
-})
-```
-
-Use `providerOptions` for source-specific knobs from each upstream API. Core routes only the matching entry to that provider, and each provider whitelists what it translates:
-
-```ts
-await refkit.search({
-  query: 'forest path',
-  modalities: ['image', 'video'],
-  providerOptions: {
-    unsplash: { orderBy: 'latest', contentFilter: 'high' },
-    pexels: { size: 'large' },
-    'pexels-video': { size: 'medium' },
-    pixabay: { imageType: 'photo', safesearch: true, order: 'latest' },
-    'pixabay-video': { videoType: 'film', minWidth: 1920 },
-    flickr: { licenseFilter: '4,5,9,10,11,12', sort: 'interestingness-desc' },
+  controls: {
+    orientation: 'landscape',
+    color: 'blue',
+    language: 'en-US',
+    sort: 'relevance',
+    safety: 'strict',
+    license: { commercial: true, modification: true },
+    media: { minWidth: 1200, minHeight: 800 },
   },
 })
 ```
 
-First supported set: Unsplash (`orderBy`, `contentFilter`, `collections`, `lang`), Pexels photo/video (`size`, `locale`, `page`), Pixabay image/video (`imageType`/`videoType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice`), and Flickr (`licenseFilter`, `sort`, `safeSearch`, `tags`, `tagMode`, `userId`).
+Use `providerOptions` only for provider-specific escape hatches that do not belong in the common contract, such as Flickr `tags` or Unsplash `collections`:
+
+```ts
+await refkit.search({
+  query: 'forest path',
+  modalities: ['image'],
+  controls: { orientation: 'landscape', safety: 'strict' },
+  providerOptions: {
+    flickr: { tags: ['forest', 'path'], tagMode: 'all' },
+    unsplash: { collections: ['abc', 'def'] },
+  },
+})
+```
 
 When an agent or UI needs to explain what happened, use `searchWithMeta`:
 
@@ -90,11 +93,14 @@ When an agent or UI needs to explain what happened, use `searchWithMeta`:
 const { references, meta } = await refkit.searchWithMeta({
   query: 'forest path',
   modalities: ['image'],
+  controls: { orientation: 'landscape', color: 'green' },
   gateFor: 'commercial-product',
 })
 
-console.log(meta.providers) // fulfilled / failed / skipped, with counts
-console.log(meta.warnings)  // partial-result and gate/drop notes
+console.log(meta.controls?.appliedByProvider)
+console.log(meta.controls?.ignoredByProvider)
+console.log(meta.providers)
+console.log(meta.warnings)
 ```
 
 ## Ranking & rerank

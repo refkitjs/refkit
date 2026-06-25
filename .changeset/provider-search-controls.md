@@ -7,4 +7,4 @@
 "@refkit/provider-flickr": minor
 ---
 
-Add portable search filters, provider-specific search options, search metadata/explanations, and a core duplicate hook for agent-facing searches.
+Add unified search controls, provider capability metadata, MCP controls input, search metadata/explanations, provider-specific escape hatch options, and a core duplicate hook for agent-facing searches.
