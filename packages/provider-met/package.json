@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-met",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "The Metropolitan Museum of Art provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",

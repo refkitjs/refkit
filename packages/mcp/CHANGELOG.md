@@ -1,5 +1,28 @@
 # @refkit/mcp
 
+## 0.3.0
+
+### Minor Changes
+
+- 8c221f8: Add unified search controls, provider capability metadata, MCP controls input, search metadata/explanations, practical provider-specific `providerOptions` whitelists, and a core duplicate hook for agent-facing searches.
+
+### Patch Changes
+
+- Updated dependencies [8c221f8]
+  - @refkit/core@0.4.0
+  - @refkit/provider-unsplash@0.2.0
+  - @refkit/provider-pexels@0.2.0
+  - @refkit/provider-pixabay@0.2.0
+  - @refkit/provider-flickr@0.2.0
+  - @refkit/provider-brave@0.2.0
+  - @refkit/provider-openverse@0.2.0
+  - @refkit/provider-gutendex@0.2.0
+  - @refkit/provider-poetrydb@0.2.0
+  - @refkit/provider-wikimedia-commons@0.2.0
+  - @refkit/provider-met@0.2.0
+  - @refkit/provider-artic@0.2.0
+  - @refkit/provider-smithsonian@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
