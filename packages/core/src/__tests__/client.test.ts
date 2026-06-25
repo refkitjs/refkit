@@ -171,4 +171,69 @@ describe('createRefkit', () => {
     await rk.search({ query: 'x', modalities: ['image'], limit: 150 }) // > cap → fetch the limit itself, not less
     expect(sink.limit).toBe(150)
   })
+
+  it('forwards provider-specific search options only to the matching provider', async () => {
+    let seenA: unknown
+    let seenB: unknown
+    const a = defineProvider({
+      id: 'a',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async (q) => { seenA = q.providerOptions; return [] },
+    })
+    const b = defineProvider({
+      id: 'b',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async (q) => { seenB = q.providerOptions; return [] },
+    })
+    const rk = createRefkit({ providers: [a, b] })
+    await rk.search({
+      query: 'x',
+      modalities: ['image'],
+      providerOptions: { a: { orderBy: 'latest' }, b: { sort: 'relevance' } },
+    })
+    expect(seenA).toEqual({ orderBy: 'latest' })
+    expect(seenB).toEqual({ sort: 'relevance' })
+  })
+
+  it('searchWithMeta returns provider status, warnings, and gate summary', async () => {
+    const textOnly = defineProvider({
+      id: 'text',
+      modalities: ['text'],
+      queryFeatures: ['keyword'],
+      search: async () => [],
+    })
+    const rk = createRefkit({
+      providers: [
+        provider('ok', [ref('ok-1', 'https://ok/1', 'CC0-1.0'), ref('ok-2', 'https://ok/2', 'proprietary')]),
+        failing('bad'),
+        textOnly,
+      ],
+    })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
+
+    expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://ok/1'])
+    expect(out.meta.providers).toEqual([
+      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0 },
+      { providerId: 'bad', status: 'failed', error: 'boom' },
+      { providerId: 'text', status: 'skipped', reason: 'unsupported-modality' },
+    ])
+    expect(out.meta.gate).toEqual({ intent: 'commercial-product', before: 2, after: 1, dropped: 1 })
+    expect(out.meta.warnings).toContain('1 provider(s) failed; returning partial results.')
+  })
+
+  it('uses merge.isDuplicate to dedupe host-supplied fingerprints during search', async () => {
+    const a = { ...ref('a-1', 'https://a/1'), relevance: 0.2, raw: { fingerprint: 'same' } }
+    const b = { ...ref('a-2', 'https://a/2'), relevance: 0.9, raw: { fingerprint: 'same' } }
+    const rk = createRefkit({
+      providers: [provider('a', [b, a])],
+      merge: {
+        isDuplicate: (candidate, existing) =>
+          (candidate.raw as { fingerprint?: string }).fingerprint === (existing.raw as { fingerprint?: string }).fingerprint,
+      },
+    })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out.map(r => r.id)).toEqual(['a-2'])
+  })
 })

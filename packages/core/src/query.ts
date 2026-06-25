@@ -1,10 +1,10 @@
 import type { Modality } from './modality'
-import type { NormalizedQuery, ReferenceProvider, SearchFilters } from './provider'
+import type { NormalizedQuery, ProviderOptionsById, ReferenceProvider, SearchFilters } from './provider'
 
 // Build a per-provider NormalizedQuery: keep only the filters this provider's
 // queryFeatures support (silently drop the rest — never error), and intersect modalities.
 export function normalizeQuery(
-  input: { query: string; modalities: Modality[]; filters?: SearchFilters; limit?: number },
+  input: { query: string; modalities: Modality[]; filters?: SearchFilters; providerOptions?: ProviderOptionsById; limit?: number },
   provider: ReferenceProvider,
 ): NormalizedQuery {
   const feats = new Set(provider.queryFeatures)
@@ -17,6 +17,7 @@ export function normalizeQuery(
     text: input.query,
     modalities: input.modalities.filter(m => provider.modalities.includes(m)),
     ...(hasFilters ? { filters } : {}),
+    ...(input.providerOptions?.[provider.id] ? { providerOptions: input.providerOptions[provider.id] } : {}),
     ...(input.limit !== undefined ? { limit: input.limit } : {}),
   }
 }

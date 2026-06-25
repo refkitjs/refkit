@@ -28,6 +28,28 @@ describe('pexels provider', () => {
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/photos/3573351/x?h=200')
     expect(r.visual).toEqual({ width: 3066, height: 3968, dominantColors: ['#374824'] })
   })
+
+  it('forwards documented photo search filters and Pexels-specific options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await pexels({ apiKey: 'k' }).search({
+      text: 'trees',
+      modalities: ['image'],
+      filters: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
+      providerOptions: { size: 'large', page: 2 },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('orientation')).toBe('portrait')
+    expect(url.searchParams.get('color')).toBe('#ffffff')
+    expect(url.searchParams.get('locale')).toBe('zh-CN')
+    expect(url.searchParams.get('size')).toBe('large')
+    expect(url.searchParams.get('page')).toBe('2')
+  })
 })
 
 describe('pexelsVideo provider', () => {
@@ -58,5 +80,26 @@ describe('pexelsVideo provider', () => {
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/videos/6394054/cat.jpg')
     expect(r.visual).toEqual({ width: 2560, height: 1440 })
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pexels license is commercial-OK
+  })
+
+  it('forwards documented video search filters and Pexels-specific options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(VIDEO_FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await pexelsVideo({ apiKey: 'k' }).search({
+      text: 'cat',
+      modalities: ['video'],
+      filters: { orientation: 'landscape', language: 'en-US' },
+      providerOptions: { size: 'medium', page: 3 },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('orientation')).toBe('landscape')
+    expect(url.searchParams.get('locale')).toBe('en-US')
+    expect(url.searchParams.get('size')).toBe('medium')
+    expect(url.searchParams.get('page')).toBe('3')
   })
 })

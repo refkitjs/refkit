@@ -53,6 +53,50 @@ for (const r of refs) {
 const safe = await refkit.search({ query: 'forest', modalities: ['image'], gateFor: 'commercial-product' })
 ```
 
+## Search controls
+
+Use portable `filters` when the intent is source-agnostic; unsupported filters are silently ignored per provider:
+
+```ts
+await refkit.search({
+  query: 'brutalist library interior',
+  modalities: ['image'],
+  filters: { orientation: 'landscape', color: 'blue', language: 'en-US' },
+})
+```
+
+Use `providerOptions` for source-specific knobs from each upstream API. Core routes only the matching entry to that provider, and each provider whitelists what it translates:
+
+```ts
+await refkit.search({
+  query: 'forest path',
+  modalities: ['image', 'video'],
+  providerOptions: {
+    unsplash: { orderBy: 'latest', contentFilter: 'high' },
+    pexels: { size: 'large' },
+    'pexels-video': { size: 'medium' },
+    pixabay: { imageType: 'photo', safesearch: true, order: 'latest' },
+    'pixabay-video': { videoType: 'film', minWidth: 1920 },
+    flickr: { licenseFilter: '4,5,9,10,11,12', sort: 'interestingness-desc' },
+  },
+})
+```
+
+First supported set: Unsplash (`orderBy`, `contentFilter`, `collections`, `lang`), Pexels photo/video (`size`, `locale`, `page`), Pixabay image/video (`imageType`/`videoType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice`), and Flickr (`licenseFilter`, `sort`, `safeSearch`, `tags`, `tagMode`, `userId`).
+
+When an agent or UI needs to explain what happened, use `searchWithMeta`:
+
+```ts
+const { references, meta } = await refkit.searchWithMeta({
+  query: 'forest path',
+  modalities: ['image'],
+  gateFor: 'commercial-product',
+})
+
+console.log(meta.providers) // fulfilled / failed / skipped, with counts
+console.log(meta.warnings)  // partial-result and gate/drop notes
+```
+
 ## Ranking & rerank
 
 By default, results are fused across sources with **Reciprocal Rank Fusion** — cross-source-orderable, but not query-aware. For sharper relevance, pass a **reranker**:
@@ -80,6 +124,19 @@ rerank: async ({ query, refs }) => myEmbeddingRerank(query, refs)
 ```
 
 Rerank is **opt-in** — omit it for the default RRF order. It runs post-merge, before the `gateFor` license filter and the limit.
+
+URL dedupe is built in, and perceptual hashes are supported when providers or hosts supply them. For host-computed fingerprints or embeddings, add a duplicate hook without making core fetch or decode media:
+
+```ts
+const refkit = createRefkit({
+  providers,
+  merge: {
+    isDuplicate: (candidate, existing) =>
+      (candidate.raw as { fingerprint?: string }).fingerprint ===
+      (existing.raw as { fingerprint?: string }).fingerprint,
+  },
+})
+```
 
 ## Providers
 
@@ -123,7 +180,14 @@ Audio/video are extra factories on existing packages: `openverseAudio()`, `pexel
 - **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals.
 - **strict-deny** — when rights can't be determined, deny / needs-review (never fail-open). Unknown, NonCommercial, NoDerivatives and "no known copyright restrictions" never map to a usable license.
 
-## Agent / MCP
+## Agent usage
+
+Agents can use refkit in two ways:
+
+1. **SDK inside a host tool** — your app defines its own `search` tool, wires `createRefkit({ providers, fetch, cache })`, and controls keys, caching, retries, rerankers, filters, and provider-specific options.
+2. **MCP adapter** — `@refkit/mcp` exposes the same license-normalized search over `search_references`, useful when you want a zero-glue tool that works across MCP-capable agents.
+
+## MCP
 
 `@refkit/mcp` exposes `search_references` over the [Model Context Protocol](https://modelcontextprotocol.io), so any MCP-capable agent can search license-normalized references with zero glue code.
 

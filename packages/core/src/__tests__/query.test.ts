@@ -34,4 +34,19 @@ describe('normalizeQuery', () => {
     expect(nq.text).toBe('cat')
     expect(nq.limit).toBe(10)
   })
+
+  it('passes only the matching providerOptions entry to the provider query', () => {
+    const nq = normalizeQuery(
+      {
+        query: 'cat',
+        modalities: ['image'],
+        providerOptions: {
+          p: { orderBy: 'latest' },
+          other: { orderBy: 'relevant' },
+        },
+      },
+      provider(['keyword']),
+    )
+    expect(nq.providerOptions).toEqual({ orderBy: 'latest' })
+  })
 })

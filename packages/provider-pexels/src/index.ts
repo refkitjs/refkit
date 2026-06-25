@@ -5,6 +5,12 @@ import {
 
 export interface PexelsConfig { apiKey: string }
 
+export interface PexelsSearchOptions {
+  size?: 'large' | 'medium' | 'small'
+  locale?: string
+  page?: number
+}
+
 interface PexelsPhoto {
   id: number
   width: number
@@ -17,6 +23,27 @@ interface PexelsPhoto {
   src: { tiny: string; medium: string; original: string }
 }
 interface PexelsResponse { photos: PexelsPhoto[] }
+
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string') return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
+  url.searchParams.set(key, String(value))
+}
+
+function applyPexelsSearchParams(url: URL, q: NormalizedQuery) {
+  if (q.filters?.orientation) url.searchParams.set('orientation', q.filters.orientation)
+  if (q.filters?.color) url.searchParams.set('color', q.filters.color)
+  if (q.filters?.language) url.searchParams.set('locale', q.filters.language)
+  const opts = q.providerOptions as PexelsSearchOptions | undefined
+  setIfString(url, 'size', opts?.size, ['large', 'medium', 'small'])
+  setIfString(url, 'locale', opts?.locale)
+  setIfPositiveInt(url, 'page', opts?.page)
+}
 
 function toReference(p: PexelsPhoto): Reference {
   const rights: RightsRecord = {
@@ -45,11 +72,12 @@ export function pexels(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
+    queryFeatures: ['keyword', 'color', 'orientation', 'language'],
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/v1/search')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 15, 80)))
+      applyPexelsSearchParams(url, q)
       const res = await ctx.fetch(url.toString(), { headers: { Authorization: config.apiKey }, signal: ctx.signal })
       if (!res.ok) throw new Error(`pexels search failed: ${res.status}`)
       const json = (await res.json()) as PexelsResponse
@@ -104,11 +132,12 @@ export function pexelsVideo(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels-video',
     modalities: ['video'],
-    queryFeatures: ['keyword'],
+    queryFeatures: ['keyword', 'orientation', 'language'],
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/videos/search')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 15, 80)))
+      applyPexelsSearchParams(url, q)
       const res = await ctx.fetch(url.toString(), { headers: { Authorization: config.apiKey }, signal: ctx.signal })
       if (!res.ok) throw new Error(`pexels video search failed: ${res.status}`)
       const json = (await res.json()) as PexelsVideoResponse

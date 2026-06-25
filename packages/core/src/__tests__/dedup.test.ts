@@ -53,6 +53,18 @@ describe('dedupeReferences', () => {
     expect(out).toHaveLength(2)
   })
 
+  it('uses a custom duplicate hook for host-supplied fingerprints', () => {
+    const out = dedupeReferences([
+      make({ id: 'a', canonicalUrl: 'https://x/1', relevance: 0.4, raw: { fingerprint: 'same' } }),
+      make({ id: 'b', canonicalUrl: 'https://y/2', relevance: 0.9, raw: { fingerprint: 'same' } }),
+      make({ id: 'c', canonicalUrl: 'https://z/3', relevance: 0.6, raw: { fingerprint: 'other' } }),
+    ], {
+      isDuplicate: (candidate, existing) =>
+        (candidate.raw as { fingerprint?: string }).fingerprint === (existing.raw as { fingerprint?: string }).fingerprint,
+    })
+    expect(out.map(r => r.id)).toEqual(['b', 'c'])
+  })
+
   it('stale byUrl fix: C(url=a) must not dedupe against hash-replaced B(url=b) via stale index', () => {
     // Step 1: A(url=a, hash=ffff, rel=0.3) → pushed to kept[0]; byUrl = {url_a → 0}
     // Step 2: B(url=b, hash=fffe, rel=0.9) → url_b not in byUrl; hash-distance(fffe,ffff)=1≤4 → merges.

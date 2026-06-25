@@ -31,6 +31,30 @@ describe('pixabay provider', () => {
     expect(r.thumbnail).toEqual({ url: 'https://cdn.pixabay.com/photo/flower-195893_150.jpg', width: 150, height: 84 })
     expect(r.visual).toEqual({ width: 4000, height: 2250 })
   })
+
+  it('forwards documented image search filters and Pixabay-specific options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(FIXTURE), { status: 200 }) }) as typeof fetch,
+    }
+    await pixabay({ key: 'SECRET' }).search({
+      text: 'flowers',
+      modalities: ['image'],
+      filters: { orientation: 'landscape', color: 'blue', language: 'de' },
+      providerOptions: { imageType: 'illustration', category: 'nature', minWidth: 1200, minHeight: 800, safesearch: true, order: 'latest', editorsChoice: true },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('orientation')).toBe('horizontal')
+    expect(url.searchParams.get('colors')).toBe('blue')
+    expect(url.searchParams.get('lang')).toBe('de')
+    expect(url.searchParams.get('image_type')).toBe('illustration')
+    expect(url.searchParams.get('category')).toBe('nature')
+    expect(url.searchParams.get('min_width')).toBe('1200')
+    expect(url.searchParams.get('min_height')).toBe('800')
+    expect(url.searchParams.get('safesearch')).toBe('true')
+    expect(url.searchParams.get('order')).toBe('latest')
+    expect(url.searchParams.get('editors_choice')).toBe('true')
+  })
 })
 
 describe('pixabayVideo provider', () => {
@@ -63,5 +87,27 @@ describe('pixabayVideo provider', () => {
     expect(r.thumbnail?.url).toBe('https://cdn.pixabay.com/vimeo/125/large.jpg')
     expect(r.visual).toEqual({ width: 1920, height: 1080 })
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pixabay license is commercial-OK
+  })
+
+  it('forwards documented video search filters and Pixabay-specific options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(VIDEO_FIXTURE), { status: 200 }) }) as typeof fetch,
+    }
+    await pixabayVideo({ key: 'SECRET' }).search({
+      text: 'flowers',
+      modalities: ['video'],
+      filters: { language: 'fr' },
+      providerOptions: { videoType: 'animation', category: 'education', minWidth: 1920, minHeight: 1080, safesearch: true, order: 'latest', editorsChoice: true },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('lang')).toBe('fr')
+    expect(url.searchParams.get('video_type')).toBe('animation')
+    expect(url.searchParams.get('category')).toBe('education')
+    expect(url.searchParams.get('min_width')).toBe('1920')
+    expect(url.searchParams.get('min_height')).toBe('1080')
+    expect(url.searchParams.get('safesearch')).toBe('true')
+    expect(url.searchParams.get('order')).toBe('latest')
+    expect(url.searchParams.get('editors_choice')).toBe('true')
   })
 })

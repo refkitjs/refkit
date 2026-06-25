@@ -2,10 +2,20 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import type { RefkitClient, Reference, Verdict, Attribution } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, ProviderOptionsById, SearchMeta } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
 const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
+const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
+
+const filtersSchema = z.object({
+  color: z.string().optional(),
+  orientation: z.enum(ORIENTATIONS).optional(),
+  language: z.string().optional(),
+})
+
+const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
+const providerOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
 
 // Reported in the MCP initialize handshake. Read the real version (the dist sits
 // next to package.json, which npm always ships) instead of a hardcoded placeholder.
@@ -33,9 +43,12 @@ function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: 
   }
   if (!assessment) return base
   const { verdict, attribution } = assessment
+  const reason = verdict.reasons.join('; ')
+  const useExplanation = `${verdict.decision}: ${reason || 'license facts allow this use'}${attribution.required && attribution.text ? ` Attribution required: ${attribution.text}` : ''}`
   return {
     ...base,
     useVerdict: { decision: verdict.decision, reason: verdict.reasons.join('; '), confidence: verdict.confidence },
+    useExplanation,
     ...(attribution.required && attribution.text ? { attribution: attribution.text } : {}),
   }
 }
@@ -53,7 +66,34 @@ const agentRefSchema = z.object({
     .object({ decision: z.string(), reason: z.string(), confidence: z.string() })
     .optional()
     .describe('present when `intent` (or `gateFor`) is set: may this be used for that intent, and how confident'),
+  useExplanation: z.string().optional().describe('plain-language use verdict summary for agents'),
   attribution: z.string().optional().describe('ready-to-use credit line; present when the license requires attribution'),
+})
+
+const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
+  query: z.string(),
+  modalities: z.array(z.enum(MODALITIES)),
+  limit: z.number(),
+  poolFactor: z.number(),
+  fetchLimit: z.number(),
+  appliedFilters: filtersSchema.optional(),
+  providerOptions: z.array(z.string()).optional(),
+  providers: z.array(z.object({
+    providerId: z.string(),
+    status: z.enum(['fulfilled', 'failed', 'skipped']),
+    returned: z.number().optional(),
+    accepted: z.number().optional(),
+    rejected: z.number().optional(),
+    reason: z.enum(['unsupported-modality']).optional(),
+    error: z.string().optional(),
+  })),
+  gate: z.object({
+    intent: z.enum(INTENTS),
+    before: z.number(),
+    after: z.number(),
+    dropped: z.number(),
+  }).optional(),
+  warnings: z.array(z.string()),
 })
 
 /** Wrap a configured RefkitClient as an MCP server exposing `search_references`. */
@@ -72,14 +112,26 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       inputSchema: {
         query: z.string().describe('what to search for, e.g. "cyberpunk alley at night"'),
         modalities: z.array(z.enum(MODALITIES)).optional().describe('default ["image"]'),
+        filters: filtersSchema.optional().describe('portable search filters; unsupported filters are silently ignored per provider'),
+        providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
+        explain: z.boolean().optional().describe('include provider status, warnings, applied filters, and gate/drop metadata'),
         limit: z.number().int().positive().optional(),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
-      outputSchema: { references: z.array(agentRefSchema) },
+      outputSchema: { references: z.array(agentRefSchema), meta: searchMetaSchema.optional() },
     },
-    async ({ query, modalities, limit, intent, gateFor }) => {
-      const refs = await refkit.search({ query, modalities: modalities ?? ['image'], limit, gateFor })
+    async ({ query, modalities, filters, providerOptions, explain, limit, intent, gateFor }) => {
+      const searchInput = {
+        query,
+        modalities: modalities ?? ['image'],
+        filters: filters as SearchFilters | undefined,
+        providerOptions: providerOptions as ProviderOptionsById | undefined,
+        limit,
+        gateFor,
+      }
+      const result = explain ? await refkit.searchWithMeta(searchInput) : { references: await refkit.search(searchInput), meta: undefined }
+      const refs = result.references
       const assessIntent = intent ?? gateFor
       const references = refs.map(r =>
         assessIntent
@@ -88,7 +140,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       )
       return {
         content: [{ type: 'text', text: `${references.length} reference(s) for "${query}".` }],
-        structuredContent: { references },
+        structuredContent: { references, ...(result.meta ? { meta: result.meta } : {}) },
       }
     },
   )

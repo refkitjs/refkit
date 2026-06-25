@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit } from '@refkit/core'
+import { createRefkit, defineProvider } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { createRefkitMcpServer } from '../index'
 import { defaultProviders } from '../cli'
@@ -81,6 +81,79 @@ describe('@refkit/mcp', () => {
     const structured = res.structuredContent as { references: Array<{ useVerdict?: { decision: string }; attribution?: string }> }
     expect(structured.references[0].useVerdict?.decision).toBe('allowed-with-attribution')
     expect(structured.references[0].attribution).toContain('CC-BY')
+    await client.close()
+  })
+
+  it('accepts filters and providerOptions for provider-specific search controls', async () => {
+    let seen: { filters?: unknown; providerOptions?: unknown } = {}
+    const fakeProvider = defineProvider({
+      id: 'fake',
+      modalities: ['image'],
+      queryFeatures: ['keyword', 'orientation'],
+      search: async (q) => {
+        seen = { filters: q.filters, providerOptions: q.providerOptions }
+        return []
+      },
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [fakeProvider] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    await client.callTool({
+      name: 'search_references',
+      arguments: {
+        query: 'sky',
+        modalities: ['image'],
+        filters: { orientation: 'landscape' },
+        providerOptions: { fake: { sort: 'latest' } },
+      },
+    })
+    expect(seen.filters).toEqual({ orientation: 'landscape' })
+    expect(seen.providerOptions).toEqual({ sort: 'latest' })
+    await client.close()
+  })
+
+  it('returns meta and use explanations when explain is true', async () => {
+    const good = defineProvider({
+      id: 'good',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async () => [{
+        id: 'good-1',
+        modality: 'image',
+        title: 'credit me',
+        source: { providerId: 'good', sourceUrl: 'https://good/1' },
+        canonicalUrl: 'https://good/1',
+        rights: { license: 'CC-BY', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 'terms', sourceUrl: 'https://good/1' } },
+        verifiedAt: '2026-06-22T00:00:00.000Z',
+        relevance: 1,
+      }],
+    })
+    const bad = defineProvider({
+      id: 'bad',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async () => { throw new Error('offline') },
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [good, bad] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+
+    const res = await client.callTool({
+      name: 'search_references',
+      arguments: { query: 'credit', modalities: ['image'], intent: 'commercial-product', explain: true },
+    })
+    const structured = res.structuredContent as {
+      references: Array<{ useExplanation?: string }>
+      meta?: { providers: Array<{ providerId: string; status: string; error?: string }>; warnings: string[] }
+    }
+    expect(structured.references[0].useExplanation).toContain('allowed-with-attribution')
+    expect(structured.meta?.providers).toEqual([
+      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0 },
+      { providerId: 'bad', status: 'failed', error: 'offline' },
+    ])
+    expect(structured.meta?.warnings).toContain('1 provider(s) failed; returning partial results.')
     await client.close()
   })
 })

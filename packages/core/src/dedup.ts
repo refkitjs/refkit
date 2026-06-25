@@ -21,6 +21,9 @@ export function hammingDistance(a: string, b: string): number {
 export interface DedupeOptions {
   /** Max hamming distance between perceptual hashes to treat as duplicates. Default 0 (off). */
   hashThreshold?: number
+  /** Host-supplied duplicate predicate for precomputed fingerprints/embeddings.
+   *  Core never fetches or decodes media; the hook compares existing Reference data. */
+  isDuplicate?: (candidate: Reference, existing: Reference) => boolean
 }
 
 // Collapse duplicates, keeping the highest-relevance representative. Two passes:
@@ -46,6 +49,22 @@ export function dedupeReferences(refs: Reference[], opts: DedupeOptions = {}): R
       for (let i = 0; i < kept.length; i++) {
         const k = kept[i]
         if (k.perceptualHash && hammingDistance(ref.perceptualHash, k.perceptualHash) <= threshold) {
+          if (ref.relevance > k.relevance) {
+            byUrl.delete(canonicalizeUrl(k.canonicalUrl))
+            byUrl.set(canonicalizeUrl(ref.canonicalUrl), i)
+            kept[i] = ref
+          }
+          merged = true
+          break
+        }
+      }
+    }
+    if (merged) continue
+
+    if (opts.isDuplicate) {
+      for (let i = 0; i < kept.length; i++) {
+        const k = kept[i]
+        if (opts.isDuplicate(ref, k)) {
           if (ref.relevance > k.relevance) {
             byUrl.delete(canonicalizeUrl(k.canonicalUrl))
             byUrl.set(canonicalizeUrl(ref.canonicalUrl), i)

@@ -5,6 +5,26 @@ import {
 
 export interface PixabayConfig { key: string }
 
+export interface PixabayImageSearchOptions {
+  imageType?: 'all' | 'photo' | 'illustration' | 'vector'
+  category?: string
+  minWidth?: number
+  minHeight?: number
+  safesearch?: boolean
+  order?: 'popular' | 'latest'
+  editorsChoice?: boolean
+}
+
+export interface PixabayVideoSearchOptions {
+  videoType?: 'all' | 'film' | 'animation'
+  category?: string
+  minWidth?: number
+  minHeight?: number
+  safesearch?: boolean
+  order?: 'popular' | 'latest'
+  editorsChoice?: boolean
+}
+
 interface PixabayHit {
   id: number
   tags: string
@@ -19,6 +39,28 @@ interface PixabayHit {
   imageHeight: number
 }
 interface PixabayResponse { hits: PixabayHit[] }
+
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string') return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfBoolean(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'boolean') return
+  url.searchParams.set(key, String(value))
+}
+
+function pixabayOrientation(orientation: string | undefined): string | undefined {
+  if (orientation === 'landscape') return 'horizontal'
+  if (orientation === 'portrait') return 'vertical'
+  return undefined
+}
 
 function toReference(h: PixabayHit): Reference {
   const rights: RightsRecord = {
@@ -46,13 +88,25 @@ export function pixabay(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
+    queryFeatures: ['keyword', 'color', 'orientation', 'language'],
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
       url.searchParams.set('image_type', 'photo')
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
+      if (q.filters?.language) url.searchParams.set('lang', q.filters.language)
+      if (q.filters?.color) url.searchParams.set('colors', q.filters.color)
+      const orientation = pixabayOrientation(q.filters?.orientation)
+      if (orientation) url.searchParams.set('orientation', orientation)
+      const opts = q.providerOptions as PixabayImageSearchOptions | undefined
+      setIfString(url, 'image_type', opts?.imageType, ['all', 'photo', 'illustration', 'vector'])
+      setIfString(url, 'category', opts?.category)
+      setIfNonNegativeInt(url, 'min_width', opts?.minWidth)
+      setIfNonNegativeInt(url, 'min_height', opts?.minHeight)
+      setIfBoolean(url, 'safesearch', opts?.safesearch)
+      setIfString(url, 'order', opts?.order, ['popular', 'latest'])
+      setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay search failed: ${res.status}`)
       const json = (await res.json()) as PixabayResponse
@@ -102,12 +156,21 @@ export function pixabayVideo(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay-video',
     modalities: ['video'],
-    queryFeatures: ['keyword'],
+    queryFeatures: ['keyword', 'language'],
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/videos/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
+      if (q.filters?.language) url.searchParams.set('lang', q.filters.language)
+      const opts = q.providerOptions as PixabayVideoSearchOptions | undefined
+      setIfString(url, 'video_type', opts?.videoType, ['all', 'film', 'animation'])
+      setIfString(url, 'category', opts?.category)
+      setIfNonNegativeInt(url, 'min_width', opts?.minWidth)
+      setIfNonNegativeInt(url, 'min_height', opts?.minHeight)
+      setIfBoolean(url, 'safesearch', opts?.safesearch)
+      setIfString(url, 'order', opts?.order, ['popular', 'latest'])
+      setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay video search failed: ${res.status}`)
       const json = (await res.json()) as PixabayVideoResponse

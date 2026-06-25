@@ -68,4 +68,33 @@ describe('flickr provider', () => {
       flickr({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, ctxWith({ stat: 'fail', code: 100, message: 'Invalid API Key' })),
     ).rejects.toThrow(/flickr search error/)
   })
+
+  it('forwards documented Flickr-specific search options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await flickr({ apiKey: 'k' }).search({
+      text: 'sunset',
+      modalities: ['image'],
+      providerOptions: {
+        licenseFilter: '4,5',
+        sort: 'interestingness-desc',
+        safeSearch: 1,
+        tags: ['bay', 'sunset'],
+        tagMode: 'all',
+        userId: '99@N00',
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('license')).toBe('4,5')
+    expect(url.searchParams.get('sort')).toBe('interestingness-desc')
+    expect(url.searchParams.get('safe_search')).toBe('1')
+    expect(url.searchParams.get('tags')).toBe('bay,sunset')
+    expect(url.searchParams.get('tag_mode')).toBe('all')
+    expect(url.searchParams.get('user_id')).toBe('99@N00')
+  })
 })

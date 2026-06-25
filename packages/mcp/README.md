@@ -40,12 +40,29 @@ await serveStdio(createRefkit({
 
 ## The `search_references` tool
 
-Input: `{ query, modalities?, limit?, intent?, gateFor? }`.
+Input: `{ query, modalities?, filters?, providerOptions?, explain?, limit?, intent?, gateFor? }`.
 
 - `intent` — annotate each result with a **use-verdict** for that intended use (no filtering).
 - `gateFor` — return only results whose license allows that intent.
+- `filters` — portable controls such as `{ orientation, color, language }`; unsupported filters are ignored by providers.
+- `explain` — include provider status, partial-result warnings, applied filters, and gate/drop metadata.
+- `providerOptions` — source-specific controls keyed by provider id, for example:
 
-Output: `{ references: [{ id, title?, modality, provider, canonicalUrl, license, thumbnail?, excerpt?, useVerdict?, attribution? }] }`. When `intent` (or `gateFor`) is set, each result carries `useVerdict { decision, reason, confidence }` and — if the license requires it — a ready-to-use `attribution` credit line.
+```json
+{
+  "query": "forest path",
+  "modalities": ["image"],
+  "filters": { "orientation": "landscape", "color": "green" },
+  "providerOptions": {
+    "unsplash": { "orderBy": "latest", "contentFilter": "high" },
+    "pexels": { "size": "large" },
+    "pixabay": { "safesearch": true, "order": "latest" },
+    "flickr": { "sort": "interestingness-desc", "licenseFilter": "4,5,9,10,11,12" }
+  }
+}
+```
+
+Output: `{ references: [{ id, title?, modality, provider, canonicalUrl, license, thumbnail?, excerpt?, useVerdict?, useExplanation?, attribution? }], meta? }`. When `intent` (or `gateFor`) is set, each result carries `useVerdict { decision, reason, confidence }`, a plain `useExplanation`, and — if the license requires it — a ready-to-use `attribution` credit line. When `explain: true`, `meta` includes per-provider `fulfilled` / `failed` / `skipped` status, warnings, and gate/drop counts.
 
 > Results are references with a license id + source link — **not rights clearance, not legal advice**. `unknown` / `needs-review` results require the caller to verify the source's terms.
 

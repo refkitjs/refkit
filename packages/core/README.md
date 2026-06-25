@@ -39,6 +39,60 @@ for (const r of refs) {
 const safe = await refkit.search({ query: 'forest', modalities: ['image'], gateFor: 'commercial-product' })
 ```
 
+## Search controls
+
+Portable filters are expressed once and applied only to providers that declare support:
+
+```ts
+await refkit.search({
+  query: 'minimal workspace',
+  modalities: ['image'],
+  filters: { orientation: 'landscape', color: 'white', language: 'en-US' },
+})
+```
+
+Provider-specific controls go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers whitelist the upstream parameters they translate:
+
+```ts
+await refkit.search({
+  query: 'mountain trail',
+  modalities: ['image', 'video'],
+  providerOptions: {
+    unsplash: { orderBy: 'latest', contentFilter: 'high' },
+    pexels: { size: 'large', page: 2 },
+    'pexels-video': { size: 'medium' },
+    pixabay: { imageType: 'photo', safesearch: true },
+    'pixabay-video': { videoType: 'film', minWidth: 1920 },
+    flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
+  },
+})
+```
+
+Currently supported provider options:
+
+| Provider id | Portable filters | Provider options |
+|---|---|---|
+| `unsplash` | `color`, `orientation`, `language` | `orderBy`, `contentFilter`, `collections`, `lang` |
+| `pexels` | `color`, `orientation`, `language` | `size`, `locale`, `page` |
+| `pexels-video` | `orientation`, `language` | `size`, `locale`, `page` |
+| `pixabay` | `color`, `orientation`, `language` | `imageType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice` |
+| `pixabay-video` | `language` | `videoType`, `category`, `minWidth`, `minHeight`, `safesearch`, `order`, `editorsChoice` |
+| `flickr` | — | `licenseFilter`, `sort`, `safeSearch`, `tags`, `tagMode`, `userId` |
+
+Use `searchWithMeta` when a host UI or agent needs the search explanation layer:
+
+```ts
+const { references, meta } = await refkit.searchWithMeta({
+  query: 'minimal workspace',
+  modalities: ['image'],
+  gateFor: 'commercial-product',
+})
+
+meta.providers // provider status: fulfilled / failed / skipped
+meta.gate      // before/after/dropped counts when gateFor is used
+meta.warnings  // partial-result and gate/drop notes
+```
+
 ## Ranking & rerank
 
 Results are fused across sources with **Reciprocal Rank Fusion** (cross-source-orderable, not query-aware). Pass an optional `rerank`:
@@ -49,6 +103,23 @@ Results are fused across sources with **Reciprocal Rank Fusion** (cross-source-o
 Rerank is opt-in and runs post-merge, before the `gateFor` license filter and the limit.
 
 Ranking is only as good as the candidate pool: `search` overfetches `limit × poolFactor` per provider (default 4×, capped per source) and narrows to `limit` after merge/rerank/gate — so dedup and ranking see a wide pool, not a source-truncated slice. Lower `poolFactor` when you query many providers.
+
+## Dedupe hooks
+
+Core dedupes exact canonical URLs by default and can dedupe equal-length perceptual hashes when `merge.hashThreshold` is set. Hosts that compute their own fingerprints or embeddings can add a sync duplicate predicate:
+
+```ts
+const refkit = createRefkit({
+  providers,
+  merge: {
+    isDuplicate: (candidate, existing) =>
+      (candidate.raw as { fingerprint?: string }).fingerprint ===
+      (existing.raw as { fingerprint?: string }).fingerprint,
+  },
+})
+```
+
+The hook compares `Reference` objects only. Core still never fetches, decodes, or stores media.
 
 ## Invariants (enforced by `src/__tests__/no-network.test.ts`)
 

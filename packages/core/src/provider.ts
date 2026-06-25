@@ -15,10 +15,15 @@ export interface SearchFilters {
   language?: string
 }
 
+export type ProviderOptionValue = string | number | boolean | readonly string[] | undefined
+export type ProviderOptions = Record<string, ProviderOptionValue>
+export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
+
 export interface NormalizedQuery {
   text: string
   modalities: Modality[]
   filters?: SearchFilters
+  providerOptions?: ProviderOptions
   limit?: number
 }
 

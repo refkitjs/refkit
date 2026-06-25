@@ -11,6 +11,15 @@ export interface FlickrConfig {
   licenseFilter?: string
 }
 
+export interface FlickrSearchOptions {
+  licenseFilter?: string
+  sort?: 'date-posted-asc' | 'date-posted-desc' | 'date-taken-asc' | 'date-taken-desc' | 'interestingness-desc' | 'interestingness-asc' | 'relevance'
+  safeSearch?: 1 | 2 | 3
+  tags?: string | readonly string[]
+  tagMode?: 'any' | 'all'
+  userId?: string
+}
+
 // Flickr numeric license id → our LicenseId (+ CC version). See
 // flickr.photos.licenses.getInfo. All Rights Reserved (0) and every NC/ND
 // variant map to 'proprietary' (→ denied for commercial/AI use).
@@ -56,6 +65,22 @@ interface FlickrPhoto {
 }
 interface FlickrResponse { photos?: { photo: FlickrPhoto[] }; stat: string }
 
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string') return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setIfSafeSearch(url: URL, value: unknown) {
+  if (value !== 1 && value !== 2 && value !== 3) return
+  url.searchParams.set('safe_search', String(value))
+}
+
+function setTags(url: URL, value: unknown) {
+  if (typeof value === 'string' && value) url.searchParams.set('tags', value)
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set('tags', value.join(','))
+}
+
 function toReference(p: FlickrPhoto): Reference {
   const { license, version } = mapFlickrLicense(p.license)
   const canonicalUrl = `https://www.flickr.com/photos/${p.owner}/${p.id}`
@@ -92,14 +117,20 @@ export function flickr(config: FlickrConfig) {
     modalities: ['image'],
     queryFeatures: ['keyword'],
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+      const opts = q.providerOptions as FlickrSearchOptions | undefined
       const url = new URL('https://api.flickr.com/services/rest/')
       url.searchParams.set('method', 'flickr.photos.search')
       url.searchParams.set('api_key', config.apiKey)
       url.searchParams.set('text', q.text)
-      url.searchParams.set('license', config.licenseFilter ?? DEFAULT_LICENSE_FILTER)
+      url.searchParams.set('license', opts?.licenseFilter ?? config.licenseFilter ?? DEFAULT_LICENSE_FILTER)
       url.searchParams.set('content_type', '1') // photos only (no screenshots/other)
       url.searchParams.set('media', 'photos')
       url.searchParams.set('sort', 'relevance')
+      setIfString(url, 'sort', opts?.sort, ['date-posted-asc', 'date-posted-desc', 'date-taken-asc', 'date-taken-desc', 'interestingness-desc', 'interestingness-asc', 'relevance'])
+      setIfSafeSearch(url, opts?.safeSearch)
+      setTags(url, opts?.tags)
+      setIfString(url, 'tag_mode', opts?.tagMode, ['any', 'all'])
+      setIfString(url, 'user_id', opts?.userId)
       url.searchParams.set('extras', 'license,owner_name,url_t,url_m,url_l')
       url.searchParams.set('per_page', String(q.limit ?? 20))
       url.searchParams.set('format', 'json')
