@@ -91,4 +91,24 @@ describe('normalizeQuery', () => {
     )
     expect(nq.controls).toEqual({ orientation: 'portrait', color: 'red', language: 'en-US' })
   })
+
+  it('prefers primary controls over conflicting legacy filters when normalizing controls', () => {
+    const p: ReferenceProvider = {
+      id: 'p',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      capabilities: { controls: ['orientation', 'color', 'language'] },
+      search: async () => [],
+    }
+    const nq = normalizeQuery(
+      {
+        query: 'cat',
+        modalities: ['image'],
+        filters: { orientation: 'portrait', color: 'red', language: 'en-US' },
+        controls: { orientation: 'landscape', color: 'blue', language: 'fr' },
+      },
+      p,
+    )
+    expect(nq.controls).toEqual({ orientation: 'landscape', color: 'blue', language: 'fr' })
+  })
 })

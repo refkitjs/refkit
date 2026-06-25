@@ -83,6 +83,23 @@ describe('pixabay provider', () => {
     expect(url.searchParams.get('safesearch')).toBe('true')
     expect(url.searchParams.get('order')).toBe('latest')
   })
+
+  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(FIXTURE), { status: 200 }) }) as typeof fetch,
+    }
+    await pixabay({ key: 'SECRET' }).search({
+      text: 'flowers',
+      modalities: ['image'],
+      filters: { orientation: 'portrait', color: 'red', language: 'en' },
+      controls: { orientation: 'landscape', color: 'blue', language: 'de' },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('orientation')).toBe('horizontal')
+    expect(url.searchParams.get('colors')).toBe('blue')
+    expect(url.searchParams.get('lang')).toBe('de')
+  })
 })
 
 describe('pixabayVideo provider', () => {

@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext, type SearchSafety,
 } from '@refkit/core'
 
 export interface BraveConfig {
@@ -17,6 +17,12 @@ interface BraveImageResult {
   properties: { url: string; placeholder?: string }  // origin/CDN full image (do NOT rehost)
 }
 interface BraveResponse { results: BraveImageResult[] }
+
+function braveSafeSearch(control: SearchSafety | undefined, fallback: BraveConfig['safesearch']): 'strict' | 'off' {
+  if (control === 'off') return 'off'
+  if (control === 'strict' || control === 'moderate') return 'strict'
+  return fallback ?? 'strict'
+}
 
 function toReference(r: BraveImageResult): Reference {
   const rights: RightsRecord = {
@@ -50,7 +56,7 @@ export function brave(config: BraveConfig) {
       const url = new URL('https://api.search.brave.com/res/v1/images/search')
       url.searchParams.set('q', q.text)
       url.searchParams.set('count', String(Math.min(q.limit ?? 50, 200)))
-      url.searchParams.set('safesearch', q.controls?.safety === 'off' ? 'off' : config.safesearch ?? 'strict')
+      url.searchParams.set('safesearch', braveSafeSearch(q.controls?.safety, config.safesearch))
       const res = await ctx.fetch(url.toString(), {
         headers: { 'X-Subscription-Token': config.token, Accept: 'application/json' },
         signal: ctx.signal,

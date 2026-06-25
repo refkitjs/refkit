@@ -71,6 +71,26 @@ describe('pexels provider', () => {
     expect(url.searchParams.get('size')).toBe('large')
     expect(url.searchParams.get('page')).toBe('2')
   })
+
+  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await pexels({ apiKey: 'k' }).search({
+      text: 'trees',
+      modalities: ['image'],
+      filters: { orientation: 'landscape', color: '#000000', language: 'en-US' },
+      controls: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('orientation')).toBe('portrait')
+    expect(url.searchParams.get('color')).toBe('#ffffff')
+    expect(url.searchParams.get('locale')).toBe('zh-CN')
+  })
 })
 
 describe('pexelsVideo provider', () => {

@@ -36,6 +36,10 @@ function setCollections(url: URL, value: unknown) {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set('collections', value.join(','))
 }
 
+function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
+  return control === undefined ? legacy : undefined
+}
+
 function toReference(r: UnsplashResult): Reference {
   const rights: RightsRecord = {
     license: 'unsplash',
@@ -77,9 +81,12 @@ export function unsplash(config: UnsplashConfig) {
       }
       if (controls?.safety === 'strict') url.searchParams.set('content_filter', 'high')
       if (controls?.safety === 'moderate') url.searchParams.set('content_filter', 'low')
-      if (q.filters?.color) url.searchParams.set('color', q.filters.color)
-      if (q.filters?.orientation) url.searchParams.set('orientation', q.filters.orientation === 'square' ? 'squarish' : q.filters.orientation)
-      if (q.filters?.language) url.searchParams.set('lang', q.filters.language)
+      const legacyColor = useLegacyFilter(controls?.color, q.filters?.color)
+      if (legacyColor) url.searchParams.set('color', legacyColor)
+      const legacyOrientation = useLegacyFilter(controls?.orientation, q.filters?.orientation)
+      if (legacyOrientation) url.searchParams.set('orientation', legacyOrientation === 'square' ? 'squarish' : legacyOrientation)
+      const legacyLanguage = useLegacyFilter(controls?.language, q.filters?.language)
+      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
       const opts = q.providerOptions as UnsplashSearchOptions | undefined
       setIfString(url, 'order_by', opts?.orderBy, ['latest', 'relevant'])
       setIfString(url, 'content_filter', opts?.contentFilter, ['low', 'high'])

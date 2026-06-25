@@ -56,6 +56,10 @@ function setIfBoolean(url: URL, key: string, value: unknown) {
   url.searchParams.set(key, String(value))
 }
 
+function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
+  return control === undefined ? legacy : undefined
+}
+
 function pixabayOrientation(orientation: string | undefined): string | undefined {
   if (orientation === 'landscape') return 'horizontal'
   if (orientation === 'portrait') return 'vertical'
@@ -108,9 +112,11 @@ export function pixabay(config: PixabayConfig) {
       }
       if (q.controls?.media?.minWidth !== undefined) url.searchParams.set('min_width', String(q.controls.media.minWidth))
       if (q.controls?.media?.minHeight !== undefined) url.searchParams.set('min_height', String(q.controls.media.minHeight))
-      if (q.filters?.language) url.searchParams.set('lang', q.filters.language)
-      if (q.filters?.color) url.searchParams.set('colors', q.filters.color)
-      const orientation = pixabayOrientation(q.filters?.orientation)
+      const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
+      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
+      const legacyColor = useLegacyFilter(q.controls?.color, q.filters?.color)
+      if (legacyColor) url.searchParams.set('colors', legacyColor)
+      const orientation = pixabayOrientation(useLegacyFilter(q.controls?.orientation, q.filters?.orientation))
       if (orientation) url.searchParams.set('orientation', orientation)
       const opts = q.providerOptions as PixabayImageSearchOptions | undefined
       setIfString(url, 'image_type', opts?.imageType, ['all', 'photo', 'illustration', 'vector'])
@@ -185,7 +191,8 @@ export function pixabayVideo(config: PixabayConfig) {
       }
       if (q.controls?.media?.minWidth !== undefined) url.searchParams.set('min_width', String(q.controls.media.minWidth))
       if (q.controls?.media?.minHeight !== undefined) url.searchParams.set('min_height', String(q.controls.media.minHeight))
-      if (q.filters?.language) url.searchParams.set('lang', q.filters.language)
+      const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
+      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
       const opts = q.providerOptions as PixabayVideoSearchOptions | undefined
       setIfString(url, 'video_type', opts?.videoType, ['all', 'film', 'animation'])
       setIfString(url, 'category', opts?.category)

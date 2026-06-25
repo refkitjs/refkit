@@ -65,4 +65,38 @@ describe('brave provider', () => {
     const url = new URL(calledUrl)
     expect(url.searchParams.get('safesearch')).toBe('off')
   })
+
+  it('lets per-query strict safety override a factory off default', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await brave({ token: 't', safesearch: 'off' }).search({
+      text: 'cat',
+      modalities: ['image'],
+      controls: { safety: 'strict' },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('safesearch')).toBe('strict')
+  })
+
+  it('lets per-query off safety override a factory strict default', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await brave({ token: 't', safesearch: 'strict' }).search({
+      text: 'cat',
+      modalities: ['image'],
+      controls: { safety: 'off' },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('safesearch')).toBe('off')
+  })
 })
