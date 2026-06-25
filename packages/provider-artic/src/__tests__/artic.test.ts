@@ -32,4 +32,32 @@ describe('artic provider', () => {
     const refs = await artic().search({ text: 'x', modalities: ['image'] }, ctxWith({ data: [FIXTURE.data[0]] }))
     expect(refs[0].preview?.url).toContain('https://www.artic.edu/iiif/2/')
   })
+
+  it('forwards documented ArtIC artwork search options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ data: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await artic().search({
+      text: 'lion',
+      modalities: ['image'],
+      providerOptions: {
+        sort: 'timestamp:desc',
+        from: 20,
+        size: 8,
+        facets: ['artist_title', 'style_titles'],
+        fields: ['id', 'title', 'image_id', 'is_public_domain', 'artist_display', 'date_display'],
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('sort')).toBe('timestamp:desc')
+    expect(url.searchParams.get('from')).toBe('20')
+    expect(url.searchParams.get('size')).toBe('8')
+    expect(url.searchParams.get('facets')).toBe('artist_title,style_titles')
+    expect(url.searchParams.get('fields')).toBe('id,title,image_id,is_public_domain,artist_display,date_display')
+    expect(url.searchParams.get('query[term][is_public_domain]')).toBe('true')
+  })
 })

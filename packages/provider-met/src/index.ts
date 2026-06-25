@@ -9,6 +9,19 @@ export interface MetConfig {
   maxObjects?: number
 }
 
+export interface MetSearchOptions {
+  isHighlight?: boolean
+  title?: boolean
+  tags?: boolean
+  departmentId?: number
+  isOnView?: boolean
+  artistOrCulture?: boolean
+  medium?: string
+  geoLocation?: string
+  dateBegin?: number
+  dateEnd?: number
+}
+
 const BASE = 'https://collectionapi.metmuseum.org/public/collection/v1'
 
 interface MetSearchResponse { total: number; objectIDs: number[] | null }
@@ -51,6 +64,21 @@ function toReference(o: MetObject): Reference | null {
   }
 }
 
+function setIfBoolean(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'boolean') return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfString(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'string' || !value) return
+  url.searchParams.set(key, value)
+}
+
 export function met(config: MetConfig = {}) {
   return defineProvider({
     id: 'met',
@@ -61,6 +89,17 @@ export function met(config: MetConfig = {}) {
       const searchUrl = new URL(`${BASE}/search`)
       searchUrl.searchParams.set('q', q.text)
       searchUrl.searchParams.set('hasImages', 'true')
+      const opts = q.providerOptions as MetSearchOptions | undefined
+      setIfBoolean(searchUrl, 'isHighlight', opts?.isHighlight)
+      setIfBoolean(searchUrl, 'title', opts?.title)
+      setIfBoolean(searchUrl, 'tags', opts?.tags)
+      setIfInt(searchUrl, 'departmentId', opts?.departmentId)
+      setIfBoolean(searchUrl, 'isOnView', opts?.isOnView)
+      setIfBoolean(searchUrl, 'artistOrCulture', opts?.artistOrCulture)
+      setIfString(searchUrl, 'medium', opts?.medium)
+      setIfString(searchUrl, 'geoLocation', opts?.geoLocation)
+      setIfInt(searchUrl, 'dateBegin', opts?.dateBegin)
+      setIfInt(searchUrl, 'dateEnd', opts?.dateEnd)
       const res = await ctx.fetch(searchUrl.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`met search failed: ${res.status}`)
       const { objectIDs } = (await res.json()) as MetSearchResponse

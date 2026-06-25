@@ -90,6 +90,53 @@ describe('wikimedia-commons provider', () => {
     expect(refs.map(r => r.title)).toEqual(['Cat playing with a lizard', 'Felis catus-cat on snow'])
   })
 
+  it('forwards documented Wikimedia generator and imageinfo options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ query: { pages: {} } }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await wikimediaCommons().search({
+      text: 'cat',
+      modalities: ['image'],
+      providerOptions: {
+        gsrnamespace: '14',
+        gsrlimit: 7,
+        gsroffset: 20,
+        gsrqiprofile: 'classic',
+        gsrqdprofile: 'perfield_builder',
+        gsrwhat: 'title',
+        gsrinfo: ['totalhits'],
+        gsrprop: ['snippet', 'timestamp'],
+        gsrinterwiki: true,
+        gsrenablerewrites: false,
+        gsrsort: 'last_edit_desc',
+        iiprop: ['commonmetadata'],
+        iiurlwidth: 640,
+        iiextmetadatafilter: ['License', 'Artist'],
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('gsrnamespace')).toBe('6')
+    expect(url.searchParams.get('gsrlimit')).toBe('7')
+    expect(url.searchParams.get('gsroffset')).toBe('20')
+    expect(url.searchParams.get('gsrqiprofile')).toBe('classic')
+    expect(url.searchParams.get('gsrqdprofile')).toBe('perfield_builder')
+    expect(url.searchParams.get('gsrwhat')).toBe('title')
+    expect(url.searchParams.get('gsrinfo')).toBe('totalhits')
+    expect(url.searchParams.get('gsrprop')).toBe('snippet|timestamp')
+    expect(url.searchParams.get('gsrinterwiki')).toBe('true')
+    expect(url.searchParams.get('gsrenablerewrites')).toBe('false')
+    expect(url.searchParams.get('gsrsort')).toBe('last_edit_desc')
+    expect(url.searchParams.get('iiprop')).toContain('url')
+    expect(url.searchParams.get('iiprop')).toContain('extmetadata')
+    expect(url.searchParams.get('iiprop')).toContain('commonmetadata')
+    expect(url.searchParams.get('iiurlwidth')).toBe('640')
+    expect(url.searchParams.get('iiextmetadatafilter')).toBe('License|Artist')
+  })
+
   it('falls back to the file name when ObjectName carries structured-data label markup', async () => {
     const QS = {
       query: { pages: { '1': {

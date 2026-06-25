@@ -9,6 +9,22 @@ export interface WikimediaCommonsConfig {
   thumbWidth?: number
 }
 
+export interface WikimediaCommonsSearchOptions {
+  gsrlimit?: number
+  gsroffset?: number
+  gsrqiprofile?: string
+  gsrqdprofile?: string
+  gsrwhat?: 'nearmatch' | 'text' | 'title'
+  gsrinfo?: string | readonly string[]
+  gsrprop?: string | readonly string[]
+  gsrinterwiki?: boolean
+  gsrenablerewrites?: boolean
+  gsrsort?: string
+  iiprop?: string | readonly string[]
+  iiurlwidth?: number
+  iiextmetadatafilter?: string | readonly string[]
+}
+
 // Map a Wikimedia Commons extmetadata `License` code (e.g. "cc-by-sa-4.0", "cc0",
 // "pd-old") to our LicenseId + CC version. NC/ND variants → 'proprietary'; anything
 // unrecognized — including non-free / fair-use files — → 'unknown' (strict-deny →
@@ -100,6 +116,43 @@ function toReference(page: CommonsPage): Reference | null {
   }
 }
 
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string' || !value) return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setPipeList(url: URL, key: string, value: unknown) {
+  if (typeof value === 'string' && value) url.searchParams.set(key, value)
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set(key, value.join('|'))
+}
+
+function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
+  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
+}
+
+function setIfBoolean(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'boolean') return
+  url.searchParams.set(key, String(value))
+}
+
+function commonsImageInfoProps(value: unknown): string {
+  const props = new Set(['url', 'mime', 'size', 'extmetadata'])
+  if (typeof value === 'string') {
+    for (const item of value.split('|')) if (item.trim()) props.add(item.trim())
+  }
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+    for (const item of value) if (item) props.add(item)
+  }
+  return Array.from(props).join('|')
+}
+
 export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
   return defineProvider({
     id: 'wikimedia-commons',
@@ -117,6 +170,20 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       url.searchParams.set('prop', 'imageinfo')
       url.searchParams.set('iiprop', 'url|mime|size|extmetadata')
       url.searchParams.set('iiurlwidth', String(config.thumbWidth ?? 1024))
+      const opts = q.providerOptions as WikimediaCommonsSearchOptions | undefined
+      setIfPositiveInt(url, 'gsrlimit', opts?.gsrlimit, 500)
+      setIfNonNegativeInt(url, 'gsroffset', opts?.gsroffset)
+      setIfString(url, 'gsrqiprofile', opts?.gsrqiprofile)
+      setIfString(url, 'gsrqdprofile', opts?.gsrqdprofile)
+      setIfString(url, 'gsrwhat', opts?.gsrwhat, ['nearmatch', 'text', 'title'])
+      setPipeList(url, 'gsrinfo', opts?.gsrinfo)
+      setPipeList(url, 'gsrprop', opts?.gsrprop)
+      setIfBoolean(url, 'gsrinterwiki', opts?.gsrinterwiki)
+      setIfBoolean(url, 'gsrenablerewrites', opts?.gsrenablerewrites)
+      setIfString(url, 'gsrsort', opts?.gsrsort)
+      url.searchParams.set('iiprop', commonsImageInfoProps(opts?.iiprop))
+      setIfPositiveInt(url, 'iiurlwidth', opts?.iiurlwidth)
+      setPipeList(url, 'iiextmetadatafilter', opts?.iiextmetadatafilter)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`wikimedia-commons search failed: ${res.status}`)
       const json = (await res.json()) as CommonsResponse

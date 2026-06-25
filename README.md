@@ -73,7 +73,7 @@ await refkit.search({
 })
 ```
 
-Use `providerOptions` only for provider-specific escape hatches that do not belong in the common contract, such as Flickr `tags` or Unsplash `collections`:
+Use `providerOptions` for provider-specific escape hatches that do not belong in the common contract. These are **typed whitelists**, not raw passthrough maps: each provider package translates the practical official search parameters it supports and ignores unsupported values.
 
 ```ts
 await refkit.search({
@@ -81,11 +81,16 @@ await refkit.search({
   modalities: ['image'],
   controls: { orientation: 'landscape', safety: 'strict' },
   providerOptions: {
-    flickr: { tags: ['forest', 'path'], tagMode: 'all' },
-    unsplash: { collections: ['abc', 'def'] },
+    unsplash: { collections: ['abc', 'def'], page: 2 },
+    flickr: { tags: ['forest', 'path'], tagMode: 'all', minTakenDate: '2020-01-01' },
+    brave: { country: 'US', searchLang: 'en', spellcheck: false },
+    met: { departmentId: 11, isOnView: true },
+    gutendex: { topic: 'children', sort: 'popular' },
   },
 })
 ```
+
+The provider package owns its native options surface, e.g. `UnsplashSearchOptions`, `FlickrSearchOptions`, `OpenverseImageSearchOptions`, `MetSearchOptions`, and `PoetryDbSearchOptions`. Response-format/debug parameters and auth-only knobs are intentionally omitted when they would break refkit's normalized `Reference` contract.
 
 When an agent or UI needs to explain what happened, use `searchWithMeta`:
 

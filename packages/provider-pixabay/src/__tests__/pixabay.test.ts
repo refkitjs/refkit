@@ -41,12 +41,27 @@ describe('pixabay provider', () => {
       text: 'flowers',
       modalities: ['image'],
       filters: { orientation: 'landscape', color: 'blue', language: 'de' },
-      providerOptions: { imageType: 'illustration', category: 'nature', minWidth: 1200, minHeight: 800, safesearch: true, order: 'latest', editorsChoice: true },
+      providerOptions: {
+        imageType: 'illustration',
+        orientation: 'vertical',
+        category: 'nature',
+        minWidth: 1200,
+        minHeight: 800,
+        colors: ['blue', 'transparent'],
+        safesearch: true,
+        order: 'latest',
+        editorsChoice: true,
+        lang: 'fr',
+        id: '195893',
+        page: 4,
+        perPage: 33,
+      },
     }, ctx)
     const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('horizontal')
-    expect(url.searchParams.get('colors')).toBe('blue')
-    expect(url.searchParams.get('lang')).toBe('de')
+    expect(url.searchParams.get('orientation')).toBe('vertical')
+    expect(url.searchParams.get('colors')).toBe('blue,transparent')
+    expect(url.searchParams.get('lang')).toBe('fr')
+    expect(url.searchParams.get('id')).toBe('195893')
     expect(url.searchParams.get('image_type')).toBe('illustration')
     expect(url.searchParams.get('category')).toBe('nature')
     expect(url.searchParams.get('min_width')).toBe('1200')
@@ -54,6 +69,8 @@ describe('pixabay provider', () => {
     expect(url.searchParams.get('safesearch')).toBe('true')
     expect(url.searchParams.get('order')).toBe('latest')
     expect(url.searchParams.get('editors_choice')).toBe('true')
+    expect(url.searchParams.get('page')).toBe('4')
+    expect(url.searchParams.get('per_page')).toBe('33')
   })
 
   it('maps unified controls to documented Pixabay image search params', async () => {
@@ -143,10 +160,23 @@ describe('pixabayVideo provider', () => {
       text: 'flowers',
       modalities: ['video'],
       filters: { language: 'fr' },
-      providerOptions: { videoType: 'animation', category: 'education', minWidth: 1920, minHeight: 1080, safesearch: true, order: 'latest', editorsChoice: true },
+      providerOptions: {
+        videoType: 'animation',
+        category: 'education',
+        minWidth: 1920,
+        minHeight: 1080,
+        safesearch: true,
+        order: 'latest',
+        editorsChoice: true,
+        lang: 'de',
+        id: '125',
+        page: 5,
+        perPage: 44,
+      },
     }, ctx)
     const url = new URL(calledUrl)
-    expect(url.searchParams.get('lang')).toBe('fr')
+    expect(url.searchParams.get('lang')).toBe('de')
+    expect(url.searchParams.get('id')).toBe('125')
     expect(url.searchParams.get('video_type')).toBe('animation')
     expect(url.searchParams.get('category')).toBe('education')
     expect(url.searchParams.get('min_width')).toBe('1920')
@@ -154,5 +184,7 @@ describe('pixabayVideo provider', () => {
     expect(url.searchParams.get('safesearch')).toBe('true')
     expect(url.searchParams.get('order')).toBe('latest')
     expect(url.searchParams.get('editors_choice')).toBe('true')
+    expect(url.searchParams.get('page')).toBe('5')
+    expect(url.searchParams.get('per_page')).toBe('44')
   })
 })

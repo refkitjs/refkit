@@ -65,6 +65,41 @@ describe('gutendex provider', () => {
     expect(url.searchParams.get('page')).toBe('2')
   })
 
+  it('forwards documented Gutendex search options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await gutendex().search({
+      text: 'great',
+      modalities: ['text'],
+      providerOptions: {
+        authorYearStart: 1800,
+        authorYearEnd: 1899,
+        copyright: ['false', 'null'],
+        ids: ['1400', '84'],
+        languages: ['en', 'fr'],
+        mimeType: 'text/html',
+        sort: 'ascending',
+        topic: 'children',
+        page: 4,
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('author_year_start')).toBe('1800')
+    expect(url.searchParams.get('author_year_end')).toBe('1899')
+    expect(url.searchParams.get('copyright')).toBe('false,null')
+    expect(url.searchParams.get('ids')).toBe('1400,84')
+    expect(url.searchParams.get('languages')).toBe('en,fr')
+    expect(url.searchParams.get('mime_type')).toBe('text/html')
+    expect(url.searchParams.get('sort')).toBe('ascending')
+    expect(url.searchParams.get('topic')).toBe('children')
+    expect(url.searchParams.get('page')).toBe('4')
+  })
+
   it('filters non-Text media and maps the rest to text References', async () => {
     const refs = await gutendex().search({ text: 'great expectations', modalities: ['text'] }, ctxWith(FIXTURE))
     expect(refs).toHaveLength(2) // the Sound record is filtered out

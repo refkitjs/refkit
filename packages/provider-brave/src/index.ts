@@ -9,6 +9,14 @@ export interface BraveConfig {
   safesearch?: 'strict' | 'off'
 }
 
+export interface BraveImageSearchOptions {
+  country?: string
+  searchLang?: string
+  count?: number
+  safesearch?: 'strict' | 'off'
+  spellcheck?: boolean
+}
+
 interface BraveImageResult {
   title: string
   url: string                  // the source webpage (canonical link)
@@ -22,6 +30,22 @@ function braveSafeSearch(control: SearchSafety | undefined, fallback: BraveConfi
   if (control === 'off') return 'off'
   if (control === 'strict' || control === 'moderate') return 'strict'
   return fallback ?? 'strict'
+}
+
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string' || !value) return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
+  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
+}
+
+function setIfBoolean(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'boolean') return
+  url.searchParams.set(key, String(value))
 }
 
 function toReference(r: BraveImageResult): Reference {
@@ -57,6 +81,12 @@ export function brave(config: BraveConfig) {
       url.searchParams.set('q', q.text)
       url.searchParams.set('count', String(Math.min(q.limit ?? 50, 200)))
       url.searchParams.set('safesearch', braveSafeSearch(q.controls?.safety, config.safesearch))
+      const opts = q.providerOptions as BraveImageSearchOptions | undefined
+      setIfString(url, 'country', opts?.country)
+      setIfString(url, 'search_lang', opts?.searchLang)
+      setIfPositiveInt(url, 'count', opts?.count, 200)
+      setIfString(url, 'safesearch', opts?.safesearch, ['strict', 'off'])
+      setIfBoolean(url, 'spellcheck', opts?.spellcheck)
       const res = await ctx.fetch(url.toString(), {
         headers: { 'X-Subscription-Token': config.token, Accept: 'application/json' },
         signal: ctx.signal,

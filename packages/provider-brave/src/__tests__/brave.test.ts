@@ -66,6 +66,33 @@ describe('brave provider', () => {
     expect(url.searchParams.get('safesearch')).toBe('off')
   })
 
+  it('forwards documented Brave image search options', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await brave({ token: 't' }).search({
+      text: 'cat',
+      modalities: ['image'],
+      providerOptions: {
+        country: 'JP',
+        searchLang: 'ja',
+        count: 99,
+        safesearch: 'off',
+        spellcheck: false,
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('country')).toBe('JP')
+    expect(url.searchParams.get('search_lang')).toBe('ja')
+    expect(url.searchParams.get('count')).toBe('99')
+    expect(url.searchParams.get('safesearch')).toBe('off')
+    expect(url.searchParams.get('spellcheck')).toBe('false')
+  })
+
   it('lets per-query strict safety override a factory off default', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {

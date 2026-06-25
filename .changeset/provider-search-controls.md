@@ -15,4 +15,4 @@
 "@refkit/provider-smithsonian": minor
 ---
 
-Add unified search controls, provider capability metadata, MCP controls input, search metadata/explanations, provider-specific escape hatch options, and a core duplicate hook for agent-facing searches.
+Add unified search controls, provider capability metadata, MCP controls input, search metadata/explanations, practical provider-specific `providerOptions` whitelists, and a core duplicate hook for agent-facing searches.

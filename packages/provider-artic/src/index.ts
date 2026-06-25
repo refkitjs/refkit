@@ -15,6 +15,14 @@ interface ArticResponse {
   config?: { iiif_url?: string }
 }
 
+export interface ArticSearchOptions {
+  sort?: string
+  from?: number
+  size?: number
+  facets?: string | readonly string[]
+  fields?: string | readonly string[]
+}
+
 // AIC's artist_display packs name + nationality + dates across lines; keep the first line.
 function artistName(display: string | null): string | undefined {
   if (!display) return undefined
@@ -46,6 +54,32 @@ function toReference(a: ArticArtwork, iiifUrl: string): Reference | null {
   }
 }
 
+function setIfString(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'string' || !value) return
+  url.searchParams.set(key, value)
+}
+
+function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
+  url.searchParams.set(key, String(value))
+}
+
+function setStringList(url: URL, key: string, value: unknown) {
+  if (typeof value === 'string' && value) url.searchParams.set(key, value)
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set(key, value.join(','))
+}
+
+function articFields(value: unknown): string {
+  const fields = new Set(['id', 'title', 'image_id', 'is_public_domain', 'artist_display'])
+  if (typeof value === 'string') {
+    for (const item of value.split(',')) if (item.trim()) fields.add(item.trim())
+  }
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+    for (const item of value) if (item) fields.add(item)
+  }
+  return Array.from(fields).join(',')
+}
+
 export function artic() {
   return defineProvider({
     id: 'artic',
@@ -55,10 +89,15 @@ export function artic() {
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.artic.edu/api/v1/artworks/search')
       url.searchParams.set('q', q.text)
+      const opts = q.providerOptions as ArticSearchOptions | undefined
       // relevance hint — toReference is authoritative on is_public_domain
       url.searchParams.set('query[term][is_public_domain]', 'true')
-      url.searchParams.set('fields', 'id,title,image_id,is_public_domain,artist_display')
+      url.searchParams.set('fields', articFields(opts?.fields))
       url.searchParams.set('limit', String(q.limit ?? 20))
+      setIfString(url, 'sort', opts?.sort)
+      setIfNonNegativeInt(url, 'from', opts?.from)
+      setIfNonNegativeInt(url, 'size', opts?.size)
+      setStringList(url, 'facets', opts?.facets)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`artic search failed: ${res.status}`)
       const json = (await res.json()) as ArticResponse

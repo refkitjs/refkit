@@ -10,6 +10,8 @@ export interface UnsplashSearchOptions {
   contentFilter?: 'low' | 'high'
   collections?: string | readonly string[]
   lang?: string
+  page?: number
+  perPage?: number
 }
 
 interface UnsplashResult {
@@ -34,6 +36,11 @@ function setIfString(url: URL, key: string, value: unknown, allowed?: readonly s
 function setCollections(url: URL, value: unknown) {
   if (typeof value === 'string' && value) url.searchParams.set('collections', value)
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set('collections', value.join(','))
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
+  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
 }
 
 function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
@@ -92,6 +99,8 @@ export function unsplash(config: UnsplashConfig) {
       setIfString(url, 'content_filter', opts?.contentFilter, ['low', 'high'])
       setCollections(url, opts?.collections)
       setIfString(url, 'lang', opts?.lang)
+      setIfPositiveInt(url, 'page', opts?.page)
+      setIfPositiveInt(url, 'per_page', opts?.perPage, 30)
       const res = await ctx.fetch(url.toString(), {
         headers: { Authorization: `Client-ID ${config.accessKey}`, 'Accept-Version': 'v1' },
         signal: ctx.signal,

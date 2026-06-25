@@ -47,7 +47,7 @@ Input: `{ query, modalities?, controls?, filters?, providerOptions?, explain?, l
 - `gateFor` — return only results whose license allows that intent.
 - `filters` — compatibility alias for `controls.orientation`, `controls.color`, and `controls.language`.
 - `explain` — include provider status, applied and ignored unified controls, warnings, and gate/drop metadata.
-- `providerOptions` — source-specific controls keyed by provider id, for example:
+- `providerOptions` — typed provider-specific whitelisted controls keyed by provider id, for example:
 
 ```json
 {
@@ -55,8 +55,9 @@ Input: `{ query, modalities?, controls?, filters?, providerOptions?, explain?, l
   "modalities": ["image"],
   "controls": { "orientation": "landscape", "color": "green", "safety": "strict" },
   "providerOptions": {
-    "unsplash": { "collections": ["abc", "def"] },
-    "flickr": { "tags": ["forest", "path"], "tagMode": "all" }
+    "unsplash": { "collections": ["abc", "def"], "page": 2 },
+    "flickr": { "tags": ["forest", "path"], "tagMode": "all", "minTakenDate": "2020-01-01" },
+    "brave": { "country": "US", "searchLang": "en" }
   }
 }
 ```

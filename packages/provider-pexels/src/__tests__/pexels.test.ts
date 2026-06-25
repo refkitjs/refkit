@@ -41,14 +41,15 @@ describe('pexels provider', () => {
       text: 'trees',
       modalities: ['image'],
       filters: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
-      providerOptions: { size: 'large', page: 2 },
+      providerOptions: { orientation: 'landscape', color: 'red', size: 'large', locale: 'fr-FR', page: 2, perPage: 11 },
     }, ctx)
     const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('portrait')
-    expect(url.searchParams.get('color')).toBe('#ffffff')
-    expect(url.searchParams.get('locale')).toBe('zh-CN')
+    expect(url.searchParams.get('orientation')).toBe('landscape')
+    expect(url.searchParams.get('color')).toBe('red')
+    expect(url.searchParams.get('locale')).toBe('fr-FR')
     expect(url.searchParams.get('size')).toBe('large')
     expect(url.searchParams.get('page')).toBe('2')
+    expect(url.searchParams.get('per_page')).toBe('11')
   })
 
   it('maps unified controls to documented Pexels photo search params', async () => {
@@ -135,13 +136,15 @@ describe('pexelsVideo provider', () => {
       text: 'cat',
       modalities: ['video'],
       filters: { orientation: 'landscape', language: 'en-US' },
-      providerOptions: { size: 'medium', page: 3 },
+      providerOptions: { orientation: 'portrait', size: 'medium', locale: 'fr-FR', page: 3, perPage: 12, color: 'red' },
     }, ctx)
     const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('landscape')
-    expect(url.searchParams.get('locale')).toBe('en-US')
+    expect(url.searchParams.get('orientation')).toBe('portrait')
+    expect(url.searchParams.get('locale')).toBe('fr-FR')
     expect(url.searchParams.get('size')).toBe('medium')
     expect(url.searchParams.get('page')).toBe('3')
+    expect(url.searchParams.get('per_page')).toBe('12')
+    expect(url.searchParams.get('color')).toBeNull()
   })
 
   it('maps unified controls to documented Pexels video search params', async () => {

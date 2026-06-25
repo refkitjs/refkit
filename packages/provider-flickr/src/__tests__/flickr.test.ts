@@ -87,6 +87,29 @@ describe('flickr provider', () => {
         tags: ['bay', 'sunset'],
         tagMode: 'all',
         userId: '99@N00',
+        minUploadDate: '2024-01-01',
+        maxUploadDate: '2024-12-31',
+        minTakenDate: '2023-01-01',
+        maxTakenDate: '2023-12-31',
+        bbox: '-122.6,37.6,-122.3,37.9',
+        accuracy: 11,
+        machineTags: ['dc:title="sunset"', 'geo:city=san-francisco'],
+        machineTagMode: 'any',
+        groupId: '123@N00',
+        woeId: '2487956',
+        placeId: 'abc123',
+        hasGeo: true,
+        geoContext: 2,
+        lat: '37.7749',
+        lon: '-122.4194',
+        radius: 10,
+        radiusUnits: 'km',
+        isCommons: true,
+        inGallery: true,
+        isGetty: false,
+        extras: ['description', 'tags'],
+        page: 2,
+        perPage: 50,
       },
     }, ctx)
     const url = new URL(calledUrl)
@@ -96,6 +119,30 @@ describe('flickr provider', () => {
     expect(url.searchParams.get('tags')).toBe('bay,sunset')
     expect(url.searchParams.get('tag_mode')).toBe('all')
     expect(url.searchParams.get('user_id')).toBe('99@N00')
+    expect(url.searchParams.get('min_upload_date')).toBe('2024-01-01')
+    expect(url.searchParams.get('max_upload_date')).toBe('2024-12-31')
+    expect(url.searchParams.get('min_taken_date')).toBe('2023-01-01')
+    expect(url.searchParams.get('max_taken_date')).toBe('2023-12-31')
+    expect(url.searchParams.get('bbox')).toBe('-122.6,37.6,-122.3,37.9')
+    expect(url.searchParams.get('accuracy')).toBe('11')
+    expect(url.searchParams.get('machine_tags')).toBe('dc:title="sunset",geo:city=san-francisco')
+    expect(url.searchParams.get('machine_tag_mode')).toBe('any')
+    expect(url.searchParams.get('group_id')).toBe('123@N00')
+    expect(url.searchParams.get('woe_id')).toBe('2487956')
+    expect(url.searchParams.get('place_id')).toBe('abc123')
+    expect(url.searchParams.get('has_geo')).toBe('1')
+    expect(url.searchParams.get('geo_context')).toBe('2')
+    expect(url.searchParams.get('lat')).toBe('37.7749')
+    expect(url.searchParams.get('lon')).toBe('-122.4194')
+    expect(url.searchParams.get('radius')).toBe('10')
+    expect(url.searchParams.get('radius_units')).toBe('km')
+    expect(url.searchParams.get('is_commons')).toBe('1')
+    expect(url.searchParams.get('in_gallery')).toBe('1')
+    expect(url.searchParams.get('is_getty')).toBe('0')
+    expect(url.searchParams.get('extras')).toContain('description')
+    expect(url.searchParams.get('extras')).toContain('license')
+    expect(url.searchParams.get('page')).toBe('2')
+    expect(url.searchParams.get('per_page')).toBe('50')
   })
 
   it('maps unified controls to documented Flickr search params', async () => {
@@ -121,5 +168,36 @@ describe('flickr provider', () => {
     expect(url.searchParams.get('safe_search')).toBe('1')
     expect(url.searchParams.get('license')).toBe('4,5,9,10,11,12')
     expect(url.searchParams.get('user_id')).toBe('99@N00')
+  })
+
+  it('lets explicit Flickr providerOptions override equivalent unified controls', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await flickr({ apiKey: 'k' }).search({
+      text: 'sunset',
+      modalities: ['image'],
+      controls: {
+        sort: 'interesting',
+        safety: 'strict',
+        license: { commercial: true, modification: true },
+        creator: { id: 'control-user' },
+      },
+      providerOptions: {
+        licenseFilter: '4,5',
+        sort: 'date-taken-desc',
+        safeSearch: 3,
+        userId: 'option-user',
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('license')).toBe('4,5')
+    expect(url.searchParams.get('sort')).toBe('date-taken-desc')
+    expect(url.searchParams.get('safe_search')).toBe('3')
+    expect(url.searchParams.get('user_id')).toBe('option-user')
   })
 })

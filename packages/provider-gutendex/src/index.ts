@@ -9,6 +9,18 @@ export interface GutendexConfig {
   userAgent?: string
 }
 
+export interface GutendexSearchOptions {
+  authorYearStart?: number
+  authorYearEnd?: number
+  copyright?: 'true' | 'false' | 'null' | readonly ('true' | 'false' | 'null')[]
+  ids?: string | readonly string[]
+  languages?: string | readonly string[]
+  mimeType?: string
+  sort?: 'ascending' | 'descending' | 'popular'
+  topic?: string
+  page?: number
+}
+
 interface GutendexAuthor { name: string; birth_year: number | null; death_year: number | null }
 interface GutendexResult {
   id: number
@@ -56,6 +68,33 @@ function toReference(r: GutendexResult): Reference {
   }
 }
 
+function setIfInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
+  url.searchParams.set(key, String(value))
+}
+
+function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value !== 'string' || !value) return
+  if (allowed && !allowed.includes(value)) return
+  url.searchParams.set(key, value)
+}
+
+function setIfStringList(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value === 'string' && value) {
+    if (allowed && !value.split(',').every(v => allowed.includes(v))) return
+    url.searchParams.set(key, value)
+  }
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+    if (allowed && !value.every(v => allowed.includes(v))) return
+    url.searchParams.set(key, value.join(','))
+  }
+}
+
 export function gutendex(config: GutendexConfig = {}) {
   return defineProvider({
     id: 'gutendex',
@@ -69,6 +108,16 @@ export function gutendex(config: GutendexConfig = {}) {
       if (q.controls?.text?.copyright === 'public-domain') url.searchParams.set('copyright', 'false')
       if (q.controls?.text?.copyright === 'copyrighted') url.searchParams.set('copyright', 'true')
       if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      const opts = q.providerOptions as GutendexSearchOptions | undefined
+      setIfInt(url, 'author_year_start', opts?.authorYearStart)
+      setIfInt(url, 'author_year_end', opts?.authorYearEnd)
+      setIfStringList(url, 'copyright', opts?.copyright, ['true', 'false', 'null'])
+      setIfStringList(url, 'ids', opts?.ids)
+      setIfStringList(url, 'languages', opts?.languages)
+      setIfString(url, 'mime_type', opts?.mimeType)
+      setIfString(url, 'sort', opts?.sort, ['ascending', 'descending', 'popular'])
+      setIfString(url, 'topic', opts?.topic)
+      setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), {
         headers: { 'User-Agent': config.userAgent ?? 'refkit (+https://github.com/MyPrototypeWhat/refkit)' },
         signal: ctx.signal,

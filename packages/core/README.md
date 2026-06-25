@@ -55,7 +55,7 @@ await refkit.search({
 })
 ```
 
-Provider-specific escape hatches go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers whitelist the upstream parameters they translate:
+Provider-specific escape hatches go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers own typed whitelists for the practical official search parameters they translate:
 
 ```ts
 await refkit.search({
@@ -63,11 +63,15 @@ await refkit.search({
   modalities: ['image'],
   controls: { orientation: 'landscape', safety: 'strict' },
   providerOptions: {
+    unsplash: { collections: ['abc', 'def'], page: 2 },
     flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
-    unsplash: { collections: ['abc', 'def'] },
+    openverse: { source: ['flickr'], category: 'photograph', aspectRatio: 'wide' },
+    smithsonian: { sort: 'newest', rows: 25 },
   },
 })
 ```
+
+`providerOptions` is not a raw upstream passthrough. Each provider package exports its own `*SearchOptions` interface and keeps response-format/debug/auth-only parameters out when they would conflict with normalized references or provider credentials.
 
 Currently supported unified controls:
 

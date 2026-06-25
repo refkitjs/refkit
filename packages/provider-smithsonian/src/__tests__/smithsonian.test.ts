@@ -57,4 +57,30 @@ describe('smithsonian provider', () => {
     expect(captured).toContain('api_key=SECRET')
     expect(captured).toContain('q=cat')
   })
+
+  it('forwards documented Smithsonian search options', async () => {
+    let captured = ''
+    const ctx: ProviderContext = {
+      fetch: (async (u: string) => { captured = String(u); return new Response(JSON.stringify({ response: { rows: [] } }), { status: 200 }) }) as typeof fetch,
+    }
+    await smithsonian({ apiKey: 'SECRET' }).search({
+      text: 'cat',
+      modalities: ['image'],
+      providerOptions: {
+        start: 10,
+        rows: 25,
+        sort: 'newest',
+        type: 'all',
+        rowGroup: 'archives',
+        filterQuery: 'topic:"Cats"',
+      },
+    }, ctx)
+    const url = new URL(captured)
+    expect(url.searchParams.get('start')).toBe('10')
+    expect(url.searchParams.get('rows')).toBe('25')
+    expect(url.searchParams.get('sort')).toBe('newest')
+    expect(url.searchParams.get('type')).toBe('all')
+    expect(url.searchParams.get('row_group')).toBe('archives')
+    expect(url.searchParams.get('fq')).toBe('online_media_type:"Images" AND media_usage:"CC0" AND topic:"Cats"')
+  })
 })

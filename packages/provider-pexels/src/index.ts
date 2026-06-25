@@ -6,9 +6,12 @@ import {
 export interface PexelsConfig { apiKey: string }
 
 export interface PexelsSearchOptions {
+  orientation?: 'landscape' | 'portrait' | 'square'
+  color?: string
   size?: 'large' | 'medium' | 'small'
   locale?: string
   page?: number
+  perPage?: number
 }
 
 interface PexelsPhoto {
@@ -30,9 +33,9 @@ function setIfString(url: URL, key: string, value: unknown, allowed?: readonly s
   url.searchParams.set(key, value)
 }
 
-function setIfPositiveInt(url: URL, key: string, value: unknown) {
+function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
-  url.searchParams.set(key, String(value))
+  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
 }
 
 function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
@@ -52,9 +55,12 @@ function applyPexelsSearchParams(url: URL, q: NormalizedQuery, options?: { allow
   const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
   if (legacyLanguage) url.searchParams.set('locale', legacyLanguage)
   const opts = q.providerOptions as PexelsSearchOptions | undefined
+  setIfString(url, 'orientation', opts?.orientation, ['landscape', 'portrait', 'square'])
+  if (options?.allowColor) setIfString(url, 'color', opts?.color)
   setIfString(url, 'size', opts?.size, ['large', 'medium', 'small'])
   setIfString(url, 'locale', opts?.locale)
   setIfPositiveInt(url, 'page', opts?.page)
+  setIfPositiveInt(url, 'per_page', opts?.perPage, 80)
 }
 
 function toReference(p: PexelsPhoto): Reference {

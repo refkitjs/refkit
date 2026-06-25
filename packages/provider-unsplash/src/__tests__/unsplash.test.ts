@@ -49,7 +49,7 @@ describe('unsplash provider', () => {
       text: 'coffee',
       modalities: ['image'],
       filters: { color: 'blue', orientation: 'square', language: 'zh-Hans' },
-      providerOptions: { orderBy: 'latest', contentFilter: 'high', collections: ['abc', 'def'] },
+      providerOptions: { orderBy: 'latest', contentFilter: 'high', collections: ['abc', 'def'], page: 3, perPage: 12 },
     }, ctx)
     const url = new URL(calledUrl)
     expect(url.searchParams.get('color')).toBe('blue')
@@ -58,6 +58,8 @@ describe('unsplash provider', () => {
     expect(url.searchParams.get('order_by')).toBe('latest')
     expect(url.searchParams.get('content_filter')).toBe('high')
     expect(url.searchParams.get('collections')).toBe('abc,def')
+    expect(url.searchParams.get('page')).toBe('3')
+    expect(url.searchParams.get('per_page')).toBe('12')
   })
 
   it('maps unified controls to documented Unsplash search params', async () => {

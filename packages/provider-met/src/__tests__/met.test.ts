@@ -46,4 +46,46 @@ describe('met provider', () => {
     const refs = await met().search({ text: 'zzz', modalities: ['image'] }, ctxRouting({ total: 0, objectIDs: null }, {}))
     expect(refs).toEqual([])
   })
+
+  it('forwards documented Met search options', async () => {
+    let searchUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        const u = String(input)
+        if (u.includes('/search')) {
+          searchUrl = u
+          return new Response(JSON.stringify({ total: 0, objectIDs: null }), { status: 200 })
+        }
+        return new Response('null', { status: 404 })
+      }) as typeof fetch,
+    }
+    await met().search({
+      text: 'wheat',
+      modalities: ['image'],
+      providerOptions: {
+        isHighlight: true,
+        title: true,
+        tags: true,
+        departmentId: 11,
+        isOnView: true,
+        artistOrCulture: true,
+        medium: 'Oil Paintings',
+        geoLocation: 'France',
+        dateBegin: 1700,
+        dateEnd: 1800,
+      },
+    }, ctx)
+    const url = new URL(searchUrl)
+    expect(url.searchParams.get('isHighlight')).toBe('true')
+    expect(url.searchParams.get('title')).toBe('true')
+    expect(url.searchParams.get('tags')).toBe('true')
+    expect(url.searchParams.get('departmentId')).toBe('11')
+    expect(url.searchParams.get('isOnView')).toBe('true')
+    expect(url.searchParams.get('artistOrCulture')).toBe('true')
+    expect(url.searchParams.get('medium')).toBe('Oil Paintings')
+    expect(url.searchParams.get('geoLocation')).toBe('France')
+    expect(url.searchParams.get('dateBegin')).toBe('1700')
+    expect(url.searchParams.get('dateEnd')).toBe('1800')
+    expect(url.searchParams.get('hasImages')).toBe('true')
+  })
 })

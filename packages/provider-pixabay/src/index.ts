@@ -6,16 +6,24 @@ import {
 export interface PixabayConfig { key: string }
 
 export interface PixabayImageSearchOptions {
+  lang?: string
+  id?: string
   imageType?: 'all' | 'photo' | 'illustration' | 'vector'
+  orientation?: 'all' | 'horizontal' | 'vertical'
   category?: string
   minWidth?: number
   minHeight?: number
+  colors?: string | readonly string[]
   safesearch?: boolean
   order?: 'popular' | 'latest'
   editorsChoice?: boolean
+  page?: number
+  perPage?: number
 }
 
 export interface PixabayVideoSearchOptions {
+  lang?: string
+  id?: string
   videoType?: 'all' | 'film' | 'animation'
   category?: string
   minWidth?: number
@@ -23,6 +31,8 @@ export interface PixabayVideoSearchOptions {
   safesearch?: boolean
   order?: 'popular' | 'latest'
   editorsChoice?: boolean
+  page?: number
+  perPage?: number
 }
 
 interface PixabayHit {
@@ -46,9 +56,26 @@ function setIfString(url: URL, key: string, value: unknown, allowed?: readonly s
   url.searchParams.set(key, value)
 }
 
+function setIfStringList(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+  if (typeof value === 'string') {
+    if (!value) return
+    if (allowed && !value.split(',').every(v => allowed.includes(v))) return
+    url.searchParams.set(key, value)
+  }
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+    if (allowed && !value.every(v => allowed.includes(v))) return
+    url.searchParams.set(key, value.join(','))
+  }
+}
+
 function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
   url.searchParams.set(key, String(value))
+}
+
+function setIfPositiveInt(url: URL, key: string, value: unknown, options?: { min?: number; max?: number }) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < (options?.min ?? 1)) return
+  url.searchParams.set(key, String(Math.min(value, options?.max ?? value)))
 }
 
 function setIfBoolean(url: URL, key: string, value: unknown) {
@@ -119,13 +146,19 @@ export function pixabay(config: PixabayConfig) {
       const orientation = pixabayOrientation(useLegacyFilter(q.controls?.orientation, q.filters?.orientation))
       if (orientation) url.searchParams.set('orientation', orientation)
       const opts = q.providerOptions as PixabayImageSearchOptions | undefined
+      setIfString(url, 'lang', opts?.lang)
+      setIfString(url, 'id', opts?.id)
       setIfString(url, 'image_type', opts?.imageType, ['all', 'photo', 'illustration', 'vector'])
+      setIfString(url, 'orientation', opts?.orientation, ['all', 'horizontal', 'vertical'])
       setIfString(url, 'category', opts?.category)
       setIfNonNegativeInt(url, 'min_width', opts?.minWidth)
       setIfNonNegativeInt(url, 'min_height', opts?.minHeight)
+      setIfStringList(url, 'colors', opts?.colors, ['grayscale', 'transparent', 'red', 'orange', 'yellow', 'green', 'turquoise', 'blue', 'lilac', 'pink', 'white', 'gray', 'black', 'brown'])
       setIfBoolean(url, 'safesearch', opts?.safesearch)
       setIfString(url, 'order', opts?.order, ['popular', 'latest'])
       setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
+      setIfPositiveInt(url, 'page', opts?.page)
+      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200 })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay search failed: ${res.status}`)
       const json = (await res.json()) as PixabayResponse
@@ -194,6 +227,8 @@ export function pixabayVideo(config: PixabayConfig) {
       const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
       if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
       const opts = q.providerOptions as PixabayVideoSearchOptions | undefined
+      setIfString(url, 'lang', opts?.lang)
+      setIfString(url, 'id', opts?.id)
       setIfString(url, 'video_type', opts?.videoType, ['all', 'film', 'animation'])
       setIfString(url, 'category', opts?.category)
       setIfNonNegativeInt(url, 'min_width', opts?.minWidth)
@@ -201,6 +236,8 @@ export function pixabayVideo(config: PixabayConfig) {
       setIfBoolean(url, 'safesearch', opts?.safesearch)
       setIfString(url, 'order', opts?.order, ['popular', 'latest'])
       setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
+      setIfPositiveInt(url, 'page', opts?.page)
+      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200 })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay video search failed: ${res.status}`)
       const json = (await res.json()) as PixabayVideoResponse

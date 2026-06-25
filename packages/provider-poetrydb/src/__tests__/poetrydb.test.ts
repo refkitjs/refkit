@@ -42,4 +42,25 @@ describe('poetrydb provider', () => {
     const refs = await poetrydb().search({ text: 'zzzznomatch', modalities: ['text'] }, ctxWith({ status: 404, reason: 'Not found' }))
     expect(refs).toEqual([])
   })
+
+  it('builds documented PoetryDB routes from providerOptions', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await poetrydb().search({
+      text: 'ignored',
+      modalities: ['text'],
+      providerOptions: {
+        inputFields: ['title', 'author', 'poemcount'],
+        searchTerms: ['Winter', 'William Shakespeare', '2'],
+        matchExact: true,
+        outputFields: ['author', 'title', 'linecount'],
+      },
+    }, ctx)
+    expect(calledUrl).toBe('https://poetrydb.org/title,author,poemcount/Winter;William%20Shakespeare;2:abs/author,title,lines,linecount')
+  })
 })
