@@ -1,5 +1,76 @@
 import { describe, expect, it } from 'vitest'
-import { mapFreesoundLicense } from '../index'
+import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { freesound, mapFreesoundLicense } from '../index'
+
+const ctxJson = (body: unknown, capture?: (url: string) => void): ProviderContext => ({
+  fetch: (async (input: string) => {
+    capture?.(String(input))
+    return new Response(JSON.stringify(body), { status: 200 })
+  }) as typeof fetch,
+})
+
+const RESULTS = {
+  count: 4, next: null, previous: null,
+  results: [
+    { id: 1, name: 'Door creak', license: 'Attribution', username: 'alice',
+      url: 'https://freesound.org/people/alice/sounds/1/',
+      previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/1/1_hq.mp3', 'preview-lq-mp3': 'https://cdn.freesound.org/previews/1/1_lq.mp3' },
+      duration: 2.5, filesize: 41000, tags: ['door', 'creak'] },
+    { id: 2, name: 'Loop NC', license: 'Attribution NonCommercial', username: 'bob',
+      url: 'https://freesound.org/people/bob/sounds/2/',
+      previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/2/2_hq.mp3' }, duration: 5, filesize: 80000, tags: [] },
+    { id: 3, name: 'Public bell', license: 'Creative Commons 0', username: 'carol',
+      url: 'https://freesound.org/people/carol/sounds/3/',
+      previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/3/3_hq.mp3' }, duration: 1, filesize: 16000, tags: [] },
+    { id: 4, name: 'Mystery', license: 'Weird Custom License', username: 'dave',
+      url: 'https://freesound.org/people/dave/sounds/4/',
+      previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/4/4_hq.mp3' }, duration: 3, filesize: 48000, tags: [] },
+  ],
+}
+
+describe('freesound provider', () => {
+  it('maps each license family to audio references', async () => {
+    const refs = await freesound({ apiKey: 'k' }).search({ text: 'door', modalities: ['audio'], limit: 10 }, ctxJson(RESULTS))
+    expect(refs).toHaveLength(4)
+    const byId = Object.fromEntries(refs.map(r => [r.canonicalUrl, r]))
+
+    const cc = byId['https://freesound.org/people/alice/sounds/1/']
+    expect(cc.modality).toBe('audio')
+    expect(cc.rights.license).toBe('CC-BY')
+    expect(cc.rights.author).toBe('alice')
+    expect(cc.preview?.url).toBe('https://cdn.freesound.org/previews/1/1_hq.mp3')
+    expect(cc.preview?.mediaType).toBe('audio/mpeg')
+
+    const nc = byId['https://freesound.org/people/bob/sounds/2/']
+    expect(nc.rights.license).toBe('proprietary')
+    expect(evaluateUse(nc.rights, 'commercial-product').decision).toBe('denied')
+
+    const cc0 = byId['https://freesound.org/people/carol/sounds/3/']
+    expect(cc0.rights.license).toBe('CC0-1.0')
+    expect(evaluateUse(cc0.rights, 'commercial-product').decision).toBe('allowed')
+
+    const unk = byId['https://freesound.org/people/dave/sounds/4/']
+    expect(unk.rights.license).toBe('unknown')
+    expect(evaluateUse(unk.rights, 'commercial-product').decision).toBe('needs-review')
+  })
+
+  it('forwards query, token, and fields; respects limit', async () => {
+    let url = ''
+    await freesound({ apiKey: 'secret' }).search(
+      { text: 'rain', modalities: ['audio'], limit: 7, providerOptions: { sort: 'rating_desc', filter: 'duration:[1 TO 10]' } },
+      ctxJson(RESULTS, u => { url = u }),
+    )
+    const u = new URL(url)
+    expect(u.pathname).toBe('/apiv2/search/text/')
+    expect(u.searchParams.get('query')).toBe('rain')
+    expect(u.searchParams.get('token')).toBe('secret')
+    expect(u.searchParams.get('fields')).toContain('previews')
+    expect(u.searchParams.get('fields')).toContain('license')
+    expect(u.searchParams.get('page_size')).toBe('7')
+    expect(u.searchParams.get('sort')).toBe('rating_desc')
+    expect(u.searchParams.get('filter')).toBe('duration:[1 TO 10]')
+  })
+})
 
 describe('mapFreesoundLicense', () => {
   it('maps CC name strings (D4 — no version)', () => {
