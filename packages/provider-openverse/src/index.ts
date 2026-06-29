@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -85,34 +86,6 @@ function openverseLicenseType(license: import('@refkit/core').SearchLicenseContr
   if (license?.commercial) types.push('commercial')
   if (license?.modification) types.push('modification')
   return types.length > 0 ? types.join(',') : 'commercial,modification'
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string' || !value) return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
-function setIfStringList(url: URL, key: string, value: unknown) {
-  if (typeof value === 'string' && value) url.searchParams.set(key, value)
-  if (Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'string' && v)) url.searchParams.set(key, value.join(','))
-}
-
-function setIfBoolean(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'boolean') return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfNumber(url: URL, key: string, value: unknown, options?: { min?: number; max?: number }) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return
-  if (options?.min !== undefined && value < options.min) return
-  if (options?.max !== undefined && value > options.max) return
-  url.searchParams.set(key, String(value))
 }
 
 function hasStringList(value: unknown): boolean {
