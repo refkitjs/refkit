@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfNonNegativeInt, setIfStringList,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -54,21 +55,6 @@ function toReference(a: ArticArtwork, iiifUrl: string): Reference | null {
   }
 }
 
-function setIfString(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'string' || !value) return
-  url.searchParams.set(key, value)
-}
-
-function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
-  url.searchParams.set(key, String(value))
-}
-
-function setStringList(url: URL, key: string, value: unknown) {
-  if (typeof value === 'string' && value) url.searchParams.set(key, value)
-  if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set(key, value.join(','))
-}
-
 function articFields(value: unknown): string {
   const fields = new Set(['id', 'title', 'image_id', 'is_public_domain', 'artist_display'])
   if (typeof value === 'string') {
@@ -97,7 +83,7 @@ export function artic() {
       setIfString(url, 'sort', opts?.sort)
       setIfNonNegativeInt(url, 'from', opts?.from)
       setIfNonNegativeInt(url, 'size', opts?.size)
-      setStringList(url, 'facets', opts?.facets)
+      setIfStringList(url, 'facets', opts?.facets)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`artic search failed: ${res.status}`)
       const json = (await res.json()) as ArticResponse
