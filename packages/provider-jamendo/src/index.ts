@@ -1,6 +1,7 @@
 import {
   defineProvider, referenceId,
-  type Reference, type RightsRecord, type LicenseId,
+  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl,
+  type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -50,15 +51,9 @@ interface JamendoResponse {
 // Jamendo deed URLs look like http(s)://creativecommons.org/licenses/<variant>/<v>/.
 // Only by/by-sa fit our enum (D5); capture the version (D7). Any nc/nd variant is
 // non-commercial or no-derivatives → 'proprietary'. Missing/unrecognized → 'unknown'.
-export function mapJamendoLicense(ccurl: string): { license: LicenseId; version?: string } {
-  if (!ccurl) return { license: 'unknown' }
-  const by = ccurl.match(/\/licenses\/by\/(\d\.\d)\//)
-  if (by) return { license: 'CC-BY', version: by[1] }
-  const bySa = ccurl.match(/\/licenses\/by-sa\/(\d\.\d)\//)
-  if (bySa) return { license: 'CC-BY-SA', version: bySa[1] }
-  if (/\/licenses\/by-(nc|nd)/.test(ccurl)) return { license: 'proprietary' }
-  return { license: 'unknown' }
-}
+// This is exactly the core CC-deed mapper, re-exported under the jamendo-specific name
+// the provider's tests import.
+export const mapJamendoLicense = mapCcDeedUrl
 
 function toAudioReference(t: JamendoTrack, mediaType: string): Reference {
   const { license, version } = mapJamendoLicense(t.license_ccurl)
@@ -88,27 +83,6 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference {
   }
 }
 
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string' || !value) return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
-function setIfStringList(url: URL, key: string, value: unknown) {
-  if (typeof value === 'string' && value) url.searchParams.set(key, value)
-  if (Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'string' && v)) url.searchParams.set(key, value.join(' '))
-}
-
-function setIfBooleanFlag(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'boolean') return
-  url.searchParams.set(key, value ? 'true' : 'false')
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
-  url.searchParams.set(key, String(value))
-}
-
 export function jamendo(config: JamendoConfig) {
   return defineProvider({
     id: 'jamendo',
@@ -124,12 +98,14 @@ export function jamendo(config: JamendoConfig) {
       const opts = q.providerOptions as JamendoSearchOptions | undefined
       setIfString(url, 'audioformat', opts?.audioformat, ['mp31', 'mp32', 'ogg', 'flac'])
       setIfString(url, 'order', opts?.order, ['relevance', 'popularity_total', 'popularity_month', 'popularity_week', 'releasedate_asc', 'releasedate_desc', 'buzzrate'])
-      setIfBooleanFlag(url, 'ccsa', opts?.ccsa)
-      setIfBooleanFlag(url, 'ccnd', opts?.ccnd)
-      setIfBooleanFlag(url, 'ccnc', opts?.ccnc)
-      setIfStringList(url, 'tags', opts?.tags)
+      setIfBoolean(url, 'ccsa', opts?.ccsa)
+      setIfBoolean(url, 'ccnd', opts?.ccnd)
+      setIfBoolean(url, 'ccnc', opts?.ccnc)
+      // jamendo joins tags with a SPACE (not the core default comma).
+      setIfStringList(url, 'tags', opts?.tags, { separator: ' ' })
       setIfString(url, 'artist_name', opts?.artist_name)
-      setIfPositiveInt(url, 'offset', opts?.offset)
+      // jamendo's offset is non-negative (0 is valid) → setIfNonNegativeInt, not PositiveInt.
+      setIfNonNegativeInt(url, 'offset', opts?.offset)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`jamendo search failed: ${res.status}`)
       const json = (await res.json()) as JamendoResponse
