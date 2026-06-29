@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfBoolean, setIfInt, setIfString,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -62,21 +63,6 @@ function toReference(o: MetObject): Reference | null {
     relevance: 0,
     raw: o,
   }
-}
-
-function setIfBoolean(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'boolean') return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value)) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfString(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'string' || !value) return
-  url.searchParams.set(key, value)
 }
 
 export function met(config: MetConfig = {}) {

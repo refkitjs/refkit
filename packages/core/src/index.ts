@@ -43,6 +43,11 @@ export type {
   ProviderOptionsById,
   KeyValueCache,
 } from './provider'
+export {
+  setIfString, setIfBoolean, setIfStringList,
+  setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
+  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType, IMAGE_EXT,
+} from './provider-helpers'
 export { normalizeQuery } from './query'
 export { createRefkit } from './client'
 export type {

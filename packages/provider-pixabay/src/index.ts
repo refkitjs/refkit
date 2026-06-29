@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -50,13 +51,10 @@ interface PixabayHit {
 }
 interface PixabayResponse { hits: PixabayHit[] }
 
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string') return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
-function setIfStringList(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
+// Kept local: pixabay's allowlist semantics split a comma-joined STRING value and
+// validate each element, whereas core's setIfStringList tests the whole string against
+// the allowlist (so a "red,blue" string would be rejected). Preserving behavior.
+function setColorsList(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
   if (typeof value === 'string') {
     if (!value) return
     if (allowed && !value.split(',').every(v => allowed.includes(v))) return
@@ -66,21 +64,6 @@ function setIfStringList(url: URL, key: string, value: unknown, allowed?: readon
     if (allowed && !value.every(v => allowed.includes(v))) return
     url.searchParams.set(key, value.join(','))
   }
-}
-
-function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown, options?: { min?: number; max?: number }) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < (options?.min ?? 1)) return
-  url.searchParams.set(key, String(Math.min(value, options?.max ?? value)))
-}
-
-function setIfBoolean(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'boolean') return
-  url.searchParams.set(key, String(value))
 }
 
 function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
@@ -153,12 +136,12 @@ export function pixabay(config: PixabayConfig) {
       setIfString(url, 'category', opts?.category)
       setIfNonNegativeInt(url, 'min_width', opts?.minWidth)
       setIfNonNegativeInt(url, 'min_height', opts?.minHeight)
-      setIfStringList(url, 'colors', opts?.colors, ['grayscale', 'transparent', 'red', 'orange', 'yellow', 'green', 'turquoise', 'blue', 'lilac', 'pink', 'white', 'gray', 'black', 'brown'])
+      setColorsList(url, 'colors', opts?.colors, ['grayscale', 'transparent', 'red', 'orange', 'yellow', 'green', 'turquoise', 'blue', 'lilac', 'pink', 'white', 'gray', 'black', 'brown'])
       setIfBoolean(url, 'safesearch', opts?.safesearch)
       setIfString(url, 'order', opts?.order, ['popular', 'latest'])
       setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
       setIfPositiveInt(url, 'page', opts?.page)
-      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200 })
+      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200, clamp: true })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay search failed: ${res.status}`)
       const json = (await res.json()) as PixabayResponse
@@ -237,7 +220,7 @@ export function pixabayVideo(config: PixabayConfig) {
       setIfString(url, 'order', opts?.order, ['popular', 'latest'])
       setIfBoolean(url, 'editors_choice', opts?.editorsChoice)
       setIfPositiveInt(url, 'page', opts?.page)
-      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200 })
+      setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200, clamp: true })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`pixabay video search failed: ${res.status}`)
       const json = (await res.json()) as PixabayVideoResponse

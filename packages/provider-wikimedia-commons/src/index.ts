@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -116,30 +117,9 @@ function toReference(page: CommonsPage): Reference | null {
   }
 }
 
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string' || !value) return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
 function setPipeList(url: URL, key: string, value: unknown) {
   if (typeof value === 'string' && value) url.searchParams.set(key, value)
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set(key, value.join('|'))
-}
-
-function setIfNonNegativeInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
-  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
-}
-
-function setIfBoolean(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'boolean') return
-  url.searchParams.set(key, String(value))
 }
 
 function commonsImageInfoProps(value: unknown): string {
@@ -171,7 +151,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       url.searchParams.set('iiprop', 'url|mime|size|extmetadata')
       url.searchParams.set('iiurlwidth', String(config.thumbWidth ?? 1024))
       const opts = q.providerOptions as WikimediaCommonsSearchOptions | undefined
-      setIfPositiveInt(url, 'gsrlimit', opts?.gsrlimit, 500)
+      setIfPositiveInt(url, 'gsrlimit', opts?.gsrlimit, { max: 500, clamp: true })
       setIfNonNegativeInt(url, 'gsroffset', opts?.gsroffset)
       setIfString(url, 'gsrqiprofile', opts?.gsrqiprofile)
       setIfString(url, 'gsrqdprofile', opts?.gsrqdprofile)

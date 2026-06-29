@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfPositiveInt,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -27,17 +28,6 @@ interface PexelsPhoto {
 }
 interface PexelsResponse { photos: PexelsPhoto[] }
 
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string') return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown, max?: number) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
-  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
-}
-
 function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
   return control === undefined ? legacy : undefined
 }
@@ -60,7 +50,7 @@ function applyPexelsSearchParams(url: URL, q: NormalizedQuery, options?: { allow
   setIfString(url, 'size', opts?.size, ['large', 'medium', 'small'])
   setIfString(url, 'locale', opts?.locale)
   setIfPositiveInt(url, 'page', opts?.page)
-  setIfPositiveInt(url, 'per_page', opts?.perPage, 80)
+  setIfPositiveInt(url, 'per_page', opts?.perPage, { max: 80, clamp: true })
 }
 
 function toReference(p: PexelsPhoto): Reference {

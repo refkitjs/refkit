@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfInt, setIfStringList,
   type Reference, type RightsRecord, type LicenseId, type SearchLicenseControls,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -88,12 +89,6 @@ interface FlickrPhoto {
 }
 interface FlickrResponse { photos?: { photo: FlickrPhoto[] }; stat: string }
 
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string') return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
 function setIfSafeSearch(url: URL, value: unknown) {
   if (value !== 1 && value !== 2 && value !== 3) return
   url.searchParams.set('safe_search', String(value))
@@ -107,18 +102,6 @@ function setTags(url: URL, value: unknown) {
 function setStringOrNumber(url: URL, key: string, value: unknown) {
   if (typeof value === 'string' && value) url.searchParams.set(key, value)
   if (typeof value === 'number' && Number.isFinite(value)) url.searchParams.set(key, String(value))
-}
-
-function setStringList(url: URL, key: string, value: unknown) {
-  if (typeof value === 'string' && value) url.searchParams.set(key, value)
-  if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set(key, value.join(','))
-}
-
-function setIfInt(url: URL, key: string, value: unknown, options?: { min?: number; max?: number }) {
-  if (typeof value !== 'number' || !Number.isInteger(value)) return
-  if (options?.min !== undefined && value < options.min) return
-  if (options?.max !== undefined && value > options.max) return
-  url.searchParams.set(key, String(value))
 }
 
 function setBooleanFlag(url: URL, key: string, value: unknown) {
@@ -217,7 +200,7 @@ export function flickr(config: FlickrConfig) {
       setStringOrNumber(url, 'max_taken_date', opts?.maxTakenDate)
       setIfString(url, 'bbox', opts?.bbox)
       setIfInt(url, 'accuracy', opts?.accuracy, { min: 1, max: 16 })
-      setStringList(url, 'machine_tags', opts?.machineTags)
+      setIfStringList(url, 'machine_tags', opts?.machineTags)
       setIfString(url, 'machine_tag_mode', opts?.machineTagMode, ['any', 'all'])
       setIfString(url, 'group_id', opts?.groupId)
       setIfString(url, 'woe_id', opts?.woeId)

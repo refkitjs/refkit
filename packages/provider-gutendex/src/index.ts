@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfInt, setIfPositiveInt, setIfString, setIfStringList,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -68,33 +69,6 @@ function toReference(r: GutendexResult): Reference {
   }
 }
 
-function setIfInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value)) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfPositiveInt(url: URL, key: string, value: unknown) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) return
-  url.searchParams.set(key, String(value))
-}
-
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string' || !value) return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
-function setIfStringList(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value === 'string' && value) {
-    if (allowed && !value.split(',').every(v => allowed.includes(v))) return
-    url.searchParams.set(key, value)
-  }
-  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
-    if (allowed && !value.every(v => allowed.includes(v))) return
-    url.searchParams.set(key, value.join(','))
-  }
-}
-
 export function gutendex(config: GutendexConfig = {}) {
   return defineProvider({
     id: 'gutendex',
@@ -111,7 +85,7 @@ export function gutendex(config: GutendexConfig = {}) {
       const opts = q.providerOptions as GutendexSearchOptions | undefined
       setIfInt(url, 'author_year_start', opts?.authorYearStart)
       setIfInt(url, 'author_year_end', opts?.authorYearEnd)
-      setIfStringList(url, 'copyright', opts?.copyright, ['true', 'false', 'null'])
+      setIfStringList(url, 'copyright', opts?.copyright, { allowed: ['true', 'false', 'null'] })
       setIfStringList(url, 'ids', opts?.ids)
       setIfStringList(url, 'languages', opts?.languages)
       setIfString(url, 'mime_type', opts?.mimeType)

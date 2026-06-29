@@ -16,6 +16,12 @@ import { pixabay, pixabayVideo } from '@refkit/provider-pixabay'
 import { flickr } from '@refkit/provider-flickr'
 import { smithsonian } from '@refkit/provider-smithsonian'
 import { brave } from '@refkit/provider-brave'
+import { rijksmuseum } from '@refkit/provider-rijksmuseum'
+import { polyhaven, ambientcg } from '@refkit/provider-polyhaven'
+import { freesound } from '@refkit/provider-freesound'
+import { jamendo } from '@refkit/provider-jamendo'
+import { europeana } from '@refkit/provider-europeana'
+import { internetArchive } from '@refkit/provider-internet-archive'
 import { serveStdio } from './index'
 
 /** Providers a zero-config server boots with: all keyless sources, plus any BYOK
@@ -23,6 +29,7 @@ import { serveStdio } from './index'
 export function defaultProviders(env: NodeJS.ProcessEnv = process.env): ReferenceProvider[] {
   const providers: ReferenceProvider[] = [
     openverse(), openverseAudio(), wikimediaCommons(), met(), artic(), gutendex(), poetrydb(),
+    rijksmuseum(), polyhaven(), ambientcg(), internetArchive(),
   ]
   if (env.UNSPLASH_KEY) providers.push(unsplash({ accessKey: env.UNSPLASH_KEY }))
   if (env.PEXELS_KEY) providers.push(pexels({ apiKey: env.PEXELS_KEY }), pexelsVideo({ apiKey: env.PEXELS_KEY }))
@@ -30,6 +37,9 @@ export function defaultProviders(env: NodeJS.ProcessEnv = process.env): Referenc
   if (env.FLICKR_KEY) providers.push(flickr({ apiKey: env.FLICKR_KEY }))
   if (env.SI_KEY) providers.push(smithsonian({ apiKey: env.SI_KEY }))
   if (env.BRAVE_TOKEN) providers.push(brave({ token: env.BRAVE_TOKEN }))
+  if (env.FREESOUND_TOKEN) providers.push(freesound({ apiKey: env.FREESOUND_TOKEN }))
+  if (env.JAMENDO_CLIENT_ID) providers.push(jamendo({ clientId: env.JAMENDO_CLIENT_ID }))
+  if (env.EUROPEANA_KEY) providers.push(europeana({ apiKey: env.EUROPEANA_KEY }))
   return providers
 }
 

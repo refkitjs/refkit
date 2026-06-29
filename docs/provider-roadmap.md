@@ -1,24 +1,34 @@
 # refkit provider roadmap
 
-Status as of 2026-06-23. Grounded in a web-verified landscape scan (104
+Status as of 2026-06-29. Grounded in a web-verified landscape scan (104
 candidate sources → 101 unique → 16 depth-verified). This is the contract for
 expanding refkit's provider coverage; execute against it, not against memory.
 
-## Current inventory (7 providers)
+> **Progress: Phases 1–4 are DONE in refkit.** §1 (CC version axis) shipped in
+> commit `75c557e`; §2 P0 providers (flickr, wikimedia-commons, met, artic,
+> smithsonian) and §3/§4 cheap modality wins (openverse-audio, pexels-video,
+> pixabay-video) are all built and tested. The remaining work is the §3 **P1
+> backlog** (rijksmuseum, europeana, freesound, jamendo, internet-archive,
+> poly-haven/ambientcg). One open caveat: §1 item 7 lives in the **Slate** repo
+> (not this worktree) and is not verified here.
 
-| Modality | Providers | Verdict |
+## Current inventory (12 provider packages, ~15 provider ids)
+
+| Modality | Providers | Status |
 |---|---|---|
-| image | openverse, unsplash, pexels, pixabay | mainstream stock + the main CC aggregator — solid, **but two glaring omissions: Flickr, Wikimedia Commons** |
-| text | gutendex (Project Gutenberg), poetrydb | thin — only PD books + a niche poetry DB |
+| image | openverse, unsplash, pexels, pixabay, **flickr**, **wikimedia-commons**, **met**, **artic**, **smithsonian** | ✅ Flickr + Wikimedia gaps closed; GLAM CC0 cluster (met/artic/smithsonian) added |
+| text | gutendex (Project Gutenberg), poetrydb | unchanged — still thin (PD books + niche poetry DB) |
+| audio | **openverse-audio** | ✅ cheap leg added (§4) |
+| video | **pexels-video**, **pixabay-video** | ✅ cheap legs added (§4) |
 | grey/discovery | brave | represents the web-search category; do **not** bulk-add more (every web source is `license:unknown`) |
-| video / audio / icon·vector / 3d·texture | — | **no leg at all** |
+| icon·vector / 3d·texture | — | still no leg (P1 backlog: poly-haven/ambientcg) |
 
 The moat is per-item license normalization, so the highest-value additions are
 mainstream sources that return **structured per-item license** (Flickr,
 Wikimedia, the GLAM museum APIs), not more commodity stock or more grey web
 search.
 
-## §1 — Prerequisite: CC version axis (Phase 1, atomic, blocks everything)
+## §1 — Prerequisite: CC version axis (Phase 1) — ✅ DONE (`75c557e`)
 
 The current `LicenseId` enum only models `CC-BY-4.0` / `CC-BY-SA-4.0`. Every
 CC-BY/BY-SA at version 1.0–3.0 collapses to `unknown` → `needs-review`. The
@@ -49,7 +59,7 @@ which today throws away CC-BY-2.0/3.0 results as `unknown`.
 
 **Files (atomic — a partial rename leaves the build red, so it is one phase):**
 
-refkit:
+refkit (all done in `75c557e`):
 1. `packages/core/src/license.ts` — `LicenseId` union + `LICENSE_FACTS` keys.
 2. `packages/core/src/rights.ts` — `licenseIdSchema` enum + add `licenseVersion?`
    to interface & schema.
@@ -62,7 +72,7 @@ refkit:
    "older CC-BY → CC-BY, allowed-with-attribution, version preserved". This is
    the proof the fix works.
 
-Slate (consumes refkit via link — same atomic change):
+Slate (consumes refkit via link — same atomic change) — ⚠️ NOT verified in this worktree:
 7. `packages/core/src/retrieval/__tests__/reference-to-asset.test.ts` — test
    data `'CC-BY-4.0'` → `'CC-BY'` (+ `licenseVersion: '4.0'`), and the
    `metadata.license`/attribution assertions.
@@ -73,9 +83,11 @@ suite green in the Slate worktree.
 Optional follow-up (not Phase 1): a `licenseDeedUrl(license, version?)` helper so
 attribution links the exact CC deed instead of only the source page.
 
-## §2 — P0 providers (mainstream + per-item clean license + i2i-usable)
+## §2 — P0 providers (mainstream + per-item clean license + i2i-usable) — ✅ DONE
 
-Each is an independent `@refkit/provider-*` satellite. Build after Phase 1.
+All five shipped as independent `@refkit/provider-*` satellites
+(`provider-flickr`, `provider-wikimedia-commons`, `provider-met`,
+`provider-artic`, `provider-smithsonian`).
 
 | Provider | Modality | Effort | Auth | License field (verified) | Mapping |
 |---|---|---|---|---|---|
@@ -96,13 +108,13 @@ Notes:
 
 ## §3 — P1 providers, modality gaps & cheap wins
 
-**Cheapest wins first — reuse an existing integration's key + license mapping:**
-- **openverse audio** — the openverse API already serves audio under the same
-  key/shape; near-free audio leg.
-- **pexels-video / pixabay-video** — same keys, same license as the image
-  providers we already ship; a different endpoint adds the video leg cheaply.
+**Cheapest wins — ✅ DONE (all three built):**
+- **openverse-audio** ✅ — same key/shape as openverse image; `openverseAudio()`
+  in `provider-openverse`.
+- **pexels-video** ✅ / **pixabay-video** ✅ — `pexelsVideo()` etc., same keys as
+  the image providers, video endpoint.
 
-**Other P1:**
+**Other P1 — ⬜ REMAINING (this is the actual next work):**
 
 | Provider | Leg | Caveat (verified) |
 |---|---|---|
@@ -129,11 +141,12 @@ Notes:
 
 ## §5 — Sequencing
 
-1. **Phase 1** — §1 CC version axis (atomic, refkit + Slate test). ← do first.
-2. **Phase 2** — flickr + wikimedia-commons (the two mainstream image gaps).
-3. **Phase 3** — met + artic + smithsonian (GLAM CC0 cluster; Met/Artic are S).
-4. **Phase 4** — cheap modality wins: openverse-audio, pexels-video, pixabay-video.
-5. **Phase 5+** — P1 backlog as demand dictates.
+1. ✅ **Phase 1** — §1 CC version axis (refkit done in `75c557e`; Slate test
+   unverified here).
+2. ✅ **Phase 2** — flickr + wikimedia-commons (the two mainstream image gaps).
+3. ✅ **Phase 3** — met + artic + smithsonian (GLAM CC0 cluster).
+4. ✅ **Phase 4** — cheap modality wins: openverse-audio, pexels-video, pixabay-video.
+5. ⬜ **Phase 5+** — P1 backlog as demand dictates. ← **only remaining work**.
 
-Phases 2–4 are independent per-package satellites → parallelizable via
+Phase 5+ items are independent per-package satellites → parallelizable via
 worktree-isolated subagents (one provider per agent).

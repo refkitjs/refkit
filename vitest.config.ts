@@ -18,6 +18,12 @@ export default defineConfig({
       './packages/provider-met/vitest.config.ts',
       './packages/provider-artic/vitest.config.ts',
       './packages/provider-smithsonian/vitest.config.ts',
+      './packages/provider-rijksmuseum/vitest.config.ts',
+      './packages/provider-polyhaven/vitest.config.ts',
+      './packages/provider-freesound/vitest.config.ts',
+      './packages/provider-jamendo/vitest.config.ts',
+      './packages/provider-europeana/vitest.config.ts',
+      './packages/provider-internet-archive/vitest.config.ts',
     ],
   },
 })
