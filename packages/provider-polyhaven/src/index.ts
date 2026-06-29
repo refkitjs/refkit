@@ -119,3 +119,78 @@ export function polyhaven(config: PolyHavenConfig = {}) {
     },
   })
 }
+
+const ACG_BASE = 'https://ambientcg.com/api/v2/full_json'
+const ACG_TERMS = 'https://ambientcg.com/license/'
+
+export interface AmbientCgConfig {
+  /** Max materials per search. Default 12. */
+  limit?: number
+}
+
+interface AmbientCgAsset {
+  assetId: string
+  displayName?: string
+  dataType?: string
+  previewImage?: Record<string, string>
+}
+interface AmbientCgResponse { foundAssets?: AmbientCgAsset[] }
+
+/** Pick the largest available PNG preview (image-format only — D1). */
+function acgPreviewUrl(preview?: Record<string, string>): string | undefined {
+  if (!preview) return undefined
+  for (const key of ['1024-PNG', '512-PNG', '256-PNG', '128-PNG']) {
+    if (preview[key]) return preview[key]
+  }
+  return undefined
+}
+
+function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
+  const canonical = `https://ambientcg.com/view?id=${a.assetId}`
+  const rights: RightsRecord = {
+    license: 'CC0-1.0',
+    rehostPolicy: 'cache-allowed',
+    raw: { sourceTerms: ACG_TERMS, sourceUrl: canonical },
+  }
+  return {
+    id: referenceId('ambientcg', canonical),
+    modality: 'image',
+    title: a.displayName || undefined,
+    source: { providerId: 'ambientcg', sourceUrl: canonical },
+    canonicalUrl: canonical,
+    rights,
+    verifiedAt: new Date().toISOString(),
+    thumbnail: { url: imageUrl },
+    preview: { url: imageUrl, mediaType: 'image/png' },
+    relevance: 0,
+    raw: a,
+  }
+}
+
+export function ambientcg(config: AmbientCgConfig = {}) {
+  return defineProvider({
+    id: 'ambientcg',
+    modalities: ['image'],
+    queryFeatures: ['keyword'],
+    capabilities: { controls: [] },
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+      const url = new URL(ACG_BASE)
+      url.searchParams.set('type', 'Material') // image-based PBR materials only (D1)
+      url.searchParams.set('include', 'displayData,imageData')
+      url.searchParams.set('limit', String(Math.min(config.limit ?? q.limit ?? 12, 30)))
+      if (q.text?.trim()) url.searchParams.set('q', q.text.trim())
+      const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
+      if (!res.ok) throw new Error(`ambientcg search failed: ${res.status}`)
+      const { foundAssets } = (await res.json()) as AmbientCgResponse
+      if (!foundAssets || foundAssets.length === 0) return []
+      return foundAssets
+        .map((a) => {
+          // Defensive D1 guard: only Material assets carry an image previewImage.
+          if (a.dataType && a.dataType !== 'Material') return null
+          const imageUrl = acgPreviewUrl(a.previewImage)
+          return imageUrl ? acgToReference(a, imageUrl) : null
+        })
+        .filter((r): r is Reference => r !== null)
+    },
+  })
+}
