@@ -1,5 +1,6 @@
 import {
   defineProvider, referenceId,
+  setIfString, setIfNonNegativeInt,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -62,17 +63,6 @@ function toReference(row: SiRow): Reference | null {
   }
 }
 
-function setIfNonNegativeInt(url: URL, key: string, value: unknown, max?: number) {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return
-  url.searchParams.set(key, String(max ? Math.min(value, max) : value))
-}
-
-function setIfString(url: URL, key: string, value: unknown, allowed?: readonly string[]) {
-  if (typeof value !== 'string' || !value) return
-  if (allowed && !allowed.includes(value)) return
-  url.searchParams.set(key, value)
-}
-
 export function smithsonian(config: SmithsonianConfig) {
   return defineProvider({
     id: 'smithsonian',
@@ -88,7 +78,7 @@ export function smithsonian(config: SmithsonianConfig) {
       url.searchParams.set('fq', 'online_media_type:"Images" AND media_usage:"CC0"')
       const opts = q.providerOptions as SmithsonianSearchOptions | undefined
       setIfNonNegativeInt(url, 'start', opts?.start)
-      setIfNonNegativeInt(url, 'rows', opts?.rows, 1000)
+      setIfNonNegativeInt(url, 'rows', opts?.rows, { max: 1000, clamp: true })
       setIfString(url, 'sort', opts?.sort, ['id', 'newest', 'updated', 'random'])
       setIfString(url, 'type', opts?.type, ['edanmdm', 'ead_collection', 'ead_component', 'all'])
       setIfString(url, 'row_group', opts?.rowGroup, ['objects', 'archives'])
