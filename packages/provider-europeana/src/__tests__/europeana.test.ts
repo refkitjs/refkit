@@ -154,3 +154,36 @@ describe('europeana toReference', () => {
     expect(refs[0].preview?.mediaType).toBe('image/png')
   })
 })
+
+describe('europeana search request', () => {
+  it('sets wskey, query, rows, and the image/media filters', async () => {
+    let url = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        url = String(input)
+        return new Response(JSON.stringify({ success: true, items: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await europeana({ apiKey: 'my-key' }).search({ text: 'tulips', modalities: ['image'], limit: 7 }, ctx)
+    const u = new URL(url)
+    expect(u.searchParams.get('wskey')).toBe('my-key')
+    expect(u.searchParams.get('query')).toBe('tulips')
+    expect(u.searchParams.get('rows')).toBe('7')
+    expect(u.searchParams.get('media')).toBe('true')
+    expect(u.searchParams.get('qf')).toBe('TYPE:IMAGE')
+  })
+
+  it('returns [] when the API yields no items', async () => {
+    const ctx: ProviderContext = {
+      fetch: (async () => new Response(JSON.stringify({ success: true, items: [] }), { status: 200 })) as typeof fetch,
+    }
+    expect(await europeana({ apiKey: 'k' }).search({ text: 'zzz', modalities: ['image'] }, ctx)).toEqual([])
+  })
+
+  it('throws on a non-ok HTTP status', async () => {
+    const ctx: ProviderContext = {
+      fetch: (async () => new Response('forbidden', { status: 401 })) as typeof fetch,
+    }
+    await expect(europeana({ apiKey: 'bad' }).search({ text: 'x', modalities: ['image'] }, ctx)).rejects.toThrow(/europeana search failed: 401/)
+  })
+})
