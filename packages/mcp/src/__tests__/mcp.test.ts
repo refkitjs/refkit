@@ -227,7 +227,7 @@ describe('@refkit/mcp', () => {
 describe('defaultProviders (zero-config CLI wiring)', () => {
   it('includes every keyless provider by default', () => {
     const ids = defaultProviders({}).map(p => p.id)
-    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb']) {
+    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive']) {
       expect(ids).toContain(id)
     }
   })
@@ -235,5 +235,20 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
   it('adds a BYOK provider only when its env key is present', () => {
     expect(defaultProviders({}).map(p => p.id)).not.toContain('unsplash')
     expect(defaultProviders({ UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  })
+
+  it('adds freesound only when FREESOUND_TOKEN is present', () => {
+    expect(defaultProviders({}).map(p => p.id)).not.toContain('freesound')
+    expect(defaultProviders({ FREESOUND_TOKEN: 'k' }).map(p => p.id)).toContain('freesound')
+  })
+
+  it('adds jamendo only when JAMENDO_CLIENT_ID is present', () => {
+    expect(defaultProviders({}).map(p => p.id)).not.toContain('jamendo')
+    expect(defaultProviders({ JAMENDO_CLIENT_ID: 'k' }).map(p => p.id)).toContain('jamendo')
+  })
+
+  it('adds europeana only when EUROPEANA_KEY is present', () => {
+    expect(defaultProviders({}).map(p => p.id)).not.toContain('europeana')
+    expect(defaultProviders({ EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
   })
 })

@@ -65,12 +65,24 @@ importers:
       '@refkit/provider-brave':
         specifier: workspace:*
         version: link:../provider-brave
+      '@refkit/provider-europeana':
+        specifier: workspace:*
+        version: link:../provider-europeana
       '@refkit/provider-flickr':
         specifier: workspace:*
         version: link:../provider-flickr
+      '@refkit/provider-freesound':
+        specifier: workspace:*
+        version: link:../provider-freesound
       '@refkit/provider-gutendex':
         specifier: workspace:*
         version: link:../provider-gutendex
+      '@refkit/provider-internet-archive':
+        specifier: workspace:*
+        version: link:../provider-internet-archive
+      '@refkit/provider-jamendo':
+        specifier: workspace:*
+        version: link:../provider-jamendo
       '@refkit/provider-met':
         specifier: workspace:*
         version: link:../provider-met
@@ -86,6 +98,12 @@ importers:
       '@refkit/provider-poetrydb':
         specifier: workspace:*
         version: link:../provider-poetrydb
+      '@refkit/provider-polyhaven':
+        specifier: workspace:*
+        version: link:../provider-polyhaven
+      '@refkit/provider-rijksmuseum':
+        specifier: workspace:*
+        version: link:../provider-rijksmuseum
       '@refkit/provider-smithsonian':
         specifier: workspace:*
         version: link:../provider-smithsonian
