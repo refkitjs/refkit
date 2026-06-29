@@ -75,7 +75,7 @@ export function first<T>(arr: T[] | undefined | null): T | undefined {
  *  absent/unrecognized → unknown. **CC deeds only** — rightsstatements.org is handled by
  *  `mapRightsUrl`. Match is on the path so http/https both work. */
 export function mapCcDeedUrl(url: string | undefined | null): { license: LicenseId; version?: string } {
-  if (!url) return { license: 'unknown' }
+  if (typeof url !== 'string' || !url) return { license: 'unknown' }
   const u = url.toLowerCase()
   if (u.includes('creativecommons.org/publicdomain/zero')) return { license: 'CC0-1.0' }
   if (u.includes('creativecommons.org/publicdomain/mark')) return { license: 'PD' }
@@ -115,7 +115,7 @@ const RIGHTS_STATEMENT: Record<string, { license: LicenseId; jurisdiction?: stri
  *  either (europeana `edm:rights`, internet-archive `licenseurl`). CC-only sources should
  *  call `mapCcDeedUrl` directly. Unknown rightsstatements tokens → unknown. */
 export function mapRightsUrl(url: string | undefined | null): { license: LicenseId; version?: string; jurisdiction?: string } {
-  if (!url) return { license: 'unknown' }
+  if (typeof url !== 'string' || !url) return { license: 'unknown' }
   const rs = url.toLowerCase().match(/rightsstatements\.org\/(?:vocab|page)\/([a-z-]+)/)
   if (rs) return RIGHTS_STATEMENT[rs[1]] ?? { license: 'unknown' }
   return mapCcDeedUrl(url)

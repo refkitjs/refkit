@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  setIfString, setIfBoolean, mapCcDeedUrl, isLikelyImageUrl,
+  setIfString, setIfBoolean, mapRightsUrl, isLikelyImageUrl,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -29,9 +29,11 @@ export interface RijksmuseumSearchOptions {
 const SEARCH = 'https://data.rijksmuseum.nl/search/collection'
 const RIJKS_TERMS = 'https://www.rijksmuseum.nl/en/data/policy'
 
-// Rijksmuseum open-access rights are CC deed URLs (effectively CC0/PDM; BY/BY-SA possible).
-// Rijksmuseum does not use rightsstatements.org, so we use the CC-only core `mapCcDeedUrl`
-// (NOT core `mapRightsUrl`, which additionally handles rightsstatements.org).
+// Rijksmuseum open-access rights are usually CC deed URLs (effectively CC0/PDM; BY/BY-SA
+// possible), but `findRightsUrl` also matches rightsstatements.org URIs — so we map via core
+// `mapRightsUrl` (CC deeds + faithful rightsstatements.org). Mapping via the CC-only
+// `mapCcDeedUrl` would collapse a found rightsstatements URI to `unknown`, contradicting the
+// matcher. mapRightsUrl delegates CC deeds to mapCcDeedUrl, so CC handling is identical.
 
 // The Linked-Art graph is deeply nested and varies per record, so we extract by
 // shape, not by fixed index paths (see plan Open Questions).
@@ -134,10 +136,12 @@ function toReference(rec: Record<string, unknown>): Reference | null {
   if (!id) return null
   const img = findImage(rec)
   if (!img) return null // no usable IMAGE url (e.g. only a viewer/collection page) → drop
-  const { license, version } = mapCcDeedUrl(findRightsUrl(rec))
+  const { license, version, jurisdiction } = mapRightsUrl(findRightsUrl(rec))
   const rights: RightsRecord = {
     license,
     licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // jurisdiction-scoped status (e.g. rightsstatements NoC-US → PD in the US)
+    ...(jurisdiction ? { jurisdiction } : {}),
     author: findCreator(rec) || undefined,
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: RIJKS_TERMS, sourceUrl: id },

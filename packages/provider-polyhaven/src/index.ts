@@ -1,5 +1,5 @@
 import {
-  defineProvider, referenceId,
+  defineProvider, referenceId, imageMediaType,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -71,8 +71,8 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string): Refer
     verifiedAt: new Date().toISOString(),
     ...(asset.thumbnail_url ? { thumbnail: { url: asset.thumbnail_url } } : {}),
     // textureImageUrl may resolve a .png fallback — derive the MIME from the extension
-    // rather than hardcoding jpeg (mislabeling a PNG as JPEG).
-    preview: { url: imageUrl, mediaType: imageUrl.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg' },
+    // (core imageMediaType) rather than hardcoding jpeg (mislabeling a PNG as JPEG).
+    preview: { url: imageUrl, mediaType: imageMediaType(undefined, imageUrl) },
     relevance: 0,
     raw: asset,
   }

@@ -169,6 +169,40 @@ describe('rijksmuseum provider', () => {
     expect(refs[0].preview?.mediaType).toBe('image/jpeg')
   })
 
+  it('maps a found rightsstatements.org URI faithfully (InC→proprietary, NoC-US→PD+US)', async () => {
+    // findRightsUrl matches rightsstatements.org; mapping must honor it, not collapse to unknown.
+    const REC_INC = {
+      id: 'https://id.rijksmuseum.nl/200100333',
+      type: 'HumanMadeObject',
+      identified_by: [{ type: 'Name', content: 'In Copyright' }],
+      subject_to: [{ type: 'Right', classified_as: [{ id: 'http://rightsstatements.org/vocab/InC/1.0/' }] }],
+      subject_of: [{ type: 'VisualItem', digitally_carried_by: [{ type: 'DigitalObject', format: 'image/jpeg', access_point: [{ id: 'https://iiif.example.org/inc/full/full/0/default.jpg' }] }] }],
+    }
+    const REC_NOC_US = {
+      id: 'https://id.rijksmuseum.nl/200100222',
+      type: 'HumanMadeObject',
+      identified_by: [{ type: 'Name', content: 'No Copyright US' }],
+      subject_to: [{ type: 'Right', classified_as: [{ id: 'http://rightsstatements.org/vocab/NoC-US/1.0/' }] }],
+      subject_of: [{ type: 'VisualItem', digitally_carried_by: [{ type: 'DigitalObject', format: 'image/jpeg', access_point: [{ id: 'https://iiif.example.org/noc/full/full/0/default.jpg' }] }] }],
+    }
+    const TWO = {
+      type: 'OrderedCollectionPage',
+      orderedItems: [
+        { id: 'https://id.rijksmuseum.nl/200100333', type: 'HumanMadeObject' },
+        { id: 'https://id.rijksmuseum.nl/200100222', type: 'HumanMadeObject' },
+      ],
+    }
+    const refs = await rijksmuseum().search(
+      { text: 'x', modalities: ['image'] },
+      ctxRouting(TWO, { '200100333': REC_INC, '200100222': REC_NOC_US }),
+    )
+    const inc = refs.find(r => r.title === 'In Copyright')!
+    expect(inc.rights.license).toBe('proprietary')
+    const nocUs = refs.find(r => r.title === 'No Copyright US')!
+    expect(nocUs.rights.license).toBe('PD')
+    expect(nocUs.rights.jurisdiction).toBe('US')
+  })
+
   it('forwards the keyword and documented search options + caps the page size to the limit', async () => {
     let searchUrl = ''
     await rijksmuseum().search(

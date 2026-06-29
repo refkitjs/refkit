@@ -31,9 +31,9 @@ export function mediatypeToModality(mt: string): Modality | null {
 
 interface IaDoc {
   identifier: string
-  title?: string
+  title?: string | string[]
   creator?: string | string[]
-  licenseurl?: string
+  licenseurl?: string | string[]
   mediatype: string
 }
 interface IaResponse { response?: { numFound: number; docs: IaDoc[] } }
@@ -50,7 +50,10 @@ export function toReference(doc: IaDoc): Reference | null {
   const modality = mediatypeToModality(doc.mediatype)
   if (!modality) return null
   const canonicalUrl = `https://archive.org/details/${doc.identifier}`
-  const { license, version, jurisdiction } = mapIaLicense(doc.licenseurl)
+  // Solr fields can arrive as scalars OR arrays — coerce to the first scalar before mapping.
+  const licenseurl = Array.isArray(doc.licenseurl) ? doc.licenseurl[0] : doc.licenseurl
+  const title = Array.isArray(doc.title) ? doc.title[0] : doc.title
+  const { license, version, jurisdiction } = mapIaLicense(licenseurl)
   const rights: RightsRecord = {
     license,
     licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
@@ -63,7 +66,7 @@ export function toReference(doc: IaDoc): Reference | null {
   return {
     id: referenceId('internet-archive', canonicalUrl),
     modality,
-    title: doc.title || undefined,
+    title: title || undefined,
     source: { providerId: 'internet-archive', sourceUrl: canonicalUrl },
     canonicalUrl,
     rights,

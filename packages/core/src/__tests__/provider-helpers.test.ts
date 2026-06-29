@@ -85,6 +85,9 @@ describe('mapCcDeedUrl', () => {
     expect(mapCcDeedUrl(undefined)).toEqual({ license: 'unknown' })
     expect(mapCcDeedUrl('https://example.org/x')).toEqual({ license: 'unknown' })
   })
+  it('never throws on a non-string input (array/number) → unknown', () => {
+    expect(mapCcDeedUrl(['x'] as any)).toEqual({ license: 'unknown' })
+  })
 })
 
 describe('mapRightsUrl (CC deeds + faithful rightsstatements.org)', () => {
@@ -105,6 +108,9 @@ describe('mapRightsUrl (CC deeds + faithful rightsstatements.org)', () => {
     expect(mapRightsUrl('http://rightsstatements.org/vocab/UND/1.0/')).toEqual({ license: 'unknown' })
     expect(mapRightsUrl('http://rightsstatements.org/vocab/NKC/1.0/')).toEqual({ license: 'unknown' })
     expect(mapRightsUrl(undefined)).toEqual({ license: 'unknown' })
+  })
+  it('never throws on a non-string input (number) → unknown', () => {
+    expect(mapRightsUrl(123 as any)).toEqual({ license: 'unknown' })
   })
 })
 

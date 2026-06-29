@@ -95,6 +95,20 @@ describe('jamendo provider', () => {
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('needs-review')
   })
 
+  const TRACK_NO_SHAREURL = {
+    ...TRACK_BY,
+    id: '4000003',
+    name: 'No Share URL',
+    shareurl: '',
+  }
+
+  it('drops a track with no shareurl without crashing the batch; keeps the valid one', async () => {
+    const { ctx } = ctxCapturing(envelope([TRACK_NO_SHAREURL, TRACK_BY]))
+    const refs = await jamendo({ clientId: 'cid' }).search({ text: 'x', modalities: ['audio'] }, ctx)
+    expect(refs).toHaveLength(1)
+    expect(refs[0].canonicalUrl).toBe('https://www.jamendo.com/track/1848357')
+  })
+
   it('forwards client_id, search, limit, format and documented options', async () => {
     const { ctx, url } = ctxCapturing(envelope([]))
     await jamendo({ clientId: 'my-client-id' }).search({

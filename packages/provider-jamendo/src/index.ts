@@ -55,7 +55,8 @@ interface JamendoResponse {
 // the provider's tests import.
 export const mapJamendoLicense = mapCcDeedUrl
 
-function toAudioReference(t: JamendoTrack, mediaType: string): Reference {
+function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null {
+  if (!t.shareurl) return null // no canonical URL → unusable; drop rather than crash the batch
   const { license, version } = mapJamendoLicense(t.license_ccurl)
   const canonicalUrl = t.shareurl
   const rights: RightsRecord = {
@@ -111,7 +112,9 @@ export function jamendo(config: JamendoConfig) {
       const json = (await res.json()) as JamendoResponse
       if (json.headers?.status !== 'success') throw new Error(`jamendo search error: ${json.headers?.error_message || json.headers?.status}`)
       const mediaType = JAMENDO_AUDIO_MIME[opts?.audioformat ?? 'mp31'] ?? 'audio/mpeg'
-      return (json.results ?? []).map((t) => toAudioReference(t, mediaType))
+      return (json.results ?? [])
+        .map((t) => toAudioReference(t, mediaType))
+        .filter((x): x is Reference => x !== null)
     },
   })
 }

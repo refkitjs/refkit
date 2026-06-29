@@ -74,6 +74,12 @@ const DOCS = [
     title: 'A Collection',
     mediatype: 'collection',
   },
+  { // array-valued Solr fields (title/licenseurl arrive as arrays) — must coerce, not crash
+    identifier: 'arr_doc',
+    title: ['Arr Title'],
+    licenseurl: ['https://creativecommons.org/licenses/by/4.0/'],
+    mediatype: 'movies',
+  },
 ]
 
 const ctxResponding = (body: unknown, onUrl?: (u: string) => void): ProviderContext => ({
@@ -129,7 +135,18 @@ describe('internetArchive search', () => {
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
     expect(refs.map(r => r.canonicalUrl)).not.toContain('https://archive.org/details/some_collection')
-    expect(refs).toHaveLength(3) // bunny + clip + alice
+    expect(refs).toHaveLength(4) // bunny + clip + alice + arr_doc
+  })
+
+  it('coerces array-valued title/licenseurl Solr fields to scalars (no crash)', async () => {
+    const refs = await internetArchive().search(
+      { text: 'arr', modalities: ['video', 'text'] },
+      ctxResponding({ response: { numFound: 5, docs: DOCS } }),
+    )
+    const arr = refs.find(r => r.canonicalUrl === 'https://archive.org/details/arr_doc')!
+    expect(arr).toBeDefined()
+    expect(arr.title).toBe('Arr Title')
+    expect(arr.rights.license).toBe('CC-BY')
   })
 
   it('forwards query and rows to advancedsearch', async () => {

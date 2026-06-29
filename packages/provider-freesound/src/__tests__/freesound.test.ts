@@ -54,6 +54,22 @@ describe('freesound provider', () => {
     expect(evaluateUse(unk.rights, 'commercial-product').decision).toBe('needs-review')
   })
 
+  it('drops a result with no url without crashing the batch; keeps the valid one', async () => {
+    const MIXED = {
+      count: 2, next: null, previous: null,
+      results: [
+        { id: 10, name: 'No URL', license: 'Attribution', username: 'eve',
+          previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/10/10_hq.mp3' } }, // url missing
+        { id: 11, name: 'Good one', license: 'Creative Commons 0', username: 'frank',
+          url: 'https://freesound.org/people/frank/sounds/11/',
+          previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/11/11_hq.mp3' } },
+      ],
+    }
+    const refs = await freesound({ apiKey: 'k' }).search({ text: 'x', modalities: ['audio'] }, ctxJson(MIXED))
+    expect(refs).toHaveLength(1)
+    expect(refs[0].canonicalUrl).toBe('https://freesound.org/people/frank/sounds/11/')
+  })
+
   it('forwards query, token, and fields; respects limit', async () => {
     let url = ''
     await freesound({ apiKey: 'secret' }).search(

@@ -63,7 +63,8 @@ interface FreesoundResult {
 }
 interface FreesoundResponse { count: number; results: FreesoundResult[] }
 
-function toAudioReference(r: FreesoundResult): Reference {
+function toAudioReference(r: FreesoundResult): Reference | null {
+  if (!r.url) return null // no canonical URL → unusable; drop rather than crash the batch
   const { license, version } = mapFreesoundLicense(r.license)
   const canonicalUrl = r.url
   const rights: RightsRecord = {
@@ -109,7 +110,7 @@ export function freesound(config: FreesoundConfig) {
       if (!res.ok) throw new Error(`freesound search failed: ${res.status}`)
       const json = (await res.json()) as FreesoundResponse
       if (!json.results) return []
-      return json.results.map(toAudioReference)
+      return json.results.map(toAudioReference).filter((x): x is Reference => x !== null)
     },
   })
 }
