@@ -290,6 +290,31 @@ describe('createRefkit', () => {
     }
   })
 
+  it('a well-behaved provider that rejects on ctx.signal abort observes the timeout and is reported failed', async () => {
+    vi.useFakeTimers()
+    try {
+      let observedAbort = false
+      const wellBehaved = defineProvider({
+        id: 'wb', modalities: ['image'], queryFeatures: ['keyword'],
+        search: (_q, ctx) => new Promise<Reference[]>((_resolve, reject) => {
+          ctx.signal?.addEventListener('abort', () => {
+            observedAbort = true
+            reject(ctx.signal?.reason ?? new Error('aborted'))
+          })
+        }),
+      })
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), wellBehaved] })
+      const p = rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const out = await p
+      expect(observedAbort).toBe(true)
+      const wbStatus = out.meta.providers.find(s => s.providerId === 'wb')
+      expect(wbStatus?.status).toBe('failed')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('resilience: false disables the timeout entirely', async () => {
     vi.useFakeTimers()
     try {
@@ -414,6 +439,27 @@ describe('createRefkit', () => {
     expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
     expect(out.references).toHaveLength(0)
     expect(out.meta.gate).toMatchObject({ intent: 'commercial-product', before: 1, after: 0, dropped: 1 })
+  })
+
+  it('a never-resolving cache.get does not hang the search — deadline-bounded cache read falls back to live results', async () => {
+    vi.useFakeTimers()
+    try {
+      const hangingCache = {
+        get: () => new Promise<string | undefined>(() => {}), // never resolves
+        set: async () => {},
+      }
+      const rk = createRefkit({
+        providers: [provider('a', [ref('a-1', 'https://a/1')])],
+        cache: hangingCache,
+        resilience: { timeoutMs: 100 },
+      })
+      const p = rk.search({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(100)
+      const out = await p
+      expect(out).toHaveLength(1) // live results, not a hang
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('providerOptions key order does not change the cache key', async () => {

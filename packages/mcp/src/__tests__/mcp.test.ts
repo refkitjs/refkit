@@ -212,12 +212,12 @@ describe('@refkit/mcp', () => {
     })
     const structured = res.structuredContent as {
       references: Array<{ useExplanation?: string }>
-      meta?: { providers: Array<{ providerId: string; status: string; error?: string }>; warnings: string[] }
+      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number }>; warnings: string[] }
     }
     expect(structured.references[0].useExplanation).toContain('allowed-with-attribution')
     expect(structured.meta?.providers).toEqual([
-      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0 },
-      { providerId: 'bad', status: 'failed', error: 'offline' },
+      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number) },
+      { providerId: 'bad', status: 'failed', error: 'offline', latencyMs: expect.any(Number) },
     ])
     expect(structured.meta?.warnings).toContain('1 provider(s) failed; returning partial results.')
     await client.close()

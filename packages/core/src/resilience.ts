@@ -44,7 +44,7 @@ export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number):
 export interface RetryOptions {
   /** Extra attempts after the first. The orchestrator passes its own default (H8: 1). */
   retries: number
-  /** Base backoff delay; grows 2^attempt with full jitter. Default 250. */
+  /** Base backoff delay; grows 2^attempt with equal jitter. Default 250. */
   baseDelayMs?: number
 }
 
@@ -80,7 +80,7 @@ export function retryingFetch(fetchImpl: typeof fetch, opts: RetryOptions): type
       }
       // drain the discarded body so undici can reuse the socket during retries
       void discarded?.body?.cancel().catch(() => {})
-      // exponential backoff with full jitter; an abort during the wait cancels the retry
+      // exponential backoff with equal jitter (half fixed + half random); an abort during the wait cancels the retry
       await abortAware(base * 2 ** attempt * (0.5 + Math.random() * 0.5), init?.signal)
     }
   }

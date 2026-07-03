@@ -47,16 +47,20 @@ describe('retryingFetch', () => {
     expect(impl).toHaveBeenCalledTimes(2)
   })
 
-  it('drains (cancels) the body of a discarded retryable response', async () => {
+  it('drains (cancels) the body of a discarded retryable response, never the returned one', async () => {
     const res500 = status(500)
-    expect(res500.body).not.toBeNull() // guard: the spy below must target a real stream
-    const cancelSpy = vi.spyOn(res500.body!, 'cancel')
-    const impl = vi.fn().mockResolvedValueOnce(res500).mockResolvedValueOnce(okResponse())
+    const res200 = okResponse()
+    expect(res500.body).not.toBeNull() // guard: the spies below must target real streams
+    expect(res200.body).not.toBeNull()
+    const cancelSpy500 = vi.spyOn(res500.body!, 'cancel')
+    const cancelSpy200 = vi.spyOn(res200.body!, 'cancel')
+    const impl = vi.fn().mockResolvedValueOnce(res500).mockResolvedValueOnce(res200)
     const f = retryingFetch(impl as unknown as typeof fetch, { retries: 1 })
     const p = f('https://x/')
     await vi.runAllTimersAsync()
     expect((await p).status).toBe(200)
-    expect(cancelSpy).toHaveBeenCalledTimes(1)
+    expect(cancelSpy500).toHaveBeenCalledTimes(1)
+    expect(cancelSpy200).not.toHaveBeenCalled() // never drained on the return path
   })
 
   it('retries 429 and a rejected network error', async () => {
@@ -102,5 +106,21 @@ describe('retryingFetch', () => {
     await vi.runAllTimersAsync()
     await p2
     expect(impl2).toHaveBeenCalledTimes(1) // aborted before/during first backoff — no second attempt
+  })
+
+  it('does not retry a deadline abort even when the rejection is a plain Error (not name AbortError)', async () => {
+    // undici rejects fetch with the abort *reason* when the signal fires — and
+    // withTimeout's reason is a plain `Error('timeout after Nms')` whose name is
+    // 'Error', not 'AbortError'. retryingFetch must still recognize this as an
+    // abort via `init?.signal?.aborted` and not burn a retry on it.
+    const ac = new AbortController()
+    const timeoutErr = new Error('timeout after 100ms')
+    const impl = vi.fn().mockImplementation(() => {
+      ac.abort(timeoutErr)
+      return Promise.reject(timeoutErr)
+    })
+    const f = retryingFetch(impl as unknown as typeof fetch, { retries: 3 })
+    await expect(f('https://x/', { signal: ac.signal })).rejects.toBe(timeoutErr)
+    expect(impl).toHaveBeenCalledTimes(1)
   })
 })

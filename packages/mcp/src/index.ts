@@ -139,6 +139,8 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
     rejected: z.number().optional(),
     reason: z.enum(['unsupported-modality']).optional(),
     error: z.string().optional(),
+    latencyMs: z.number().optional(),
+    cached: z.boolean().optional(),
   })),
   gate: z.object({
     intent: z.enum(INTENTS),

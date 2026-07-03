@@ -102,6 +102,9 @@ export interface KeyValueCache {
 export interface ProviderContext {
   fetch: typeof fetch
   cache?: KeyValueCache
+  /** Forward into fetch init.signal — it carries the orchestrator's per-provider
+   *  deadline; forwarding enables timeout cancellation and prevents burning a
+   *  retry on an aborted request. */
   signal?: AbortSignal
 }
 
