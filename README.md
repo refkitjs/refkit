@@ -34,7 +34,7 @@ const refkit = createRefkit({
     met(),        // keyless
     unsplash({ accessKey: process.env.UNSPLASH_KEY! }), // BYOK
   ],
-  // fetch defaults to globalThis.fetch — inject your own to add caching/retries
+  // fetch defaults to globalThis.fetch — timeouts/retries/caching are built in (see below)
 })
 
 // Fan out, merge (Reciprocal Rank Fusion) + dedup; every result carries rights.
@@ -147,6 +147,21 @@ const refkit = createRefkit({
       (existing.raw as { fingerprint?: string }).fingerprint,
   },
 })
+```
+
+## Resilience & caching
+
+Fan-out is hardened by default: each provider gets a **soft 10s timeout** and **one retry** (429/5xx/network errors, exponential backoff). A slow or hanging source is reported in `meta.providers` as `failed` with `timeout after Nms` — the search still returns everyone else. Tune or disable per client:
+
+```ts
+createRefkit({ providers, resilience: { timeoutMs: 4000, retries: 2 } })
+createRefkit({ providers, resilience: false }) // raw fan-out, no timeout/retry
+```
+
+Pass a `cache` to memoize **per-provider** results (keyed by provider + normalized query, TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`:
+
+```ts
+createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000 })
 ```
 
 ## Providers

@@ -90,6 +90,8 @@ export interface NormalizedQuery {
   limit?: number
 }
 
+/** Implementations SHOULD honor ttlMs — refkit's cached-result freshness is
+ *  bounded by the TTL only when the cache enforces it. */
 export interface KeyValueCache {
   get(key: string): Promise<string | undefined>
   set(key: string, value: string, ttlMs?: number): Promise<void>
@@ -100,6 +102,9 @@ export interface KeyValueCache {
 export interface ProviderContext {
   fetch: typeof fetch
   cache?: KeyValueCache
+  /** Forward into fetch init.signal — it carries the orchestrator's per-provider
+   *  deadline; forwarding enables timeout cancellation and prevents burning a
+   *  retry on an aborted request. */
   signal?: AbortSignal
 }
 

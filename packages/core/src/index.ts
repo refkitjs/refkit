@@ -54,6 +54,7 @@ export { createRefkit } from './client'
 export type {
   RefkitClient,
   RefkitOptions,
+  ResilienceOptions,
   SearchInput,
   SearchResult,
   SearchMeta,
@@ -64,3 +65,5 @@ export type {
 } from './client'
 export { lexicalReranker, tokenize } from './rerank'
 export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'
+export { withTimeout, retryingFetch } from './resilience'
+export type { TimeoutHandle, RetryOptions } from './resilience'

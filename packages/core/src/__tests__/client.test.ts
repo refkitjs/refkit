@@ -88,16 +88,40 @@ describe('createRefkit', () => {
   })
 
   it('defaults fetch to globalThis.fetch when options.fetch is omitted', async () => {
+    // resilience defaults ON (H8), so ctx.fetch is a retrying wrapper rather than
+    // globalThis.fetch itself — assert on the underlying implementation it delegates to.
+    const globalFetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
     let capturedFetch: typeof fetch | undefined
     const capturingProvider = defineProvider({
       id: 'cap',
       modalities: ['image'],
       queryFeatures: ['keyword'],
-      search: async (_q, ctx) => { capturedFetch = ctx.fetch; return [] },
+      search: async (_q, ctx) => { capturedFetch = ctx.fetch; await ctx.fetch('https://cap/x'); return [] },
     })
     const rk = createRefkit({ providers: [capturingProvider] })
     await rk.search({ query: 'x', modalities: ['image'] })
-    expect(capturedFetch).toBe(globalThis.fetch)
+    expect(capturedFetch).not.toBe(globalThis.fetch) // wrapped by retryingFetch
+    expect(globalFetchSpy.mock.calls[0]?.[0]).toBe('https://cap/x')
+    globalFetchSpy.mockRestore()
+  })
+
+  it('resolves globalThis.fetch at search time, not at createRefkit time (late-binding)', async () => {
+    // createRefkit is called BEFORE globalThis.fetch is replaced — a client that
+    // resolved options.fetch ?? globalThis.fetch once at creation time would be
+    // stuck delegating to the pre-replacement implementation forever.
+    let capturedFetch: typeof fetch | undefined
+    const capturingProvider = defineProvider({
+      id: 'cap',
+      modalities: ['image'],
+      queryFeatures: ['keyword'],
+      search: async (_q, ctx) => { capturedFetch = ctx.fetch; await ctx.fetch('https://cap/late'); return [] },
+    })
+    const rk = createRefkit({ providers: [capturingProvider] })
+    const globalFetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(capturedFetch).not.toBe(globalThis.fetch) // still wrapped by retryingFetch
+    expect(globalFetchSpy.mock.calls[0]?.[0]).toBe('https://cap/late') // delegated to the NEW globalThis.fetch
+    globalFetchSpy.mockRestore()
   })
 
   it('throws a clear Error (not AggregateError) when no provider supports the requested modality', async () => {
@@ -215,8 +239,8 @@ describe('createRefkit', () => {
 
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://ok/1'])
     expect(out.meta.providers).toEqual([
-      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0 },
-      { providerId: 'bad', status: 'failed', error: 'boom' },
+      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0, latencyMs: expect.any(Number) },
+      { providerId: 'bad', status: 'failed', error: 'boom', latencyMs: expect.any(Number) },
       { providerId: 'text', status: 'skipped', reason: 'unsupported-modality' },
     ])
     expect(out.meta.gate).toEqual({ intent: 'commercial-product', before: 2, after: 1, dropped: 1 })
@@ -263,5 +287,285 @@ describe('createRefkit', () => {
       appliedByProvider: { controlled: ['orientation', 'color'], plain: [] },
       ignoredByProvider: { controlled: ['safety'], plain: ['orientation', 'color', 'safety'] },
     })
+  })
+
+  it('times out a hanging provider, returns partial results, and reports the timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const hanging = defineProvider({
+        id: 'hang', modalities: ['image'], queryFeatures: ['keyword'],
+        search: () => new Promise(() => {}), // never settles, ignores ctx.signal
+      })
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), hanging] })
+      const p = rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const out = await p
+      expect(out.references).toHaveLength(1)
+      const hangStatus = out.meta.providers.find(s => s.providerId === 'hang')
+      expect(hangStatus?.status).toBe('failed')
+      expect(hangStatus?.error).toContain('timeout after 10000ms')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a well-behaved provider that rejects on ctx.signal abort observes the timeout and is reported failed', async () => {
+    vi.useFakeTimers()
+    try {
+      let observedAbort = false
+      const wellBehaved = defineProvider({
+        id: 'wb', modalities: ['image'], queryFeatures: ['keyword'],
+        search: (_q, ctx) => new Promise<Reference[]>((_resolve, reject) => {
+          ctx.signal?.addEventListener('abort', () => {
+            observedAbort = true
+            reject(ctx.signal?.reason ?? new Error('aborted'))
+          })
+        }),
+      })
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), wellBehaved] })
+      const p = rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(10_000)
+      const out = await p
+      expect(observedAbort).toBe(true)
+      const wbStatus = out.meta.providers.find(s => s.providerId === 'wb')
+      expect(wbStatus?.status).toBe('failed')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('resilience: false disables the timeout entirely', async () => {
+    vi.useFakeTimers()
+    try {
+      let done = false
+      const slow = defineProvider({
+        id: 'slow', modalities: ['image'], queryFeatures: ['keyword'],
+        search: () => new Promise(resolve => setTimeout(() => { done = true; resolve([ref('slow-1', 'https://s/1')]) }, 60_000)),
+      })
+      const rk = createRefkit({ providers: [slow], resilience: false })
+      const p = rk.search({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(await p).toHaveLength(1)
+      expect(done).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a user abort of input.signal fast-fails a provider that ignores ctx.signal, instead of waiting for the deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const ac = new AbortController()
+      const ignoresSignal = defineProvider({
+        id: 'ignorer', modalities: ['image'], queryFeatures: ['keyword'],
+        search: () => new Promise(() => {}), // never settles, never looks at ctx.signal
+      })
+      const rk = createRefkit({ providers: [ignoresSignal] })
+      const p = rk.search({ query: 'x', modalities: ['image'], signal: ac.signal }).catch(e => e)
+      ac.abort(new Error('user cancelled'))
+      // advance only a small amount — far less than the 10s default deadline —
+      // the search must already have settled from the parent abort, not the timer
+      await vi.advanceTimersByTimeAsync(50)
+      const result = await p
+      expect(result).toBeInstanceOf(AggregateError) // all providers failed → AggregateError
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives providers a retrying ctx.fetch: a 500-then-200 upstream succeeds transparently', async () => {
+    const upstream = vi.fn()
+      .mockResolvedValueOnce(new Response('x', { status: 500 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }))
+    const usesFetch = defineProvider({
+      id: 'net', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async (_q, ctx) => {
+        const res = await ctx.fetch('https://net/api', { signal: ctx.signal })
+        if (!res.ok) throw new Error(`net failed: ${res.status}`)
+        return [ref('net-1', 'https://net/1')]
+      },
+    })
+    const rk = createRefkit({ providers: [usesFetch], fetch: upstream as unknown as typeof fetch, resilience: { retries: 1, timeoutMs: 10_000 } })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out).toHaveLength(1)
+    expect(upstream).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports latencyMs on fulfilled and failed providers, not on skipped', async () => {
+    const textOnly = defineProvider({ id: 'text', modalities: ['text'], queryFeatures: [], search: async () => [] })
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), failing('bad'), textOnly] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    const byId = Object.fromEntries(out.meta.providers.map(s => [s.providerId, s]))
+    expect(byId.a.latencyMs).toEqual(expect.any(Number))
+    expect(byId.bad.latencyMs).toEqual(expect.any(Number))
+    expect(byId.text.latencyMs).toBeUndefined()
+  })
+
+  const mapCache = () => {
+    const m = new Map<string, string>()
+    return {
+      store: m,
+      ttls: [] as (number | undefined)[],
+      async get(k: string) { return m.get(k) },
+      async set(k: string, v: string, ttlMs?: number) { m.set(k, v); this.ttls.push(ttlMs) },
+    }
+  }
+
+  it('serves a repeat query from the cache without re-hitting the provider', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    expect(calls).toBe(1)
+    expect(out.references).toHaveLength(1)
+    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(cache.ttls).toEqual([300_000]) // default cacheTtlMs, one set for the first (live) search
+  })
+
+  it('different queries use different cache keys', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    await rk.search({ query: 'y', modalities: ['image'] })
+    expect(calls).toBe(2)
+  })
+
+  it('a corrupt or invalid cache entry falls back to a live fetch', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    for (const k of cache.store.keys()) cache.store.set(k, '{not json')
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(calls).toBe(2)
+  })
+
+  it('cache errors are non-fatal: a throwing cache degrades to live search', async () => {
+    const broken = {
+      async get(): Promise<string | undefined> { throw new Error('cache down') },
+      async set(): Promise<void> { throw new Error('cache down') },
+    }
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache: broken })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out).toHaveLength(1)
+  })
+
+  it('honors a custom cacheTtlMs', async () => {
+    const cache = mapCache()
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache, cacheTtlMs: 1234 })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(cache.ttls).toEqual([1234])
+  })
+
+  it('a cache hit still flows through the license gate (hits are pre-merge; the gate stays live)', async () => {
+    const cache = mapCache()
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1', 'proprietary')])], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
+    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(out.references).toHaveLength(0)
+    expect(out.meta.gate).toMatchObject({ intent: 'commercial-product', before: 1, after: 0, dropped: 1 })
+  })
+
+  it('a never-resolving cache.get does not hang the search — deadline-bounded cache read falls back to live results', async () => {
+    vi.useFakeTimers()
+    try {
+      const hangingCache = {
+        get: () => new Promise<string | undefined>(() => {}), // never resolves
+        set: async () => {},
+      }
+      const rk = createRefkit({
+        providers: [provider('a', [ref('a-1', 'https://a/1')])],
+        cache: hangingCache,
+        resilience: { timeoutMs: 100 },
+      })
+      const p = rk.search({ query: 'x', modalities: ['image'] })
+      await vi.advanceTimersByTimeAsync(100)
+      const out = await p
+      expect(out).toHaveLength(1) // live results, not a hang
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('providerOptions key order does not change the cache key', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { b: 2, a: 1 } } })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: 2 } } })
+    expect(calls).toBe(1) // second search is a cache hit despite the different key order
+  })
+
+  it('a cache hit cancels its timeout handle — no leaked timers/listeners across repeated hits', async () => {
+    vi.useFakeTimers()
+    try {
+      const cache = mapCache()
+      const counted = defineProvider({
+        id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+        search: async () => [ref('c-1', 'https://c/1')],
+      })
+      const rk = createRefkit({ providers: [counted], cache })
+      await rk.search({ query: 'x', modalities: ['image'] }) // live search, populates cache
+      expect(vi.getTimerCount()).toBe(0)
+      for (let i = 0; i < 5; i++) {
+        await rk.search({ query: 'x', modalities: ['image'] }) // cache hit
+        expect(vi.getTimerCount()).toBe(0) // timeout handle must be cancelled on every exit path
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a cache entry with one malformed item validates per-item (matches the live path): good kept, bad reported+rejected', async () => {
+    const cache = mapCache()
+    const onProviderError = vi.fn()
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => [ref('c-1', 'https://c/1')],
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] }) // live search, populates cache
+    // seed the cache entry with 1 valid + 1 malformed item
+    for (const k of cache.store.keys()) {
+      const valid = JSON.parse(cache.store.get(k)!)
+      cache.store.set(k, JSON.stringify([...valid, { id: '', modality: 'image' }]))
+    }
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], onProviderError })
+    expect(out.references.map(r => r.id)).toEqual(['c-1'])
+    expect(out.meta.providers[0]).toMatchObject({ cached: true, returned: 2, accepted: 1, rejected: 1 })
+    expect(onProviderError).toHaveBeenCalledTimes(1)
+    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'c' }))
+  })
+
+  it('stableStringify cache keys treat undefined-valued keys the same as absent keys', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: undefined } } })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1 } } })
+    expect(calls).toBe(1) // second search hits the same cache entry as the first
   })
 })

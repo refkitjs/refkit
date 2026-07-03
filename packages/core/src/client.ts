@@ -17,6 +17,15 @@ import type {
 } from './provider'
 import { mergeReferences, type MergeOptions } from './merge'
 import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
+import { retryingFetch, withTimeout } from './resilience'
+import { fnv1a } from './hash'
+
+export interface ResilienceOptions {
+  /** Soft deadline per provider search. Default 10_000. */
+  timeoutMs?: number
+  /** Extra fetch attempts on 429/5xx/network-error. Default 1. */
+  retries?: number
+}
 
 export interface RefkitOptions {
   providers: ReferenceProvider[]
@@ -24,6 +33,10 @@ export interface RefkitOptions {
   cache?: KeyValueCache
   signal?: AbortSignal
   merge?: MergeOptions
+  /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
+  resilience?: ResilienceOptions | false
+  /** TTL for per-provider cached results; used only when `cache` is set. Default 300_000. */
+  cacheTtlMs?: number
 }
 
 export interface ProviderError {
@@ -39,6 +52,8 @@ export interface ProviderSearchStatus {
   rejected?: number
   reason?: 'unsupported-modality'
   error?: string
+  latencyMs?: number
+  cached?: boolean
 }
 
 export interface SearchGateMeta {
@@ -105,11 +120,27 @@ export interface RefkitClient {
 const DEFAULT_LIMIT = 30
 const DEFAULT_POOL_FACTOR = 4
 const MAX_POOL_LIMIT = 100 // never ask a single source for more than this, even at high limits
+const DEFAULT_TIMEOUT_MS = 10_000
+const DEFAULT_RETRIES = 1
+const DEFAULT_CACHE_TTL_MS = 300_000
 
 function errorSummary(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'unknown error'
+}
+
+// Deterministic JSON for cache keys: object keys sorted recursively, so a
+// caller's providerOptions key order can't split otherwise-identical keys.
+// Keys whose value is `undefined` are skipped, matching JSON.stringify's own
+// object semantics — `{ a: 1, b: undefined }` and `{ a: 1 }` must key alike.
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>
+    return `{${Object.keys(rec).filter(k => rec[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
 }
 
 export function createRefkit(options: RefkitOptions): RefkitClient {
@@ -122,12 +153,6 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     if (typeof doFetch !== 'function') {
       throw new Error('createRefkit: no fetch available — pass options.fetch')
     }
-    const ctx: ProviderContext = {
-      fetch: doFetch,
-      cache: options.cache,
-      signal: input.signal ?? options.signal,
-    }
-
     const chosen = options.providers.filter(p => p.modalities.some(m => input.modalities.includes(m)))
     if (chosen.length === 0) {
       throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`)
@@ -148,55 +173,124 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     for (const p of options.providers) {
       if (!chosen.includes(p)) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' })
     }
-    const settled = await Promise.allSettled(
-      chosen.map(p =>
-        p.search(
-          normalizeQuery({
-            query: input.query,
-            modalities: input.modalities,
-            filters: input.filters,
-            controls: input.controls,
-            providerOptions: input.providerOptions,
-            limit: fetchLimit,
-          }, p),
-          ctx,
-        ),
-      ),
-    )
+    const resilience = options.resilience === false ? undefined : {
+      timeoutMs: options.resilience?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      retries: options.resilience?.retries ?? DEFAULT_RETRIES,
+    }
+    // Built once per search (doFetch/retries are fixed for the whole call) and
+    // shared across every provider in the fan-out below, instead of allocating
+    // a fresh wrapper per provider.
+    const sharedFetch = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
+
+    type ProviderRun =
+      | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
+      | { ok: false; error: unknown; latencyMs: number }
+
+    const runProvider = async (p: ReferenceProvider): Promise<ProviderRun> => {
+      const started = Date.now()
+      const timeout = resilience ? withTimeout(input.signal ?? options.signal, resilience.timeoutMs) : undefined
+      const ctx: ProviderContext = {
+        fetch: sharedFetch,
+        cache: options.cache,
+        signal: timeout?.signal ?? input.signal ?? options.signal,
+      }
+      const query = normalizeQuery({
+        query: input.query,
+        modalities: input.modalities,
+        filters: input.filters,
+        controls: input.controls,
+        providerOptions: input.providerOptions,
+        limit: fetchLimit,
+      }, p)
+      const cacheKey = options.cache
+        ? `refkit:v1:${p.id}:${fnv1a(stableStringify(query))}`
+        : undefined
+      // Race a promise against the deadline without leaking an unhandled rejection
+      // for whichever side loses the race.
+      const raceDeadline = <T>(p: Promise<T>): Promise<T> => {
+        p.catch(() => {})
+        return timeout ? Promise.race([p, timeout.expired]) : p
+      }
+      // Parse raw provider items one at a time — a single bad item must not
+      // discard the rest (shared by the cache-hit and live-search paths).
+      const parseItems = (raw: unknown[]): Reference[] => {
+        const valid: Reference[] = []
+        for (const item of raw) {
+          try {
+            valid.push(parseReference(item))
+          } catch (error) {
+            input.onProviderError?.({ providerId: p.id, error })
+          }
+        }
+        return valid
+      }
+      try {
+        if (options.cache && cacheKey) {
+          // best-effort: a broken/corrupt/stale cache degrades to a live search
+          const pending = options.cache.get(cacheKey)
+          // A slow cache read must not outlive the provider deadline: at expiry it
+          // degrades to a miss, and the live search below then fails fast on the
+          // same (already-expired) deadline.
+          const hit = await (timeout
+            ? Promise.race([pending, timeout.expired.catch(() => undefined)])
+            : pending
+          ).catch(() => undefined)
+          pending.catch(() => {}) // raced-past rejection must not go unhandled
+          if (hit !== undefined) {
+            try {
+              // cached refs keep their original verifiedAt — staleness is bounded
+              // by the TTL when the cache honors ttlMs. Only a whole-payload
+              // failure (not JSON, not an array) falls through to live; a single
+              // bad item within an otherwise-valid array is reported and dropped,
+              // same as the live path.
+              const raw = JSON.parse(hit) as unknown[]
+              if (!Array.isArray(raw)) throw new Error('cached payload is not an array')
+              const valid = parseItems(raw)
+              return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started, cached: true }
+            } catch { /* fall through to live */ }
+          }
+        }
+        const searching = p.search(query, ctx)
+        const raw = await raceDeadline(searching)
+        const valid = parseItems(raw)
+        if (options.cache && cacheKey) {
+          // fire-and-forget: cache write failure must never fail the search
+          void options.cache.set(cacheKey, JSON.stringify(valid), options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS).catch(() => {})
+        }
+        return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
+      } catch (error) {
+        input.onProviderError?.({ providerId: p.id, error })
+        return { ok: false, error, latencyMs: Date.now() - started }
+      } finally {
+        timeout?.cancel()
+      }
+    }
+
+    const runs = await Promise.all(chosen.map(runProvider))
 
     const perSource: Reference[][] = []
     let anyOk = false
-    settled.forEach((res, i) => {
+    runs.forEach((run, i) => {
       const provider = chosen[i]
-      if (res.status === 'fulfilled') {
+      if (run.ok) {
         anyOk = true
-        const valid: Reference[] = []
-        for (const raw of res.value) {
-          try {
-            valid.push(parseReference(raw))
-          } catch (error) {
-            input.onProviderError?.({ providerId: provider.id, error })
-          }
-        }
         statusByProvider.set(provider.id, {
           providerId: provider.id,
           status: 'fulfilled',
-          returned: res.value.length,
-          accepted: valid.length,
-          rejected: res.value.length - valid.length,
+          returned: run.returned,
+          accepted: run.valid.length,
+          rejected: run.returned - run.valid.length,
+          latencyMs: run.latencyMs,
+          ...(run.cached ? { cached: true } : {}),
         })
-        perSource.push(valid)
+        perSource.push(run.valid)
       } else {
-        input.onProviderError?.({ providerId: provider.id, error: res.reason })
-        statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(res.reason) })
+        statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
       }
     })
 
     if (!anyOk) {
-      const reasons = settled
-        .filter((s): s is PromiseRejectedResult => s.status === 'rejected')
-        .map(s => s.reason)
-      throw new AggregateError(reasons, 'refkit.search: all providers failed')
+      throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
     }
 
     let refs = mergeReferences(perSource, options.merge)
