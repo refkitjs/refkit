@@ -1,6 +1,7 @@
 import {
   defineProvider, referenceId,
   setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
+  CC_FAMILY_BY_TOKEN, ccVersionFor,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -26,20 +27,24 @@ export interface WikimediaCommonsSearchOptions {
   iiextmetadatafilter?: string | readonly string[]
 }
 
-// Map a Wikimedia Commons extmetadata `License` code (e.g. "cc-by-sa-4.0", "cc0",
-// "pd-old") to our LicenseId + CC version. NC/ND variants → 'proprietary'; anything
-// unrecognized — including non-free / fair-use files — → 'unknown' (strict-deny →
-// needs-review), so we never present unclear-rights media as reusable.
+// Map a Wikimedia Commons extmetadata `License` code (e.g. "cc-by-sa-4.0", "cc-by-nc-2.0",
+// "cc0", "pd-old") to our LicenseId + CC version. All six CC families (by/by-sa/by-nd/
+// by-nc/by-nc-sa/by-nc-nd) map faithfully, version included; anything unrecognized —
+// including non-free / fair-use files — → 'unknown' (strict-deny → needs-review), so we
+// never present unclear-rights media as reusable. Faithful mapping is not the same as
+// permissive gating: NC families still deny commercial/AI use downstream, and ND now
+// yields allowed-with-attribution for verbatim commercial reuse while AI/derivatives
+// remain denied — see evaluateUse.
 export function mapCommonsLicense(code: string | undefined): { license: LicenseId; version?: string } {
   const c = (code ?? '').trim().toLowerCase()
   if (!c) return { license: 'unknown' }
   if (c === 'cc0' || c.startsWith('cc0-')) return { license: 'CC0-1.0' }
-  if (c.includes('-nc') || c.includes('-nd')) return { license: 'proprietary' }
   // tolerate jurisdiction ports (e.g. cc-by-sa-2.5-in, cc-by-3.0-us) — same permission family
-  const sa = c.match(/^cc-by-sa-(\d+\.\d+)(?:-[a-z]{2,})?$/)
-  if (sa) return { license: 'CC-BY-SA', version: sa[1] }
-  const by = c.match(/^cc-by-(\d+\.\d+)(?:-[a-z]{2,})?$/)
-  if (by) return { license: 'CC-BY', version: by[1] }
+  const m = c.match(/^cc-(by(?:-nc)?(?:-sa|-nd)?)-(\d+\.\d+)(?:-[a-z]{2,})?$/)
+  if (m) {
+    const license = CC_FAMILY_BY_TOKEN[m[1]]
+    if (license) return { license, version: m[2] }
+  }
   if (c === 'pd' || c.startsWith('pd-') || c.startsWith('public') || c.includes('publicdomain')) {
     return { license: 'PD' }
   }
@@ -93,7 +98,7 @@ function toReference(page: CommonsPage): Reference | null {
   const title = pickTitle(emVal(info.extmetadata, 'ObjectName'), page.title)
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    licenseVersion: ccVersionFor(license, version),
     author: author || undefined,
     rehostPolicy: 'cache-allowed',
     raw: {

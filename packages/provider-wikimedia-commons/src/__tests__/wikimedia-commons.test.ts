@@ -50,15 +50,16 @@ const FIXTURE = {
 }
 
 describe('mapCommonsLicense', () => {
-  it('maps cc0 / cc-by / cc-by-sa (any version) / pd; NC-ND → proprietary; blank/unknown → unknown', () => {
+  it('maps cc0 / all six CC families (any version, jurisdiction ports) / pd; blank/unknown → unknown', () => {
     expect(mapCommonsLicense('cc0')).toEqual({ license: 'CC0-1.0' })
     expect(mapCommonsLicense('cc-by-4.0')).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapCommonsLicense('cc-by-2.0')).toEqual({ license: 'CC-BY', version: '2.0' })
     expect(mapCommonsLicense('cc-by-sa-3.0')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
     expect(mapCommonsLicense('cc-by-sa-2.5-in')).toEqual({ license: 'CC-BY-SA', version: '2.5' }) // jurisdiction port
     expect(mapCommonsLicense('cc-by-3.0-us')).toEqual({ license: 'CC-BY', version: '3.0' })
-    expect(mapCommonsLicense('cc-by-nc-2.0')).toEqual({ license: 'proprietary' })
-    expect(mapCommonsLicense('cc-by-nd-4.0')).toEqual({ license: 'proprietary' })
+    expect(mapCommonsLicense('cc-by-nc-2.0')).toEqual({ license: 'CC-BY-NC', version: '2.0' })
+    expect(mapCommonsLicense('cc-by-nd-4.0')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
+    expect(mapCommonsLicense('cc-by-nc-sa-3.0-de')).toEqual({ license: 'CC-BY-NC-SA', version: '3.0' }) // jurisdiction port
     expect(mapCommonsLicense('pd')).toEqual({ license: 'PD' })
     expect(mapCommonsLicense('pd-old-100')).toEqual({ license: 'PD' })
     expect(mapCommonsLicense('')).toEqual({ license: 'unknown' })
