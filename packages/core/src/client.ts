@@ -132,11 +132,13 @@ function errorSummary(error: unknown): string {
 
 // Deterministic JSON for cache keys: object keys sorted recursively, so a
 // caller's providerOptions key order can't split otherwise-identical keys.
+// Keys whose value is `undefined` are skipped, matching JSON.stringify's own
+// object semantics — `{ a: 1, b: undefined }` and `{ a: 1 }` must key alike.
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
   if (value && typeof value === 'object') {
     const rec = value as Record<string, unknown>
-    return `{${Object.keys(rec).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
+    return `{${Object.keys(rec).filter(k => rec[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
   }
   return JSON.stringify(value) ?? 'null'
 }
@@ -175,6 +177,10 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       timeoutMs: options.resilience?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       retries: options.resilience?.retries ?? DEFAULT_RETRIES,
     }
+    // Built once per search (doFetch/retries are fixed for the whole call) and
+    // shared across every provider in the fan-out below, instead of allocating
+    // a fresh wrapper per provider.
+    const sharedFetch = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
 
     type ProviderRun =
       | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
@@ -184,7 +190,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       const started = Date.now()
       const timeout = resilience ? withTimeout(input.signal ?? options.signal, resilience.timeoutMs) : undefined
       const ctx: ProviderContext = {
-        fetch: resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch,
+        fetch: sharedFetch,
         cache: options.cache,
         signal: timeout?.signal ?? input.signal ?? options.signal,
       }
@@ -199,30 +205,15 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       const cacheKey = options.cache
         ? `refkit:v1:${p.id}:${fnv1a(stableStringify(query))}`
         : undefined
-      if (options.cache && cacheKey) {
-        // best-effort: a broken/corrupt/stale cache degrades to a live search
-        const pending = options.cache.get(cacheKey)
-        // A slow cache read must not outlive the provider deadline: at expiry it
-        // degrades to a miss, and the live search below then fails fast on the
-        // same (already-expired) deadline.
-        const hit = await (timeout
-          ? Promise.race([pending, timeout.expired.catch(() => undefined)])
-          : pending
-        ).catch(() => undefined)
-        pending.catch(() => {}) // raced-past rejection must not go unhandled
-        if (hit !== undefined) {
-          try {
-            // cached refs keep their original verifiedAt — staleness is bounded
-            // by the TTL when the cache honors ttlMs
-            const parsed = (JSON.parse(hit) as unknown[]).map(item => parseReference(item))
-            return { ok: true, valid: parsed, returned: parsed.length, latencyMs: Date.now() - started, cached: true }
-          } catch { /* fall through to live */ }
-        }
+      // Race a promise against the deadline without leaking an unhandled rejection
+      // for whichever side loses the race.
+      const raceDeadline = <T>(p: Promise<T>): Promise<T> => {
+        p.catch(() => {})
+        return timeout ? Promise.race([p, timeout.expired]) : p
       }
-      try {
-        const searching = p.search(query, ctx)
-        searching.catch(() => {}) // a raced-past provider must not become an unhandled rejection
-        const raw = await (timeout ? Promise.race([searching, timeout.expired]) : searching)
+      // Parse raw provider items one at a time — a single bad item must not
+      // discard the rest (shared by the cache-hit and live-search paths).
+      const parseItems = (raw: unknown[]): Reference[] => {
         const valid: Reference[] = []
         for (const item of raw) {
           try {
@@ -231,6 +222,37 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
             input.onProviderError?.({ providerId: p.id, error })
           }
         }
+        return valid
+      }
+      try {
+        if (options.cache && cacheKey) {
+          // best-effort: a broken/corrupt/stale cache degrades to a live search
+          const pending = options.cache.get(cacheKey)
+          // A slow cache read must not outlive the provider deadline: at expiry it
+          // degrades to a miss, and the live search below then fails fast on the
+          // same (already-expired) deadline.
+          const hit = await (timeout
+            ? Promise.race([pending, timeout.expired.catch(() => undefined)])
+            : pending
+          ).catch(() => undefined)
+          pending.catch(() => {}) // raced-past rejection must not go unhandled
+          if (hit !== undefined) {
+            try {
+              // cached refs keep their original verifiedAt — staleness is bounded
+              // by the TTL when the cache honors ttlMs. Only a whole-payload
+              // failure (not JSON, not an array) falls through to live; a single
+              // bad item within an otherwise-valid array is reported and dropped,
+              // same as the live path.
+              const raw = JSON.parse(hit) as unknown[]
+              if (!Array.isArray(raw)) throw new Error('cached payload is not an array')
+              const valid = parseItems(raw)
+              return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started, cached: true }
+            } catch { /* fall through to live */ }
+          }
+        }
+        const searching = p.search(query, ctx)
+        const raw = await raceDeadline(searching)
+        const valid = parseItems(raw)
         if (options.cache && cacheKey) {
           // fire-and-forget: cache write failure must never fail the search
           void options.cache.set(cacheKey, JSON.stringify(valid), options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS).catch(() => {})

@@ -4,7 +4,9 @@
 export interface TimeoutHandle {
   /** Aborts when the parent aborts OR the timer fires. Pass as ProviderContext.signal. */
   signal: AbortSignal
-  /** Rejects with `timeout after Nms` when the timer fires. Race the provider against it. */
+  /** Rejects when the deadline fires (`timeout after Nms`) OR the parent aborts
+   *  (with the parent's reason) — whichever comes first. Race the provider against
+   *  it so a user abort fast-fails even a provider that ignores ctx.signal. */
   expired: Promise<never>
   /** Clear the timer + detach the parent listener. ALWAYS call once settled. */
   cancel(): void
@@ -15,16 +17,19 @@ export interface TimeoutHandle {
 export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number): TimeoutHandle {
   const ctrl = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
-  const onParentAbort = () => {
-    clearTimeout(timer) // self-clean: a parent abort makes the deadline moot
-    ctrl.abort(parent?.reason)
-  }
-  if (parent?.aborted) ctrl.abort(parent.reason)
-  else parent?.addEventListener('abort', onParentAbort, { once: true })
 
   let rejectExpired: (e: Error) => void
   const expired = new Promise<never>((_, reject) => { rejectExpired = reject })
   expired.catch(() => {}) // the race may settle first; never let this become an unhandled rejection
+
+  const onParentAbort = () => {
+    clearTimeout(timer) // self-clean: a parent abort makes the deadline moot
+    ctrl.abort(parent?.reason)
+    rejectExpired(parent?.reason instanceof Error ? parent.reason : new Error(String(parent?.reason ?? 'aborted')))
+  }
+  if (parent?.aborted) onParentAbort()
+  else parent?.addEventListener('abort', onParentAbort, { once: true })
+
   timer = setTimeout(() => {
     const err = new Error(`timeout after ${timeoutMs}ms`)
     ctrl.abort(err)
@@ -68,6 +73,9 @@ export function retryingFetch(fetchImpl: typeof fetch, opts: RetryOptions): type
     input: Parameters<typeof fetch>[0],
     init?: Parameters<typeof fetch>[1],
   ): Promise<Response> => {
+    // A signal can be carried on `init.signal` OR on a `Request` object passed
+    // as `input` — `init.signal` takes precedence (matches fetch's own rule).
+    const signal = init?.signal ?? (typeof Request !== 'undefined' && input instanceof Request ? input.signal : undefined)
     for (let attempt = 0; ; attempt++) {
       let discarded: Response | undefined
       try {
@@ -76,12 +84,12 @@ export function retryingFetch(fetchImpl: typeof fetch, opts: RetryOptions): type
         discarded = res
       } catch (err) {
         const name = (err as { name?: string } | null)?.name
-        if (name === 'AbortError' || init?.signal?.aborted || attempt >= opts.retries) throw err
+        if (name === 'AbortError' || signal?.aborted || attempt >= opts.retries) throw err
       }
       // drain the discarded body so undici can reuse the socket during retries
       void discarded?.body?.cancel().catch(() => {})
       // exponential backoff with equal jitter (half fixed + half random); an abort during the wait cancels the retry
-      await abortAware(base * 2 ** attempt * (0.5 + Math.random() * 0.5), init?.signal)
+      await abortAware(base * 2 ** attempt * (0.5 + Math.random() * 0.5), signal)
     }
   }
   return wrapped as typeof fetch

@@ -26,6 +26,28 @@ describe('withTimeout', () => {
     t.cancel()
   })
 
+  it('a parent abort also rejects `expired` (fast-fails a race against a provider ignoring ctx.signal)', async () => {
+    const parent = new AbortController()
+    const t = withTimeout(parent.signal, 60_000)
+    const raced = Promise.race([new Promise(() => {}), t.expired]).catch(e => e)
+    const reason = new Error('user cancelled')
+    parent.abort(reason)
+    expect(t.signal.aborted).toBe(true)
+    expect(await raced).toBe(reason)
+    t.cancel()
+  })
+
+  it('a parent abort without an Error reason still rejects `expired` with an Error', async () => {
+    const parent = new AbortController()
+    const t = withTimeout(parent.signal, 60_000)
+    const raced = Promise.race([new Promise(() => {}), t.expired]).catch(e => e)
+    parent.abort('some string reason')
+    const err = await raced
+    expect(err).toBeInstanceOf(Error)
+    expect(String(err)).toContain('some string reason')
+    t.cancel()
+  })
+
   it('cancel() clears the timer so nothing fires later', async () => {
     const t = withTimeout(undefined, 1000)
     t.cancel()
@@ -122,5 +144,16 @@ describe('retryingFetch', () => {
     const f = retryingFetch(impl as unknown as typeof fetch, { retries: 3 })
     await expect(f('https://x/', { signal: ac.signal })).rejects.toBe(timeoutErr)
     expect(impl).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry when the abort signal is carried by a Request object, not init.signal', async () => {
+    const ac = new AbortController()
+    ac.abort(new Error('user cancelled'))
+    const req = new Request('https://x/', { signal: ac.signal })
+    const plainErr = new Error('network down') // impl rejects with a plain Error, no name: 'AbortError'
+    const impl = vi.fn().mockRejectedValue(plainErr)
+    const f = retryingFetch(impl as unknown as typeof fetch, { retries: 3 })
+    await expect(f(req)).rejects.toBe(plainErr)
+    expect(impl).toHaveBeenCalledTimes(1) // aborted Request signal → no retry
   })
 })
