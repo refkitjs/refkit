@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType,
+  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, isLikelyImageUrl, imageMediaType,
 } from '../provider-helpers'
 
 const params = (fn: (u: URL) => void) => { const u = new URL('https://x.test/'); fn(u); return u.searchParams }
@@ -72,13 +72,19 @@ describe('first', () => {
 })
 
 describe('mapCcDeedUrl', () => {
-  it('maps PD/CC0, BY/BY-SA (+version), NC/ND → proprietary, else unknown', () => {
+  it('maps PD/CC0, all six CC families (+version), else unknown', () => {
     expect(mapCcDeedUrl('http://creativecommons.org/publicdomain/zero/1.0/')).toEqual({ license: 'CC0-1.0' })
     expect(mapCcDeedUrl('https://creativecommons.org/publicdomain/mark/1.0/')).toEqual({ license: 'PD' })
     expect(mapCcDeedUrl('http://creativecommons.org/licenses/by/4.0/')).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapCcDeedUrl('http://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
-    expect(mapCcDeedUrl('http://creativecommons.org/licenses/by-nc-nd/3.0/')).toEqual({ license: 'proprietary' })
-    expect(mapCcDeedUrl('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'proprietary' })
+    expect(mapCcDeedUrl('http://creativecommons.org/licenses/by-nc-nd/3.0/')).toEqual({ license: 'CC-BY-NC-ND', version: '3.0' })
+    expect(mapCcDeedUrl('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-nc/2.0/')).toEqual({ license: 'CC-BY-NC', version: '2.0' })
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-nc-sa/4.0/deed.en')).toEqual({ license: 'CC-BY-NC-SA', version: '4.0' })
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-nc/')).toEqual({ license: 'CC-BY-NC' }) // no version
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/sampling+/1.0/')).toEqual({ license: 'unknown' }) // bespoke, not a family
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by4.0/')).toEqual({ license: 'unknown' }) // malformed: no boundary after token
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-ncgarbage/4.0/')).toEqual({ license: 'unknown' })
     // mapCcDeedUrl is CC-only — a rightsstatements URL has no CC pattern → unknown here
     // (the faithful rightsstatements mapping lives in mapRightsUrl, tested below).
     expect(mapCcDeedUrl('http://rightsstatements.org/vocab/InC/1.0/')).toEqual({ license: 'unknown' })
@@ -87,6 +93,14 @@ describe('mapCcDeedUrl', () => {
   })
   it('never throws on a non-string input (array/number) → unknown', () => {
     expect(mapCcDeedUrl(['x'] as any)).toEqual({ license: 'unknown' })
+  })
+  it('ccVersionFor: version rides only on versioned CC families', () => {
+    expect(ccVersionFor('CC-BY-NC', '2.0')).toBe('2.0')
+    expect(ccVersionFor('CC-BY-ND', '4.0')).toBe('4.0')
+    expect(ccVersionFor('CC-BY', '4.0')).toBe('4.0')
+    expect(ccVersionFor('CC0-1.0', '1.0')).toBeUndefined()
+    expect(ccVersionFor('proprietary', '2.0')).toBeUndefined()
+    expect(ccVersionFor('CC-BY-NC', undefined)).toBeUndefined()
   })
 })
 

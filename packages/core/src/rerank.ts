@@ -61,6 +61,7 @@ const LICENSE_PERMISSIVENESS: Record<LicenseId, number> = {
   'CC0-1.0': 1, PD: 1,
   unsplash: 0.85, pexels: 0.85, pixabay: 0.85,
   'CC-BY': 0.75, 'CC-BY-SA': 0.65,
+  'CC-BY-ND': 0.55, 'CC-BY-NC': 0.45, 'CC-BY-NC-SA': 0.4, 'CC-BY-NC-ND': 0.35,
   unknown: 0.3, proprietary: 0.2,
 }
 

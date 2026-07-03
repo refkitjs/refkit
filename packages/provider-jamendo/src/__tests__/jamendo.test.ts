@@ -33,12 +33,12 @@ const TRACK_BY = {
 }
 
 describe('mapJamendoLicense', () => {
-  it('maps CC-BY and CC-BY-SA with version, NC/ND → proprietary, missing → unknown', () => {
+  it('maps CC-BY and CC-BY-SA with version, NC/ND → their own CC families with version, missing → unknown', () => {
     expect(mapJamendoLicense('http://creativecommons.org/licenses/by/4.0/')).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapJamendoLicense('https://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
-    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nc-nd/3.0/')).toEqual({ license: 'proprietary' })
-    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nc/2.0/')).toEqual({ license: 'proprietary' })
-    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'proprietary' })
+    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nc-nd/3.0/')).toEqual({ license: 'CC-BY-NC-ND', version: '3.0' })
+    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nc/2.0/')).toEqual({ license: 'CC-BY-NC', version: '2.0' })
+    expect(mapJamendoLicense('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
     expect(mapJamendoLicense('')).toEqual({ license: 'unknown' })
     expect(mapJamendoLicense('https://example.com/whatever')).toEqual({ license: 'unknown' })
   })
@@ -70,12 +70,12 @@ describe('jamendo provider', () => {
     shareurl: 'https://www.jamendo.com/track/2000001',
   }
 
-  it('maps a CC-BY-NC-ND track to proprietary → denied for commercial use', async () => {
+  it('maps a CC-BY-NC-ND track faithfully → denied for commercial use', async () => {
     const { ctx } = ctxCapturing(envelope([TRACK_NC]))
     const refs = await jamendo({ clientId: 'cid' }).search({ text: 'listen', modalities: ['audio'] }, ctx)
     expect(refs).toHaveLength(1)
-    expect(refs[0].rights.license).toBe('proprietary')
-    expect(refs[0].rights.licenseVersion).toBeUndefined()
+    expect(refs[0].rights.license).toBe('CC-BY-NC-ND')
+    expect(refs[0].rights.licenseVersion).toBe('3.0')
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('denied')
   })
 

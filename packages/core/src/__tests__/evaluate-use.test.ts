@@ -72,7 +72,10 @@ describe('evaluateUse — strict-deny', () => {
         .filter(([, f]) => f.commercialUse === true)
         .map(([id]) => id)
     )
-    const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY', 'CC-BY-SA', 'PD', 'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown']
+    const licenses: LicenseId[] = [
+      'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND',
+      'PD', 'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown',
+    ]
     for (const license of licenses) {
       for (const intent of ['commercial-product', 'ai-generation-input'] as const) {
         const v = evaluateUse(rec(license), intent)
@@ -82,5 +85,20 @@ describe('evaluateUse — strict-deny', () => {
         }
       }
     }
+  })
+
+  it('CC-BY-NC: commercial denied with the REAL license named, moodboard allowed, redistribution needs-review', () => {
+    const commercial = evaluateUse(rec('CC-BY-NC'), 'commercial-product')
+    expect(commercial.decision).toBe('denied')
+    expect(commercial.reasons.join(' ')).toContain('CC-BY-NC') // not "proprietary"
+    expect(evaluateUse(rec('CC-BY-NC'), 'ai-generation-input').decision).toBe('denied')
+    expect(evaluateUse(rec('CC-BY-NC'), 'internal-moodboard').decision).toBe('allowed')
+    expect(evaluateUse(rec('CC-BY-NC'), 'redistribution').decision).toBe('needs-review')
+  })
+
+  it('CC-BY-ND: verbatim commercial allowed-with-attribution, AI-generation denied (derivatives)', () => {
+    expect(evaluateUse(rec('CC-BY-ND'), 'commercial-product').decision).toBe('allowed-with-attribution')
+    expect(evaluateUse(rec('CC-BY-ND'), 'ai-generation-input').decision).toBe('denied')
+    expect(evaluateUse(rec('CC-BY-ND'), 'redistribution').decision).toBe('allowed-with-attribution')
   })
 })

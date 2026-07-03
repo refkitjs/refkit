@@ -35,6 +35,6 @@ describe('P1 integration: createRefkit + openverse + pexels (offline)', () => {
     const titles = refs.map(r => r.title)
     expect(titles).toContain('cc0 sky')
     expect(titles).toContain('pexels sky')
-    expect(titles).not.toContain('nc mountain') // proprietary → denied → filtered
+    expect(titles).not.toContain('nc mountain') // CC-BY-NC-ND → commercial denied → filtered
   })
 })

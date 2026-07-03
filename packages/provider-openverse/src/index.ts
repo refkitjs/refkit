@@ -1,6 +1,7 @@
 import {
-  defineProvider, referenceId,
+  defineProvider, referenceId, ccVersionFor,
   setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
+  CC_FAMILY_BY_TOKEN,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -61,22 +62,21 @@ interface OpenverseResponse { results: OpenverseResult[] }
 
 // Map Openverse's per-item `license` code to our LicenseId. The CC version is
 // captured separately (rights.licenseVersion) and doesn't change the permission
-// family, so BY/BY-SA map regardless of version; NC/ND variants → 'proprietary'.
+// family, so all six CC families (BY/BY-SA/BY-NC/BY-NC-SA/BY-NC-ND/BY-ND) map
+// regardless of version; commercial/modification permissions still gate through
+// core's LICENSE_FACTS (NC stays denied for commercial, ND for modification).
+// The six CC-family codes are identical to core's CC_FAMILY_BY_TOKEN keys, so
+// they're delegated there instead of duplicated. Bespoke sampling deeds aren't
+// clean family grants, so they stay 'proprietary'.
 export function mapOpenverseLicense(code: string): LicenseId {
   switch (code) {
     case 'cc0': return 'CC0-1.0'
     case 'pdm': return 'PD'
-    case 'by': return 'CC-BY'
-    case 'by-sa': return 'CC-BY-SA'
-    case 'by-nc':
-    case 'by-nc-sa':
-    case 'by-nc-nd':
-    case 'by-nd':
     case 'sampling':
     case 'sampling+':
     case 'nc-sampling+':
-      return 'proprietary'
-    default: return 'unknown'
+      return 'proprietary' // bespoke sampling licences — not clean family grants
+    default: return CC_FAMILY_BY_TOKEN[code] ?? 'unknown'
   }
 }
 
@@ -126,8 +126,8 @@ function toReference(r: OpenverseResult): Reference {
   const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
     license,
-    // CC version is metadata only (attribution/audit), captured for the BY/BY-SA family.
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? r.license_version : undefined,
+    // CC version is metadata only (attribution/audit), captured for all CC families.
+    licenseVersion: ccVersionFor(license, r.license_version),
     author: r.creator ?? undefined,
     // governed by the per-item CC/PD license (Openverse imposes no hotlink/download-trigger requirement)
     rehostPolicy: 'cache-allowed',
@@ -196,7 +196,8 @@ function toAudioReference(r: OpenverseAudioResult): Reference {
   const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? r.license_version : undefined,
+    // CC version is metadata only (attribution/audit), captured for all CC families.
+    licenseVersion: ccVersionFor(license, r.license_version),
     author: r.creator ?? undefined,
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: r.license_url, sourceUrl: r.foreign_landing_url },

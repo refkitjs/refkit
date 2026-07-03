@@ -70,24 +70,39 @@ export function first<T>(arr: T[] | undefined | null): T | undefined {
 
 // — license: CC deed URL → LicenseId (the moat; shared by URL-based sources) —
 
-/** Map a Creative Commons deed URL to a core LicenseId (+ CC version for the BY/BY-SA
- *  families). Conservative: NC/ND variants → proprietary; PD mark / CC0 → PD / CC0-1.0;
- *  absent/unrecognized → unknown. **CC deeds only** — rightsstatements.org is handled by
- *  `mapRightsUrl`. Match is on the path so http/https both work. */
+/** CC deed path token → family LicenseId. Shared by the URL mapper here and by
+ *  code-based mappers (e.g. wikimedia-commons extmetadata codes). */
+export const CC_FAMILY_BY_TOKEN: Record<string, LicenseId> = {
+  'by': 'CC-BY', 'by-sa': 'CC-BY-SA', 'by-nd': 'CC-BY-ND',
+  'by-nc': 'CC-BY-NC', 'by-nc-sa': 'CC-BY-NC-SA', 'by-nc-nd': 'CC-BY-NC-ND',
+}
+
+/** Map a Creative Commons deed URL to a core LicenseId (+ CC version). All six CC
+ *  families map faithfully; PD mark / CC0 → PD / CC0-1.0; bespoke deeds (sampling…)
+ *  and absent/unrecognized → unknown. **CC deeds only** — rightsstatements.org is
+ *  handled by `mapRightsUrl`. Match is on the path so http/https both work. */
 export function mapCcDeedUrl(url: string | undefined | null): { license: LicenseId; version?: string } {
   if (typeof url !== 'string' || !url) return { license: 'unknown' }
   const u = url.toLowerCase()
   if (u.includes('creativecommons.org/publicdomain/zero')) return { license: 'CC0-1.0' }
   if (u.includes('creativecommons.org/publicdomain/mark')) return { license: 'PD' }
-  // NC / ND are NOT open grants — check before plain by/by-sa ("by-nc-sa" contains "by-sa").
-  if (/creativecommons\.org\/licenses\/by-(?:nc|nd)/.test(u)) return { license: 'proprietary' }
-  const sa = u.match(/creativecommons\.org\/licenses\/by-sa\/(\d(?:\.\d)?)/)
-  if (sa) return { license: 'CC-BY-SA', version: sa[1] }
-  const by = u.match(/creativecommons\.org\/licenses\/by\/(\d(?:\.\d)?)/)
-  if (by) return { license: 'CC-BY', version: by[1] }
-  if (/creativecommons\.org\/licenses\/by-sa\b/.test(u)) return { license: 'CC-BY-SA' }
-  if (/creativecommons\.org\/licenses\/by\b/.test(u)) return { license: 'CC-BY' }
+  const m = u.match(/creativecommons\.org\/licenses\/(by(?:-nc)?(?:-sa|-nd)?)(?=\/|$)(?:\/(\d(?:\.\d)?))?/)
+  if (m) {
+    const license = CC_FAMILY_BY_TOKEN[m[1]]
+    if (license) return m[2] ? { license, version: m[2] } : { license }
+  }
   return { license: 'unknown' }
+}
+
+const CC_VERSIONED_FAMILIES: ReadonlySet<LicenseId> = new Set([
+  'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND',
+])
+
+/** `version` when `license` is a versioned CC family, else undefined — the shared
+ *  licenseVersion guard for provider mappers (replaces the hand-rolled
+ *  `license === 'CC-BY' || license === 'CC-BY-SA'` checks). */
+export function ccVersionFor(license: LicenseId, version: string | undefined): string | undefined {
+  return version !== undefined && CC_VERSIONED_FAMILIES.has(license) ? version : undefined
 }
 
 // rightsstatements.org is a controlled vocabulary of rights STATUS statements (not license

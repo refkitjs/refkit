@@ -42,7 +42,7 @@ describe('freesound provider', () => {
     expect(cc.preview?.mediaType).toBe('audio/mpeg')
 
     const nc = byId['https://freesound.org/people/bob/sounds/2/']
-    expect(nc.rights.license).toBe('proprietary')
+    expect(nc.rights.license).toBe('CC-BY-NC')
     expect(evaluateUse(nc.rights, 'commercial-product').decision).toBe('denied')
 
     const cc0 = byId['https://freesound.org/people/carol/sounds/3/']
@@ -91,18 +91,18 @@ describe('freesound provider', () => {
 describe('mapFreesoundLicense', () => {
   it('maps CC name strings (D4 — no version)', () => {
     expect(mapFreesoundLicense('Attribution')).toEqual({ license: 'CC-BY' })
-    expect(mapFreesoundLicense('Attribution NonCommercial')).toEqual({ license: 'proprietary' })
-    expect(mapFreesoundLicense('Attribution Noncommercial')).toEqual({ license: 'proprietary' })
+    expect(mapFreesoundLicense('Attribution NonCommercial')).toEqual({ license: 'CC-BY-NC' })
+    expect(mapFreesoundLicense('Attribution Noncommercial')).toEqual({ license: 'CC-BY-NC' })
     expect(mapFreesoundLicense('Creative Commons 0')).toEqual({ license: 'CC0-1.0' })
     expect(mapFreesoundLicense('Sampling+')).toEqual({ license: 'proprietary' })
     expect(mapFreesoundLicense('Attribution Sampling+')).toEqual({ license: 'proprietary' })
   })
 
-  it('maps CC deed URLs and extracts version for BY/BY-SA (D7)', () => {
+  it('maps CC deed URLs and extracts version for BY/BY-SA/BY-NC (D7)', () => {
     expect(mapFreesoundLicense('http://creativecommons.org/licenses/by/4.0/')).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapFreesoundLicense('http://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
     expect(mapFreesoundLicense('http://creativecommons.org/publicdomain/zero/1.0/')).toEqual({ license: 'CC0-1.0' })
-    expect(mapFreesoundLicense('http://creativecommons.org/licenses/by-nc/3.0/')).toEqual({ license: 'proprietary' })
+    expect(mapFreesoundLicense('http://creativecommons.org/licenses/by-nc/3.0/')).toEqual({ license: 'CC-BY-NC', version: '3.0' })
   })
 
   it('returns unknown for anything unrecognized', () => {

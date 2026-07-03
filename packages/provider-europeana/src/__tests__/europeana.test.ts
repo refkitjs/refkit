@@ -12,10 +12,10 @@ describe('mapEuropeanaRights', () => {
     expect(mapEuropeanaRights('https://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
   })
 
-  it('maps NC / ND variants to proprietary (not an open grant)', () => {
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc/4.0/')).toEqual({ license: 'proprietary' })
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc-sa/4.0/')).toEqual({ license: 'proprietary' })
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'proprietary' })
+  it('maps NC / ND variants to their own CC families with version (not proprietary)', () => {
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc/4.0/')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc-sa/4.0/')).toEqual({ license: 'CC-BY-NC-SA', version: '4.0' })
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
   })
 
   it('maps rightsstatements.org faithfully: InC→proprietary, NoC-US→PD+US, NoC-NC→proprietary', () => {
@@ -99,6 +99,15 @@ describe('europeana toReference', () => {
     expect(r.rights.licenseVersion).toBe('3.0')
     expect(r.rights.rehostPolicy).toBe('hotlink-required')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
+  })
+
+  it('maps a CC-BY-NC item faithfully → denied for commercial use', async () => {
+    const ncItem = { ...ITEM_CC0, id: '/x/nc', rights: ['http://creativecommons.org/licenses/by-nc/4.0/'] }
+    const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([ncItem]))
+    const r = refs[0]
+    expect(r.rights.license).toBe('CC-BY-NC')
+    expect(r.rights.licenseVersion).toBe('4.0')
+    expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('denied')
   })
 
   it('maps an in-copyright (InC) rights statement to proprietary → denied', async () => {

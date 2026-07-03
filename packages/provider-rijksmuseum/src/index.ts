@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  setIfString, setIfBoolean, mapRightsUrl, isLikelyImageUrl,
+  setIfString, setIfBoolean, mapRightsUrl, isLikelyImageUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -139,7 +139,11 @@ function toReference(rec: Record<string, unknown>): Reference | null {
   const { license, version, jurisdiction } = mapRightsUrl(findRightsUrl(rec))
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family
+    // (BY/BY-SA/NC/ND variants). Rijksmuseum open-access items are typically CC0/PD, so this
+    // is behavior-neutral here in practice — kept for consistency with the other URL-mapped
+    // providers so no stale guard survives.
+    licenseVersion: ccVersionFor(license, version),
     // jurisdiction-scoped status (e.g. rightsstatements NoC-US → PD in the US)
     ...(jurisdiction ? { jurisdiction } : {}),
     author: findCreator(rec) || undefined,

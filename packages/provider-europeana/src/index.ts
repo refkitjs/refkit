@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  first, isLikelyImageUrl, imageMediaType, mapRightsUrl,
+  first, isLikelyImageUrl, imageMediaType, mapRightsUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -66,7 +66,10 @@ function toReference(it: EuropeanaItem): Reference | null {
 
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family —
+    // NC stays denied for commercial/AI use; ND allows verbatim commercial reuse
+    // (allowed-with-attribution) but stays denied for AI/derivative use.
+    licenseVersion: ccVersionFor(license, version),
     // jurisdiction-scoped PD (e.g. NoC-US → PD in the US); metadata for evaluateUse.
     ...(jurisdiction ? { jurisdiction } : {}),
     author: first(it.dataProvider) ?? first(it.provider) ?? undefined,

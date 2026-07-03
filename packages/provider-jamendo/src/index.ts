@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl,
+  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -49,8 +49,9 @@ interface JamendoResponse {
 }
 
 // Jamendo deed URLs look like http(s)://creativecommons.org/licenses/<variant>/<v>/.
-// Only by/by-sa fit our enum (D5); capture the version (D7). Any nc/nd variant is
-// non-commercial or no-derivatives → 'proprietary'. Missing/unrecognized → 'unknown'.
+// All six CC families map faithfully with version captured (D7), including nc/nd
+// variants (their own CC-BY-NC*/CC-BY-ND families — gating gets stricter, not
+// 'proprietary'). Missing/unrecognized → 'unknown'.
 // This is exactly the core CC-deed mapper, re-exported under the jamendo-specific name
 // the provider's tests import.
 export const mapJamendoLicense = mapCcDeedUrl
@@ -61,8 +62,10 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null 
   const canonicalUrl = t.shareurl
   const rights: RightsRecord = {
     license,
-    // CC version is metadata only (attribution/audit), kept for the BY/BY-SA family.
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family —
+    // NC stays denied for commercial/AI use; ND allows verbatim commercial reuse
+    // (allowed-with-attribution) but stays denied for AI/derivative use.
+    licenseVersion: ccVersionFor(license, version),
     author: t.artist_name || undefined,
     // governed by the per-item CC license; the mp3 stream is served directly by Jamendo
     rehostPolicy: 'cache-allowed',

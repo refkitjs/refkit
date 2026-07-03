@@ -1,6 +1,6 @@
 // Public API — @refkit/core P0.
 export type { Modality } from './modality'
-export { LICENSE_FACTS, factsFor } from './license'
+export { LICENSE_FACTS, factsFor, LICENSE_IDS } from './license'
 export type { LicenseId, LicenseFacts, Tri } from './license'
 export type { RehostPolicy, RightsRecord } from './rights'
 export { rightsRecordSchema } from './rights'
@@ -46,7 +46,8 @@ export type {
 export {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType, IMAGE_EXT,
+  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, CC_FAMILY_BY_TOKEN,
+  isLikelyImageUrl, imageMediaType, IMAGE_EXT,
 } from './provider-helpers'
 export { normalizeQuery } from './query'
 export { createRefkit } from './client'

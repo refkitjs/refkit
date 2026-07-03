@@ -25,7 +25,7 @@ const FIXTURE = {
 }
 
 describe('mapFlickrLicense', () => {
-  it('maps CC/PD/CC0 ids with versions; ARR + every NC/ND → proprietary; unknown id → unknown', () => {
+  it('maps CC/PD/CC0 ids with versions; ARR → proprietary; NC/ND → their CC families; unknown id → unknown', () => {
     expect(mapFlickrLicense('4')).toEqual({ license: 'CC-BY', version: '2.0' })
     expect(mapFlickrLicense(11)).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapFlickrLicense('5')).toEqual({ license: 'CC-BY-SA', version: '2.0' })
@@ -35,8 +35,11 @@ describe('mapFlickrLicense', () => {
     expect(mapFlickrLicense('8')).toEqual({ license: 'PD' })
     expect(mapFlickrLicense('10')).toEqual({ license: 'PD' })
     expect(mapFlickrLicense('0')).toEqual({ license: 'proprietary' })  // All Rights Reserved
-    expect(mapFlickrLicense('3')).toEqual({ license: 'proprietary' })  // CC BY-NC-ND 2.0
-    expect(mapFlickrLicense('16')).toEqual({ license: 'proprietary' }) // CC BY-NC-ND 4.0
+    expect(mapFlickrLicense('3')).toEqual({ license: 'CC-BY-NC-ND', version: '2.0' })
+    expect(mapFlickrLicense('16')).toEqual({ license: 'CC-BY-NC-ND', version: '4.0' })
+    expect(mapFlickrLicense('6')).toEqual({ license: 'CC-BY-ND', version: '2.0' })
+    expect(mapFlickrLicense('13')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
+    expect(mapFlickrLicense('14')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
     expect(mapFlickrLicense('99')).toEqual({ license: 'unknown' })
   })
 })
@@ -168,6 +171,25 @@ describe('flickr provider', () => {
     expect(url.searchParams.get('safe_search')).toBe('1')
     expect(url.searchParams.get('license')).toBe('4,5,9,10,11,12')
     expect(url.searchParams.get('user_id')).toBe('99@N00')
+  })
+
+  it('commercial-only controls (no modification) include the ND ids (6, 13) since ND permits verbatim commercial reuse', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await flickr({ apiKey: 'k' }).search({
+      text: 'sunset',
+      modalities: ['image'],
+      controls: {
+        license: { commercial: true },
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('license')).toBe('4,5,6,8,9,10,11,12,13')
   })
 
   it('lets explicit Flickr providerOptions override equivalent unified controls', async () => {
