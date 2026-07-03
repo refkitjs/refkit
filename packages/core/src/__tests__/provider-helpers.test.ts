@@ -83,6 +83,8 @@ describe('mapCcDeedUrl', () => {
     expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-nc-sa/4.0/deed.en')).toEqual({ license: 'CC-BY-NC-SA', version: '4.0' })
     expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-nc/')).toEqual({ license: 'CC-BY-NC' }) // no version
     expect(mapCcDeedUrl('https://creativecommons.org/licenses/sampling+/1.0/')).toEqual({ license: 'unknown' }) // bespoke, not a family
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by4.0/')).toEqual({ license: 'unknown' }) // malformed: no boundary after token
+    expect(mapCcDeedUrl('https://creativecommons.org/licenses/by-ncgarbage/4.0/')).toEqual({ license: 'unknown' })
     // mapCcDeedUrl is CC-only — a rightsstatements URL has no CC pattern → unknown here
     // (the faithful rightsstatements mapping lives in mapRightsUrl, tested below).
     expect(mapCcDeedUrl('http://rightsstatements.org/vocab/InC/1.0/')).toEqual({ license: 'unknown' })

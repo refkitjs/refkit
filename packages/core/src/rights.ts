@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { LicenseId } from './license'
+import { LICENSE_IDS, type LicenseId } from './license'
 
 export type RehostPolicy = 'hotlink-required' | 'cache-allowed' | 'thumbnail-only' | 'no-store'
 
@@ -21,10 +21,7 @@ export interface RightsRecord {
   raw: { sourceTerms: string; sourceUrl: string }
 }
 
-const licenseIdSchema: z.ZodType<LicenseId> = z.enum([
-  'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND', 'PD',
-  'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown',
-])
+const licenseIdSchema: z.ZodType<LicenseId> = z.enum(LICENSE_IDS)
 
 export const rightsRecordSchema: z.ZodType<RightsRecord> = z.object({
   license: licenseIdSchema,

@@ -173,6 +173,25 @@ describe('flickr provider', () => {
     expect(url.searchParams.get('user_id')).toBe('99@N00')
   })
 
+  it('commercial-only controls (no modification) include the ND ids (6, 13) since ND permits verbatim commercial reuse', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify(FIXTURE), { status: 200 })
+      }) as typeof fetch,
+    }
+    await flickr({ apiKey: 'k' }).search({
+      text: 'sunset',
+      modalities: ['image'],
+      controls: {
+        license: { commercial: true },
+      },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('license')).toBe('4,5,6,8,9,10,11,12,13')
+  })
+
   it('lets explicit Flickr providerOptions override equivalent unified controls', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {

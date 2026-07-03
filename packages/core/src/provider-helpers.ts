@@ -86,7 +86,7 @@ export function mapCcDeedUrl(url: string | undefined | null): { license: License
   const u = url.toLowerCase()
   if (u.includes('creativecommons.org/publicdomain/zero')) return { license: 'CC0-1.0' }
   if (u.includes('creativecommons.org/publicdomain/mark')) return { license: 'PD' }
-  const m = u.match(/creativecommons\.org\/licenses\/(by(?:-nc)?(?:-sa|-nd)?)(?:\/(\d(?:\.\d)?))?/)
+  const m = u.match(/creativecommons\.org\/licenses\/(by(?:-nc)?(?:-sa|-nd)?)(?=\/|$)(?:\/(\d(?:\.\d)?))?/)
   if (m) {
     const license = CC_FAMILY_BY_TOKEN[m[1]]
     if (license) return m[2] ? { license, version: m[2] } : { license }
