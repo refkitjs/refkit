@@ -1,17 +1,17 @@
 import {
   defineProvider, referenceId,
-  setIfString, setIfPositiveInt, mapCcDeedUrl,
+  setIfString, setIfPositiveInt, mapCcDeedUrl, ccVersionFor,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 // Freesound's `license` is usually a CC NAME string ("Attribution", "Creative
 // Commons 0") but has historically also been a CC DEED URL. Handle both.
-// D4: name → family LicenseId, no version. D7: URL → family (+ version for BY/BY-SA).
-// Conservative: noncommercial / sampling / unrecognized → proprietary or unknown.
+// D4: name → family LicenseId, no version. D7: URL → family + version (ccVersionFor).
+// Sampling+ licences are bespoke (not a clean CC free grant) → stay proprietary.
 const FREESOUND_NAME_LICENSE: Record<string, { license: LicenseId }> = {
   'attribution': { license: 'CC-BY' },
-  'attribution noncommercial': { license: 'proprietary' },      // NC → not commercially usable
+  'attribution noncommercial': { license: 'CC-BY-NC' },          // NC family — commercial/AI use still gates to denied
   'creative commons 0': { license: 'CC0-1.0' },
   'sampling+': { license: 'proprietary' },                       // bespoke CC sampling licence, not a clean free grant
   'attribution sampling+': { license: 'proprietary' },
@@ -69,8 +69,9 @@ function toAudioReference(r: FreesoundResult): Reference | null {
   const canonicalUrl = r.url
   const rights: RightsRecord = {
     license,
-    // version only ever set when the license arrived as a CC deed URL (D7); D4 omits it.
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // version is only ever populated by mapFreesoundLicense for the deed-URL form (D7);
+    // the name-string form (D4) never sets `version`, so this is undefined either way.
+    licenseVersion: ccVersionFor(license, version),
     author: r.username || undefined,
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://freesound.org/help/tos_api/', sourceUrl: canonicalUrl },
