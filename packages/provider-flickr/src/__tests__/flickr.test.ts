@@ -38,6 +38,7 @@ describe('mapFlickrLicense', () => {
     expect(mapFlickrLicense('3')).toEqual({ license: 'CC-BY-NC-ND', version: '2.0' })
     expect(mapFlickrLicense('16')).toEqual({ license: 'CC-BY-NC-ND', version: '4.0' })
     expect(mapFlickrLicense('6')).toEqual({ license: 'CC-BY-ND', version: '2.0' })
+    expect(mapFlickrLicense('13')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
     expect(mapFlickrLicense('14')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
     expect(mapFlickrLicense('99')).toEqual({ license: 'unknown' })
   })

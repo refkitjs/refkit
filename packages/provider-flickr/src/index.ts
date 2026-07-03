@@ -45,10 +45,10 @@ export interface FlickrSearchOptions {
 }
 
 // Flickr numeric license id → our LicenseId (+ CC version). See
-// flickr.photos.licenses.getInfo. Only All Rights Reserved (0) maps to
-// 'proprietary'; every NC/ND variant maps to its own CC family (CC-BY-NC,
-// CC-BY-NC-SA, CC-BY-NC-ND, CC-BY-ND) — commercial/AI use for those still
-// gates to denied via core's LICENSE_FACTS, so gating semantics don't change.
+// flickr.photos.licenses.getInfo. All Rights Reserved (0) → proprietary; NC/ND
+// variants map to their CC families and gate through core's LICENSE_FACTS —
+// NC stays denied for commercial/AI use; ND permits verbatim commercial reuse
+// (allowed-with-attribution) but stays denied for AI/derivative use.
 const FLICKR_LICENSE: Record<number, { license: LicenseId; version?: string }> = {
   0: { license: 'proprietary' },               // All Rights Reserved
   1: { license: 'CC-BY-NC-SA', version: '2.0' },  // CC BY-NC-SA 2.0
