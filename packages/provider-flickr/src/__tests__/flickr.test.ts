@@ -25,7 +25,7 @@ const FIXTURE = {
 }
 
 describe('mapFlickrLicense', () => {
-  it('maps CC/PD/CC0 ids with versions; ARR + every NC/ND → proprietary; unknown id → unknown', () => {
+  it('maps CC/PD/CC0 ids with versions; ARR → proprietary; NC/ND → their CC families; unknown id → unknown', () => {
     expect(mapFlickrLicense('4')).toEqual({ license: 'CC-BY', version: '2.0' })
     expect(mapFlickrLicense(11)).toEqual({ license: 'CC-BY', version: '4.0' })
     expect(mapFlickrLicense('5')).toEqual({ license: 'CC-BY-SA', version: '2.0' })
@@ -35,8 +35,10 @@ describe('mapFlickrLicense', () => {
     expect(mapFlickrLicense('8')).toEqual({ license: 'PD' })
     expect(mapFlickrLicense('10')).toEqual({ license: 'PD' })
     expect(mapFlickrLicense('0')).toEqual({ license: 'proprietary' })  // All Rights Reserved
-    expect(mapFlickrLicense('3')).toEqual({ license: 'proprietary' })  // CC BY-NC-ND 2.0
-    expect(mapFlickrLicense('16')).toEqual({ license: 'proprietary' }) // CC BY-NC-ND 4.0
+    expect(mapFlickrLicense('3')).toEqual({ license: 'CC-BY-NC-ND', version: '2.0' })
+    expect(mapFlickrLicense('16')).toEqual({ license: 'CC-BY-NC-ND', version: '4.0' })
+    expect(mapFlickrLicense('6')).toEqual({ license: 'CC-BY-ND', version: '2.0' })
+    expect(mapFlickrLicense('14')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
     expect(mapFlickrLicense('99')).toEqual({ license: 'unknown' })
   })
 })

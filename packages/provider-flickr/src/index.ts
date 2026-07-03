@@ -1,5 +1,5 @@
 import {
-  defineProvider, referenceId,
+  defineProvider, referenceId, ccVersionFor,
   setIfString, setIfInt, setIfStringList,
   type Reference, type RightsRecord, type LicenseId, type SearchLicenseControls,
   type NormalizedQuery, type ProviderContext,
@@ -45,26 +45,28 @@ export interface FlickrSearchOptions {
 }
 
 // Flickr numeric license id → our LicenseId (+ CC version). See
-// flickr.photos.licenses.getInfo. All Rights Reserved (0) and every NC/ND
-// variant map to 'proprietary' (→ denied for commercial/AI use).
+// flickr.photos.licenses.getInfo. Only All Rights Reserved (0) maps to
+// 'proprietary'; every NC/ND variant maps to its own CC family (CC-BY-NC,
+// CC-BY-NC-SA, CC-BY-NC-ND, CC-BY-ND) — commercial/AI use for those still
+// gates to denied via core's LICENSE_FACTS, so gating semantics don't change.
 const FLICKR_LICENSE: Record<number, { license: LicenseId; version?: string }> = {
   0: { license: 'proprietary' },               // All Rights Reserved
-  1: { license: 'proprietary' },               // CC BY-NC-SA 2.0
-  2: { license: 'proprietary' },               // CC BY-NC 2.0
-  3: { license: 'proprietary' },               // CC BY-NC-ND 2.0
+  1: { license: 'CC-BY-NC-SA', version: '2.0' },  // CC BY-NC-SA 2.0
+  2: { license: 'CC-BY-NC', version: '2.0' },     // CC BY-NC 2.0
+  3: { license: 'CC-BY-NC-ND', version: '2.0' },  // CC BY-NC-ND 2.0
   4: { license: 'CC-BY', version: '2.0' },     // CC BY 2.0
   5: { license: 'CC-BY-SA', version: '2.0' },  // CC BY-SA 2.0
-  6: { license: 'proprietary' },               // CC BY-ND 2.0
+  6: { license: 'CC-BY-ND', version: '2.0' },     // CC BY-ND 2.0
   7: { license: 'unknown' },                   // "No known copyright restrictions" — NOT a guaranteed-free grant → needs-review
   8: { license: 'PD' },                        // United States Government Work
   9: { license: 'CC0-1.0' },                   // Public Domain Dedication (CC0)
   10: { license: 'PD' },                       // Public Domain Mark
   11: { license: 'CC-BY', version: '4.0' },    // CC BY 4.0
   12: { license: 'CC-BY-SA', version: '4.0' }, // CC BY-SA 4.0
-  13: { license: 'proprietary' },              // CC BY-ND 4.0
-  14: { license: 'proprietary' },              // CC BY-NC 4.0
-  15: { license: 'proprietary' },              // CC BY-NC-SA 4.0
-  16: { license: 'proprietary' },              // CC BY-NC-ND 4.0
+  13: { license: 'CC-BY-ND', version: '4.0' },    // CC BY-ND 4.0
+  14: { license: 'CC-BY-NC', version: '4.0' },    // CC BY-NC 4.0
+  15: { license: 'CC-BY-NC-SA', version: '4.0' }, // CC BY-NC-SA 4.0
+  16: { license: 'CC-BY-NC-ND', version: '4.0' }, // CC BY-NC-ND 4.0
 }
 
 /** Map a Flickr numeric license id (string or number) to our license + CC version. */
@@ -148,7 +150,7 @@ function toReference(p: FlickrPhoto): Reference {
   const canonicalUrl = `https://www.flickr.com/photos/${p.owner}/${p.id}`
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    licenseVersion: ccVersionFor(license, version),
     author: p.ownername || undefined,
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://www.flickr.com/help/terms', sourceUrl: canonicalUrl },
