@@ -46,7 +46,8 @@ export type {
 export {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType, IMAGE_EXT,
+  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, CC_FAMILY_BY_TOKEN,
+  isLikelyImageUrl, imageMediaType, IMAGE_EXT,
 } from './provider-helpers'
 export { normalizeQuery } from './query'
 export { createRefkit } from './client'
