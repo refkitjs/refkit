@@ -28,12 +28,16 @@ const ctxWith = (body: unknown): ProviderContext => ({
 })
 
 describe('mapOpenverseLicense', () => {
-  it('maps cc0/pdm and the BY/BY-SA family version-agnostically, NC/ND → proprietary', () => {
+  it('maps cc0/pdm and all six CC families faithfully; bespoke sampling deeds stay proprietary', () => {
     expect(mapOpenverseLicense('cc0')).toBe('CC0-1.0')
     expect(mapOpenverseLicense('pdm')).toBe('PD')
     expect(mapOpenverseLicense('by')).toBe('CC-BY')
     expect(mapOpenverseLicense('by-sa')).toBe('CC-BY-SA')
-    expect(mapOpenverseLicense('by-nc-nd')).toBe('proprietary')
+    expect(mapOpenverseLicense('by-nc-nd')).toBe('CC-BY-NC-ND')
+    expect(mapOpenverseLicense('by-nc')).toBe('CC-BY-NC')
+    expect(mapOpenverseLicense('by-nc-sa')).toBe('CC-BY-NC-SA')
+    expect(mapOpenverseLicense('by-nd')).toBe('CC-BY-ND')
+    expect(mapOpenverseLicense('sampling+')).toBe('proprietary')
     expect(mapOpenverseLicense('whatever')).toBe('unknown')
   })
 })
@@ -177,11 +181,14 @@ describe('openverse provider', () => {
     expect(evaluateUse(result.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
   })
 
-  it('END-TO-END moat: a real by-nc-nd item maps to proprietary and is denied for commercial use', async () => {
+  it('END-TO-END moat: a real by-nc-nd item keeps its family, version, and is denied for commercial use', async () => {
     const refs = await openverse().search({ text: 'sky', modalities: ['image'] }, ctxWith(FIXTURE))
     const ncnd = refs[1]
-    expect(ncnd.rights.license).toBe('proprietary')
-    expect(evaluateUse(ncnd.rights, 'commercial-product').decision).toBe('denied')
+    expect(ncnd.rights.license).toBe('CC-BY-NC-ND')
+    expect(ncnd.rights.licenseVersion).toBe('2.0')
+    const verdict = evaluateUse(ncnd.rights, 'commercial-product')
+    expect(verdict.decision).toBe('denied')
+    expect(verdict.reasons.join(' ')).toContain('CC-BY-NC-ND')
     // ...while the cc0 item is allowed:
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('allowed')
   })
@@ -260,10 +267,11 @@ describe('openverseAudio provider', () => {
     expect(url.searchParams.get('size')).toBeNull()
   })
 
-  it('a by-nc audio item maps to proprietary and is denied for commercial use (moat)', async () => {
+  it('a by-nc audio item keeps its family and version, still denied for commercial use (moat)', async () => {
     const NC = { results: [{ ...AUDIO.results[0], license: 'by-nc', license_version: '3.0' }] }
     const refs = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(NC))
-    expect(refs[0].rights.license).toBe('proprietary')
+    expect(refs[0].rights.license).toBe('CC-BY-NC')
+    expect(refs[0].rights.licenseVersion).toBe('3.0')
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('denied')
   })
 })
