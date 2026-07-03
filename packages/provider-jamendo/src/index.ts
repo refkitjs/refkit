@@ -61,8 +61,9 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null 
   const canonicalUrl = t.shareurl
   const rights: RightsRecord = {
     license,
-    // CC version is metadata only (attribution/audit), kept for every versioned CC family
-    // (BY/BY-SA/NC/ND variants) — NC/ND still deny commercial/AI use via evaluateUse.
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family —
+    // NC stays denied for commercial/AI use; ND allows verbatim commercial reuse
+    // (allowed-with-attribution) but stays denied for AI/derivative use.
     licenseVersion: ccVersionFor(license, version),
     author: t.artist_name || undefined,
     // governed by the per-item CC license; the mp3 stream is served directly by Jamendo

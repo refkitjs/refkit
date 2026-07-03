@@ -56,8 +56,9 @@ export function toReference(doc: IaDoc): Reference | null {
   const { license, version, jurisdiction } = mapIaLicense(licenseurl)
   const rights: RightsRecord = {
     license,
-    // CC version is metadata only (attribution/audit), kept for every versioned CC family
-    // (BY/BY-SA/NC/ND variants) — NC/ND still deny commercial/AI use via evaluateUse.
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family —
+    // NC stays denied for commercial/AI use; ND allows verbatim commercial reuse
+    // (allowed-with-attribution) but stays denied for AI/derivative use.
     licenseVersion: ccVersionFor(license, version),
     // jurisdiction-scoped PD (e.g. rightsstatements NoC-US → PD in the US)
     ...(jurisdiction ? { jurisdiction } : {}),
