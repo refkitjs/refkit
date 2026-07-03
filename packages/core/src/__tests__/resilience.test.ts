@@ -47,6 +47,18 @@ describe('retryingFetch', () => {
     expect(impl).toHaveBeenCalledTimes(2)
   })
 
+  it('drains (cancels) the body of a discarded retryable response', async () => {
+    const res500 = status(500)
+    expect(res500.body).not.toBeNull() // guard: the spy below must target a real stream
+    const cancelSpy = vi.spyOn(res500.body!, 'cancel')
+    const impl = vi.fn().mockResolvedValueOnce(res500).mockResolvedValueOnce(okResponse())
+    const f = retryingFetch(impl as unknown as typeof fetch, { retries: 1 })
+    const p = f('https://x/')
+    await vi.runAllTimersAsync()
+    expect((await p).status).toBe(200)
+    expect(cancelSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('retries 429 and a rejected network error', async () => {
     const impl = vi.fn()
       .mockResolvedValueOnce(status(429))

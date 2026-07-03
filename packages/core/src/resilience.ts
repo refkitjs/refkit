@@ -14,14 +14,18 @@ export interface TimeoutHandle {
  *  (H9: keeps core runtime-agnostic). */
 export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number): TimeoutHandle {
   const ctrl = new AbortController()
-  const onParentAbort = () => ctrl.abort(parent?.reason)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const onParentAbort = () => {
+    clearTimeout(timer) // self-clean: a parent abort makes the deadline moot
+    ctrl.abort(parent?.reason)
+  }
   if (parent?.aborted) ctrl.abort(parent.reason)
   else parent?.addEventListener('abort', onParentAbort, { once: true })
 
   let rejectExpired: (e: Error) => void
   const expired = new Promise<never>((_, reject) => { rejectExpired = reject })
   expired.catch(() => {}) // the race may settle first; never let this become an unhandled rejection
-  const timer = setTimeout(() => {
+  timer = setTimeout(() => {
     const err = new Error(`timeout after ${timeoutMs}ms`)
     ctrl.abort(err)
     rejectExpired(err)
@@ -38,7 +42,7 @@ export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number):
 }
 
 export interface RetryOptions {
-  /** Extra attempts after the first (H8 default 1). */
+  /** Extra attempts after the first. The orchestrator passes its own default (H8: 1). */
   retries: number
   /** Base backoff delay; grows 2^attempt with full jitter. Default 250. */
   baseDelayMs?: number
@@ -65,13 +69,17 @@ export function retryingFetch(fetchImpl: typeof fetch, opts: RetryOptions): type
     init?: Parameters<typeof fetch>[1],
   ): Promise<Response> => {
     for (let attempt = 0; ; attempt++) {
+      let discarded: Response | undefined
       try {
         const res = await fetchImpl(input, init)
         if (!isRetryableStatus(res.status) || attempt >= opts.retries) return res
+        discarded = res
       } catch (err) {
         const name = (err as { name?: string } | null)?.name
         if (name === 'AbortError' || init?.signal?.aborted || attempt >= opts.retries) throw err
       }
+      // drain the discarded body so undici can reuse the socket during retries
+      void discarded?.body?.cancel().catch(() => {})
       // exponential backoff with full jitter; an abort during the wait cancels the retry
       await abortAware(base * 2 ** attempt * (0.5 + Math.random() * 0.5), init?.signal)
     }
