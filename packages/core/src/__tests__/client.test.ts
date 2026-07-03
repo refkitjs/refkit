@@ -405,4 +405,27 @@ describe('createRefkit', () => {
     await rk.search({ query: 'x', modalities: ['image'] })
     expect(cache.ttls).toEqual([1234])
   })
+
+  it('a cache hit still flows through the license gate (hits are pre-merge; the gate stays live)', async () => {
+    const cache = mapCache()
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1', 'proprietary')])], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
+    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(out.references).toHaveLength(0)
+    expect(out.meta.gate).toMatchObject({ intent: 'commercial-product', before: 1, after: 0, dropped: 1 })
+  })
+
+  it('providerOptions key order does not change the cache key', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { b: 2, a: 1 } } })
+    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: 2 } } })
+    expect(calls).toBe(1) // second search is a cache hit despite the different key order
+  })
 })

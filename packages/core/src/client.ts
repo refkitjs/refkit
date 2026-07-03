@@ -130,6 +130,17 @@ function errorSummary(error: unknown): string {
   return 'unknown error'
 }
 
+// Deterministic JSON for cache keys: object keys sorted recursively, so a
+// caller's providerOptions key order can't split otherwise-identical keys.
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const rec = value as Record<string, unknown>
+    return `{${Object.keys(rec).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 export function createRefkit(options: RefkitOptions): RefkitClient {
   if (!options.providers || options.providers.length === 0) {
     throw new Error('createRefkit: at least one provider is required')
@@ -186,14 +197,23 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         limit: fetchLimit,
       }, p)
       const cacheKey = options.cache
-        ? `refkit:v1:${p.id}:${fnv1a(JSON.stringify(query))}`
+        ? `refkit:v1:${p.id}:${fnv1a(stableStringify(query))}`
         : undefined
       if (options.cache && cacheKey) {
         // best-effort: a broken/corrupt/stale cache degrades to a live search
-        const hit = await options.cache.get(cacheKey).catch(() => undefined)
+        const pending = options.cache.get(cacheKey)
+        // A slow cache read must not outlive the provider deadline: at expiry it
+        // degrades to a miss, and the live search below then fails fast on the
+        // same (already-expired) deadline.
+        const hit = await (timeout
+          ? Promise.race([pending, timeout.expired.catch(() => undefined)])
+          : pending
+        ).catch(() => undefined)
+        pending.catch(() => {}) // raced-past rejection must not go unhandled
         if (hit !== undefined) {
           try {
-            // cached refs keep their original verifiedAt — staleness is bounded by the TTL
+            // cached refs keep their original verifiedAt — staleness is bounded
+            // by the TTL when the cache honors ttlMs
             const parsed = (JSON.parse(hit) as unknown[]).map(item => parseReference(item))
             return { ok: true, valid: parsed, returned: parsed.length, latencyMs: Date.now() - started, cached: true }
           } catch { /* fall through to live */ }

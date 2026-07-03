@@ -90,6 +90,8 @@ export interface NormalizedQuery {
   limit?: number
 }
 
+/** Implementations SHOULD honor ttlMs — refkit's cached-result freshness is
+ *  bounded by the TTL only when the cache enforces it. */
 export interface KeyValueCache {
   get(key: string): Promise<string | undefined>
   set(key: string, value: string, ttlMs?: number): Promise<void>
