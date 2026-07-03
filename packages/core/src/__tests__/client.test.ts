@@ -335,4 +335,74 @@ describe('createRefkit', () => {
     expect(byId.bad.latencyMs).toEqual(expect.any(Number))
     expect(byId.text.latencyMs).toBeUndefined()
   })
+
+  const mapCache = () => {
+    const m = new Map<string, string>()
+    return {
+      store: m,
+      ttls: [] as (number | undefined)[],
+      async get(k: string) { return m.get(k) },
+      async set(k: string, v: string, ttlMs?: number) { m.set(k, v); this.ttls.push(ttlMs) },
+    }
+  }
+
+  it('serves a repeat query from the cache without re-hitting the provider', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    expect(calls).toBe(1)
+    expect(out.references).toHaveLength(1)
+    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(cache.ttls).toEqual([300_000]) // default cacheTtlMs, one set for the first (live) search
+  })
+
+  it('different queries use different cache keys', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    await rk.search({ query: 'y', modalities: ['image'] })
+    expect(calls).toBe(2)
+  })
+
+  it('a corrupt or invalid cache entry falls back to a live fetch', async () => {
+    const cache = mapCache()
+    let calls = 0
+    const counted = defineProvider({
+      id: 'c', modalities: ['image'], queryFeatures: ['keyword'],
+      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+    })
+    const rk = createRefkit({ providers: [counted], cache })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    for (const k of cache.store.keys()) cache.store.set(k, '{not json')
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(calls).toBe(2)
+  })
+
+  it('cache errors are non-fatal: a throwing cache degrades to live search', async () => {
+    const broken = {
+      async get(): Promise<string | undefined> { throw new Error('cache down') },
+      async set(): Promise<void> { throw new Error('cache down') },
+    }
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache: broken })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out).toHaveLength(1)
+  })
+
+  it('honors a custom cacheTtlMs', async () => {
+    const cache = mapCache()
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache, cacheTtlMs: 1234 })
+    await rk.search({ query: 'x', modalities: ['image'] })
+    expect(cache.ttls).toEqual([1234])
+  })
 })

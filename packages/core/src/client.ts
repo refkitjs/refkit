@@ -18,6 +18,7 @@ import type {
 import { mergeReferences, type MergeOptions } from './merge'
 import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
 import { retryingFetch, withTimeout } from './resilience'
+import { fnv1a } from './hash'
 
 export interface ResilienceOptions {
   /** Soft deadline per provider search. Default 10_000. */
@@ -34,6 +35,8 @@ export interface RefkitOptions {
   merge?: MergeOptions
   /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
   resilience?: ResilienceOptions | false
+  /** TTL for per-provider cached results; used only when `cache` is set. Default 300_000. */
+  cacheTtlMs?: number
 }
 
 export interface ProviderError {
@@ -50,6 +53,7 @@ export interface ProviderSearchStatus {
   reason?: 'unsupported-modality'
   error?: string
   latencyMs?: number
+  cached?: boolean
 }
 
 export interface SearchGateMeta {
@@ -118,6 +122,7 @@ const DEFAULT_POOL_FACTOR = 4
 const MAX_POOL_LIMIT = 100 // never ask a single source for more than this, even at high limits
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_RETRIES = 1
+const DEFAULT_CACHE_TTL_MS = 300_000
 
 function errorSummary(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -161,7 +166,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     }
 
     type ProviderRun =
-      | { ok: true; valid: Reference[]; returned: number; latencyMs: number }
+      | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
       | { ok: false; error: unknown; latencyMs: number }
 
     const runProvider = async (p: ReferenceProvider): Promise<ProviderRun> => {
@@ -180,6 +185,20 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         providerOptions: input.providerOptions,
         limit: fetchLimit,
       }, p)
+      const cacheKey = options.cache
+        ? `refkit:v1:${p.id}:${fnv1a(JSON.stringify(query))}`
+        : undefined
+      if (options.cache && cacheKey) {
+        // best-effort: a broken/corrupt/stale cache degrades to a live search
+        const hit = await options.cache.get(cacheKey).catch(() => undefined)
+        if (hit !== undefined) {
+          try {
+            // cached refs keep their original verifiedAt — staleness is bounded by the TTL
+            const parsed = (JSON.parse(hit) as unknown[]).map(item => parseReference(item))
+            return { ok: true, valid: parsed, returned: parsed.length, latencyMs: Date.now() - started, cached: true }
+          } catch { /* fall through to live */ }
+        }
+      }
       try {
         const searching = p.search(query, ctx)
         searching.catch(() => {}) // a raced-past provider must not become an unhandled rejection
@@ -191,6 +210,10 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           } catch (error) {
             input.onProviderError?.({ providerId: p.id, error })
           }
+        }
+        if (options.cache && cacheKey) {
+          // fire-and-forget: cache write failure must never fail the search
+          void options.cache.set(cacheKey, JSON.stringify(valid), options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS).catch(() => {})
         }
         return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
       } catch (error) {
@@ -216,6 +239,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           accepted: run.valid.length,
           rejected: run.returned - run.valid.length,
           latencyMs: run.latencyMs,
+          ...(run.cached ? { cached: true } : {}),
         })
         perSource.push(run.valid)
       } else {
