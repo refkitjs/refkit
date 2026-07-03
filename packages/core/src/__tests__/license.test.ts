@@ -57,5 +57,7 @@ describe('LICENSE_FACTS', () => {
     expect(LICENSE_FACTS['CC-BY-NC-SA'].derivatives).toBe(true)
     expect(LICENSE_FACTS['CC-BY-NC-SA'].shareAlike).toBe(true)
     expect(LICENSE_FACTS['CC-BY-NC-ND'].derivatives).toBe(false)
+    expect(LICENSE_FACTS['CC-BY-NC'].shareAlike).toBe(false)
+    expect(LICENSE_FACTS['CC-BY-NC-ND'].shareAlike).toBe(false)
   })
 })

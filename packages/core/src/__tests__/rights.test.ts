@@ -22,4 +22,14 @@ describe('rightsRecordSchema', () => {
     const { raw, ...withoutRaw } = valid
     expect(() => rightsRecordSchema.parse(withoutRaw)).toThrow()
   })
+
+  it('accepts the NC/ND family ids with a licenseVersion', () => {
+    const r = rightsRecordSchema.parse({
+      license: 'CC-BY-NC-ND',
+      licenseVersion: '3.0',
+      rehostPolicy: 'cache-allowed',
+      raw: { sourceTerms: 't', sourceUrl: 'u' },
+    })
+    expect(r.license).toBe('CC-BY-NC-ND')
+  })
 })

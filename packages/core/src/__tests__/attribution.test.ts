@@ -28,4 +28,17 @@ describe('buildAttribution', () => {
     // no licenseVersion → bare family name, no trailing version
     expect(a.text).toContain('licensed under CC-BY-SA.')
   })
+
+  it('CC-BY-NC requires attribution (the old proprietary collapse silently dropped it)', () => {
+    const a = buildAttribution({
+      license: 'CC-BY-NC',
+      licenseVersion: '2.0',
+      author: 'Bob',
+      title: 'mountain',
+      canonicalUrl: 'https://example.org/x',
+    })
+    expect(a.required).toBe(true)
+    expect(a.text).toContain('CC-BY-NC 2.0')
+    expect(a.text).toContain('Bob')
+  })
 })
