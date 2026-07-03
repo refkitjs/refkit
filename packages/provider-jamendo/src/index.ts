@@ -1,6 +1,6 @@
 import {
   defineProvider, referenceId,
-  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl,
+  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -61,8 +61,9 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null 
   const canonicalUrl = t.shareurl
   const rights: RightsRecord = {
     license,
-    // CC version is metadata only (attribution/audit), kept for the BY/BY-SA family.
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family
+    // (BY/BY-SA/NC/ND variants) — NC/ND still deny commercial/AI use via evaluateUse.
+    licenseVersion: ccVersionFor(license, version),
     author: t.artist_name || undefined,
     // governed by the per-item CC license; the mp3 stream is served directly by Jamendo
     rehostPolicy: 'cache-allowed',

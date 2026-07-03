@@ -1,5 +1,5 @@
 import {
-  defineProvider, referenceId, mapRightsUrl,
+  defineProvider, referenceId, mapRightsUrl, ccVersionFor,
   type Reference, type RightsRecord, type Modality,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -56,7 +56,9 @@ export function toReference(doc: IaDoc): Reference | null {
   const { license, version, jurisdiction } = mapIaLicense(licenseurl)
   const rights: RightsRecord = {
     license,
-    licenseVersion: license === 'CC-BY' || license === 'CC-BY-SA' ? version : undefined,
+    // CC version is metadata only (attribution/audit), kept for every versioned CC family
+    // (BY/BY-SA/NC/ND variants) — NC/ND still deny commercial/AI use via evaluateUse.
+    licenseVersion: ccVersionFor(license, version),
     // jurisdiction-scoped PD (e.g. rightsstatements NoC-US → PD in the US)
     ...(jurisdiction ? { jurisdiction } : {}),
     author: authorOf(doc.creator),

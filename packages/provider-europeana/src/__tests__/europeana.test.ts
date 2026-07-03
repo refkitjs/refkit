@@ -12,10 +12,10 @@ describe('mapEuropeanaRights', () => {
     expect(mapEuropeanaRights('https://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
   })
 
-  it('maps NC / ND variants to proprietary (not an open grant)', () => {
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc/4.0/')).toEqual({ license: 'proprietary' })
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc-sa/4.0/')).toEqual({ license: 'proprietary' })
-    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'proprietary' })
+  it('maps NC / ND variants to their own CC families with version (not proprietary)', () => {
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc/4.0/')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nc-sa/4.0/')).toEqual({ license: 'CC-BY-NC-SA', version: '4.0' })
+    expect(mapEuropeanaRights('http://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
   })
 
   it('maps rightsstatements.org faithfully: InC→proprietary, NoC-US→PD+US, NoC-NC→proprietary', () => {

@@ -12,10 +12,10 @@ describe('mapIaLicense', () => {
     expect(mapIaLicense('http://creativecommons.org/licenses/by-sa/3.0/')).toEqual({ license: 'CC-BY-SA', version: '3.0' })
   })
 
-  it('maps NC/ND variants to proprietary (D5)', () => {
-    expect(mapIaLicense('https://creativecommons.org/licenses/by-nc/4.0/').license).toBe('proprietary')
-    expect(mapIaLicense('https://creativecommons.org/licenses/by-nd/4.0/').license).toBe('proprietary')
-    expect(mapIaLicense('https://creativecommons.org/licenses/by-nc-sa/4.0/').license).toBe('proprietary')
+  it('maps NC/ND variants to their own CC families with version (D5)', () => {
+    expect(mapIaLicense('https://creativecommons.org/licenses/by-nc/4.0/')).toEqual({ license: 'CC-BY-NC', version: '4.0' })
+    expect(mapIaLicense('https://creativecommons.org/licenses/by-nd/4.0/')).toEqual({ license: 'CC-BY-ND', version: '4.0' })
+    expect(mapIaLicense('https://creativecommons.org/licenses/by-nc-sa/4.0/')).toEqual({ license: 'CC-BY-NC-SA', version: '4.0' })
   })
 
   it('falls back to unknown for absent / unrecognized URLs (D3)', () => {
