@@ -17,6 +17,14 @@ import type {
 } from './provider'
 import { mergeReferences, type MergeOptions } from './merge'
 import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
+import { retryingFetch, withTimeout } from './resilience'
+
+export interface ResilienceOptions {
+  /** Soft deadline per provider search. Default 10_000. */
+  timeoutMs?: number
+  /** Extra fetch attempts on 429/5xx/network-error. Default 1. */
+  retries?: number
+}
 
 export interface RefkitOptions {
   providers: ReferenceProvider[]
@@ -24,6 +32,8 @@ export interface RefkitOptions {
   cache?: KeyValueCache
   signal?: AbortSignal
   merge?: MergeOptions
+  /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
+  resilience?: ResilienceOptions | false
 }
 
 export interface ProviderError {
@@ -39,6 +49,7 @@ export interface ProviderSearchStatus {
   rejected?: number
   reason?: 'unsupported-modality'
   error?: string
+  latencyMs?: number
 }
 
 export interface SearchGateMeta {
@@ -105,6 +116,8 @@ export interface RefkitClient {
 const DEFAULT_LIMIT = 30
 const DEFAULT_POOL_FACTOR = 4
 const MAX_POOL_LIMIT = 100 // never ask a single source for more than this, even at high limits
+const DEFAULT_TIMEOUT_MS = 10_000
+const DEFAULT_RETRIES = 1
 
 function errorSummary(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -122,12 +135,6 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     if (typeof doFetch !== 'function') {
       throw new Error('createRefkit: no fetch available — pass options.fetch')
     }
-    const ctx: ProviderContext = {
-      fetch: doFetch,
-      cache: options.cache,
-      signal: input.signal ?? options.signal,
-    }
-
     const chosen = options.providers.filter(p => p.modalities.some(m => input.modalities.includes(m)))
     if (chosen.length === 0) {
       throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`)
@@ -148,55 +155,76 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     for (const p of options.providers) {
       if (!chosen.includes(p)) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' })
     }
-    const settled = await Promise.allSettled(
-      chosen.map(p =>
-        p.search(
-          normalizeQuery({
-            query: input.query,
-            modalities: input.modalities,
-            filters: input.filters,
-            controls: input.controls,
-            providerOptions: input.providerOptions,
-            limit: fetchLimit,
-          }, p),
-          ctx,
-        ),
-      ),
-    )
+    const resilience = options.resilience === false ? undefined : {
+      timeoutMs: options.resilience?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      retries: options.resilience?.retries ?? DEFAULT_RETRIES,
+    }
+
+    type ProviderRun =
+      | { ok: true; valid: Reference[]; returned: number; latencyMs: number }
+      | { ok: false; error: unknown; latencyMs: number }
+
+    const runProvider = async (p: ReferenceProvider): Promise<ProviderRun> => {
+      const started = Date.now()
+      const timeout = resilience ? withTimeout(input.signal ?? options.signal, resilience.timeoutMs) : undefined
+      const ctx: ProviderContext = {
+        fetch: resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch,
+        cache: options.cache,
+        signal: timeout?.signal ?? input.signal ?? options.signal,
+      }
+      const query = normalizeQuery({
+        query: input.query,
+        modalities: input.modalities,
+        filters: input.filters,
+        controls: input.controls,
+        providerOptions: input.providerOptions,
+        limit: fetchLimit,
+      }, p)
+      try {
+        const searching = p.search(query, ctx)
+        searching.catch(() => {}) // a raced-past provider must not become an unhandled rejection
+        const raw = await (timeout ? Promise.race([searching, timeout.expired]) : searching)
+        const valid: Reference[] = []
+        for (const item of raw) {
+          try {
+            valid.push(parseReference(item))
+          } catch (error) {
+            input.onProviderError?.({ providerId: p.id, error })
+          }
+        }
+        return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
+      } catch (error) {
+        input.onProviderError?.({ providerId: p.id, error })
+        return { ok: false, error, latencyMs: Date.now() - started }
+      } finally {
+        timeout?.cancel()
+      }
+    }
+
+    const runs = await Promise.all(chosen.map(runProvider))
 
     const perSource: Reference[][] = []
     let anyOk = false
-    settled.forEach((res, i) => {
+    runs.forEach((run, i) => {
       const provider = chosen[i]
-      if (res.status === 'fulfilled') {
+      if (run.ok) {
         anyOk = true
-        const valid: Reference[] = []
-        for (const raw of res.value) {
-          try {
-            valid.push(parseReference(raw))
-          } catch (error) {
-            input.onProviderError?.({ providerId: provider.id, error })
-          }
-        }
         statusByProvider.set(provider.id, {
           providerId: provider.id,
           status: 'fulfilled',
-          returned: res.value.length,
-          accepted: valid.length,
-          rejected: res.value.length - valid.length,
+          returned: run.returned,
+          accepted: run.valid.length,
+          rejected: run.returned - run.valid.length,
+          latencyMs: run.latencyMs,
         })
-        perSource.push(valid)
+        perSource.push(run.valid)
       } else {
-        input.onProviderError?.({ providerId: provider.id, error: res.reason })
-        statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(res.reason) })
+        statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
       }
     })
 
     if (!anyOk) {
-      const reasons = settled
-        .filter((s): s is PromiseRejectedResult => s.status === 'rejected')
-        .map(s => s.reason)
-      throw new AggregateError(reasons, 'refkit.search: all providers failed')
+      throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
     }
 
     let refs = mergeReferences(perSource, options.merge)

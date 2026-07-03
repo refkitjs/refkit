@@ -54,6 +54,7 @@ export { createRefkit } from './client'
 export type {
   RefkitClient,
   RefkitOptions,
+  ResilienceOptions,
   SearchInput,
   SearchResult,
   SearchMeta,
