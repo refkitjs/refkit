@@ -1,6 +1,6 @@
 // Public API — @refkit/core P0.
 export type { Modality } from './modality'
-export { LICENSE_FACTS, factsFor } from './license'
+export { LICENSE_FACTS, factsFor, LICENSE_IDS } from './license'
 export type { LicenseId, LicenseFacts, Tri } from './license'
 export type { RehostPolicy, RightsRecord } from './rights'
 export { rightsRecordSchema } from './rights'

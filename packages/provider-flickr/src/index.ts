@@ -127,7 +127,7 @@ function flickrLicenseForControls(license: SearchLicenseControls | undefined): s
   if (!license) return undefined
   if (license.allowUnknown) return DEFAULT_LICENSE_FILTER
   if (license.commercial && license.modification) return '4,5,9,10,11,12'
-  if (license.commercial) return '4,5,8,9,10,11,12'
+  if (license.commercial) return '4,5,6,8,9,10,11,12,13'
   return undefined
 }
 

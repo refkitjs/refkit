@@ -1,6 +1,7 @@
 import {
   defineProvider, referenceId, ccVersionFor,
   setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
+  CC_FAMILY_BY_TOKEN,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -64,22 +65,18 @@ interface OpenverseResponse { results: OpenverseResult[] }
 // family, so all six CC families (BY/BY-SA/BY-NC/BY-NC-SA/BY-NC-ND/BY-ND) map
 // regardless of version; commercial/modification permissions still gate through
 // core's LICENSE_FACTS (NC stays denied for commercial, ND for modification).
-// Bespoke sampling deeds aren't clean family grants, so they stay 'proprietary'.
+// The six CC-family codes are identical to core's CC_FAMILY_BY_TOKEN keys, so
+// they're delegated there instead of duplicated. Bespoke sampling deeds aren't
+// clean family grants, so they stay 'proprietary'.
 export function mapOpenverseLicense(code: string): LicenseId {
   switch (code) {
     case 'cc0': return 'CC0-1.0'
     case 'pdm': return 'PD'
-    case 'by': return 'CC-BY'
-    case 'by-sa': return 'CC-BY-SA'
-    case 'by-nc': return 'CC-BY-NC'
-    case 'by-nc-sa': return 'CC-BY-NC-SA'
-    case 'by-nc-nd': return 'CC-BY-NC-ND'
-    case 'by-nd': return 'CC-BY-ND'
     case 'sampling':
     case 'sampling+':
     case 'nc-sampling+':
       return 'proprietary' // bespoke sampling licences — not clean family grants
-    default: return 'unknown'
+    default: return CC_FAMILY_BY_TOKEN[code] ?? 'unknown'
   }
 }
 

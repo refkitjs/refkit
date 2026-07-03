@@ -1,17 +1,9 @@
-export type LicenseId =
-  | 'CC0-1.0'
-  | 'CC-BY'
-  | 'CC-BY-SA'
-  | 'CC-BY-NC'
-  | 'CC-BY-NC-SA'
-  | 'CC-BY-NC-ND'
-  | 'CC-BY-ND'
-  | 'PD'
-  | 'unsplash'
-  | 'pexels'
-  | 'pixabay'
-  | 'proprietary'
-  | 'unknown'
+export const LICENSE_IDS = [
+  'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND', 'PD',
+  'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown',
+] as const
+
+export type LicenseId = (typeof LICENSE_IDS)[number]
 
 /** Three-state: known-true / known-false / not-determinable. Drives strict-deny. */
 export type Tri = true | false | 'unknown'

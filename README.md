@@ -210,7 +210,7 @@ Audio/video are extra factories on existing packages: `openverseAudio()`, `pexel
 
 - **Zero network in `core`** — no `fetch` call, no hard-coded endpoint. Hosts inject `ProviderContext.fetch`.
 - **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals.
-- **strict-deny** — when rights can't be determined, deny / needs-review (never fail-open). Unknown, NonCommercial, NoDerivatives and "no known copyright restrictions" never map to a usable license.
+- **strict-deny** — when rights can't be determined, deny / needs-review (never fail-open). Unknown, NonCommercial and "no known copyright restrictions" never map to a commercially usable license; NoDerivatives allows verbatim commercial reuse (with attribution) but never derivative/AI use.
 
 ## Agent usage
 
