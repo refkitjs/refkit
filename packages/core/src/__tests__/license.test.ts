@@ -36,4 +36,26 @@ describe('LICENSE_FACTS', () => {
   it('factsFor falls back to unknown for an unrecognized id', () => {
     expect(factsFor('not-a-real-license' as LicenseId)).toBe(LICENSE_FACTS.unknown)
   })
+
+  it('CC-BY-ND allows verbatim commercial use but no derivatives', () => {
+    expect(LICENSE_FACTS['CC-BY-ND']).toEqual({
+      commercialUse: true,
+      derivatives: false,
+      redistribution: true,
+      attributionRequired: true,
+      shareAlike: false,
+    })
+  })
+
+  it('CC-BY-NC family: commercial false, redistribution unknown (intent cannot model NC-only sharing)', () => {
+    for (const id of ['CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND'] as const) {
+      expect(LICENSE_FACTS[id].commercialUse).toBe(false)
+      expect(LICENSE_FACTS[id].redistribution).toBe('unknown')
+      expect(LICENSE_FACTS[id].attributionRequired).toBe(true)
+    }
+    expect(LICENSE_FACTS['CC-BY-NC'].derivatives).toBe(true)
+    expect(LICENSE_FACTS['CC-BY-NC-SA'].derivatives).toBe(true)
+    expect(LICENSE_FACTS['CC-BY-NC-SA'].shareAlike).toBe(true)
+    expect(LICENSE_FACTS['CC-BY-NC-ND'].derivatives).toBe(false)
+  })
 })

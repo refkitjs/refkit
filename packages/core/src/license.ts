@@ -2,6 +2,10 @@ export type LicenseId =
   | 'CC0-1.0'
   | 'CC-BY'
   | 'CC-BY-SA'
+  | 'CC-BY-NC'
+  | 'CC-BY-NC-SA'
+  | 'CC-BY-NC-ND'
+  | 'CC-BY-ND'
   | 'PD'
   | 'unsplash'
   | 'pexels'
@@ -28,6 +32,15 @@ export const LICENSE_FACTS: Record<LicenseId, LicenseFacts> = {
   'PD': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: false, shareAlike: false },
   'CC-BY': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false },
   'CC-BY-SA': { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: true },
+  // NC family: sharing/derivatives are granted only NON-commercially. The
+  // 'redistribution' intent doesn't model commercial vs non-commercial, so the
+  // honest tri-state is 'unknown' (→ needs-review) — never true (fail-open) nor
+  // false (falsely claims "not granted").
+  'CC-BY-NC': { commercialUse: false, derivatives: true, redistribution: 'unknown', attributionRequired: true, shareAlike: false },
+  'CC-BY-NC-SA': { commercialUse: false, derivatives: true, redistribution: 'unknown', attributionRequired: true, shareAlike: true },
+  'CC-BY-NC-ND': { commercialUse: false, derivatives: false, redistribution: 'unknown', attributionRequired: true, shareAlike: false },
+  // ND: verbatim reuse (incl. commercial) is granted; derivatives are not.
+  'CC-BY-ND': { commercialUse: true, derivatives: false, redistribution: true, attributionRequired: true, shareAlike: false },
   // Stock-platform licenses: free to use incl. commercial, no attribution legally
   // required, but NOT redistributable as-is (can't resell/redistribute the asset itself).
   'unsplash': { commercialUse: true, derivatives: true, redistribution: false, attributionRequired: false, shareAlike: false },

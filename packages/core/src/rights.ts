@@ -22,7 +22,7 @@ export interface RightsRecord {
 }
 
 const licenseIdSchema: z.ZodType<LicenseId> = z.enum([
-  'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'PD',
+  'CC0-1.0', 'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND', 'PD',
   'unsplash', 'pexels', 'pixabay', 'proprietary', 'unknown',
 ])
 
