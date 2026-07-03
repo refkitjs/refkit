@@ -69,8 +69,7 @@ function toAudioReference(r: FreesoundResult): Reference | null {
   const canonicalUrl = r.url
   const rights: RightsRecord = {
     license,
-    // version is only ever populated by mapFreesoundLicense for the deed-URL form (D7);
-    // the name-string form (D4) never sets `version`, so this is undefined either way.
+    // D4 name-strings carry no version; D7 deed-URLs may — ccVersionFor keeps it only for versioned CC families.
     licenseVersion: ccVersionFor(license, version),
     author: r.username || undefined,
     rehostPolicy: 'cache-allowed',

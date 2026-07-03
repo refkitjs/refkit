@@ -65,6 +65,7 @@ describe('mapCommonsLicense', () => {
     expect(mapCommonsLicense('')).toEqual({ license: 'unknown' })
     expect(mapCommonsLicense(undefined)).toEqual({ license: 'unknown' })
     expect(mapCommonsLicense('fair use')).toEqual({ license: 'unknown' })
+    expect(mapCommonsLicense('cc-by-nc')).toEqual({ license: 'unknown' }) // versionless NC stays out of the family branch
   })
 })
 

@@ -38,6 +38,7 @@ describe('mapOpenverseLicense', () => {
     expect(mapOpenverseLicense('by-nc-sa')).toBe('CC-BY-NC-SA')
     expect(mapOpenverseLicense('by-nd')).toBe('CC-BY-ND')
     expect(mapOpenverseLicense('sampling+')).toBe('proprietary')
+    expect(mapOpenverseLicense('nc-sampling+')).toBe('proprietary')
     expect(mapOpenverseLicense('whatever')).toBe('unknown')
   })
 })

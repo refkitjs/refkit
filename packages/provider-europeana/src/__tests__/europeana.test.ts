@@ -101,6 +101,15 @@ describe('europeana toReference', () => {
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
   })
 
+  it('maps a CC-BY-NC item faithfully → denied for commercial use', async () => {
+    const ncItem = { ...ITEM_CC0, id: '/x/nc', rights: ['http://creativecommons.org/licenses/by-nc/4.0/'] }
+    const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([ncItem]))
+    const r = refs[0]
+    expect(r.rights.license).toBe('CC-BY-NC')
+    expect(r.rights.licenseVersion).toBe('4.0')
+    expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('denied')
+  })
+
   it('maps an in-copyright (InC) rights statement to proprietary → denied', async () => {
     const refs = await europeana({ apiKey: 'k' }).search({ text: 'photo', modalities: ['image'] }, okCtx([ITEM_INC]))
     const r = refs[0]

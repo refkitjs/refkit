@@ -80,6 +80,13 @@ const DOCS = [
     licenseurl: ['https://creativecommons.org/licenses/by/4.0/'],
     mediatype: 'movies',
   },
+  { // CC-BY-NC movie — must keep its own family, not collapse to proprietary
+    identifier: 'nc_doc',
+    title: 'NC Clip',
+    creator: 'Someone',
+    licenseurl: 'https://creativecommons.org/licenses/by-nc/4.0/',
+    mediatype: 'movies',
+  },
 ]
 
 const ctxResponding = (body: unknown, onUrl?: (u: string) => void): ProviderContext => ({
@@ -135,7 +142,19 @@ describe('internetArchive search', () => {
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
     expect(refs.map(r => r.canonicalUrl)).not.toContain('https://archive.org/details/some_collection')
-    expect(refs).toHaveLength(4) // bunny + clip + alice + arr_doc
+    expect(refs).toHaveLength(5) // bunny + clip + alice + arr_doc + nc_doc
+  })
+
+  it('maps a CC-BY-NC movie faithfully → denied for commercial use', async () => {
+    const refs = await internetArchive().search(
+      { text: 'nc', modalities: ['video', 'text'] },
+      ctxResponding({ response: { numFound: 5, docs: DOCS } }),
+    )
+    const nc = refs.find(r => r.canonicalUrl === 'https://archive.org/details/nc_doc')!
+    expect(nc).toBeDefined()
+    expect(nc.rights.license).toBe('CC-BY-NC')
+    expect(nc.rights.licenseVersion).toBe('4.0')
+    expect(evaluateUse(nc.rights, 'commercial-product').decision).toBe('denied')
   })
 
   it('coerces array-valued title/licenseurl Solr fields to scalars (no crash)', async () => {

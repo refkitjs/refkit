@@ -49,8 +49,9 @@ interface JamendoResponse {
 }
 
 // Jamendo deed URLs look like http(s)://creativecommons.org/licenses/<variant>/<v>/.
-// Only by/by-sa fit our enum (D5); capture the version (D7). Any nc/nd variant is
-// non-commercial or no-derivatives → 'proprietary'. Missing/unrecognized → 'unknown'.
+// All six CC families map faithfully with version captured (D7), including nc/nd
+// variants (their own CC-BY-NC*/CC-BY-ND families — gating gets stricter, not
+// 'proprietary'). Missing/unrecognized → 'unknown'.
 // This is exactly the core CC-deed mapper, re-exported under the jamendo-specific name
 // the provider's tests import.
 export const mapJamendoLicense = mapCcDeedUrl
