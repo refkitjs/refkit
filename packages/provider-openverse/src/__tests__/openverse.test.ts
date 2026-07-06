@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { openverse, openverseAudio, mapOpenverseLicense } from '../index'
 
 const FIXTURE = {
@@ -192,6 +193,11 @@ describe('openverse provider', () => {
     expect(verdict.reasons.join(' ')).toContain('CC-BY-NC-ND')
     // ...while the cc0 item is allowed:
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('allowed')
+  })
+
+  it('passes provider conformance (testkit)', async () => {
+    const refs = await searchConformant(openverse(), ctxWith(FIXTURE).fetch)
+    expect(refs.length).toBeGreaterThan(0)
   })
 })
 

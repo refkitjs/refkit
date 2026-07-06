@@ -27,6 +27,9 @@
   "dependencies": {
     "@refkit/core": "workspace:*"
   },
+  "devDependencies": {
+    "@refkit/provider-testkit": "workspace:*"
+  },
   "files": [
     "dist",
     "LICENSE"

@@ -24,6 +24,7 @@ export default defineConfig({
       './packages/provider-jamendo/vitest.config.ts',
       './packages/provider-europeana/vitest.config.ts',
       './packages/provider-internet-archive/vitest.config.ts',
+      './packages/provider-testkit/vitest.config.ts',
     ],
   },
 })

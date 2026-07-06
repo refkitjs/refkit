@@ -41,5 +41,8 @@
         "import": "./dist/index.js"
       }
     }
+  },
+  "devDependencies": {
+    "@refkit/provider-testkit": "workspace:*"
   }
 }
