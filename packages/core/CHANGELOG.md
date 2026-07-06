@@ -1,5 +1,37 @@
 # @refkit/core
 
+## 0.6.0
+
+### Minor Changes
+
+- 991d467: Add first-class CC NC/ND license families: `CC-BY-NC`, `CC-BY-NC-SA`, `CC-BY-NC-ND`, `CC-BY-ND`.
+
+  NC/ND-licensed results no longer collapse to `proprietary`: they keep their real
+  family id (+ CC version), generate the attribution the license requires, and
+  verdicts name the actual license in their reasons. Gating stays strict-deny —
+  commercial/AI use of NC content is still denied; NC × `redistribution` intent now
+  returns `needs-review` (was `denied`) because the intent cannot distinguish
+  commercial from non-commercial redistribution. `CC-BY-ND` now correctly allows
+  verbatim commercial reuse (`allowed-with-attribution`) while AI/derivative use
+  stays denied.
+
+  Note for TypeScript consumers: exhaustive `switch` statements over `LicenseId`
+  need arms for the four new ids.
+
+- 8300c18: Export evaluatePermissions/PermissionKey/EvaluateOptions — programmable strict-deny gate; evaluateUse intents are now presets over it (behavior unchanged).
+- c6b6061: Harden the search orchestrator: per-provider soft timeout (default 10s) and
+  bounded retry on 429/5xx/network errors (default 1, exponential backoff) — on by
+  default, tunable or disabled via `createRefkit({ resilience })`. Provider
+  statuses in `searchWithMeta` now carry `latencyMs`, and supplying a `cache`
+  (`KeyValueCache`) now memoizes per-provider results (key
+  `refkit:v1:<provider>:<queryHash>`, TTL via the new `cacheTtlMs` option, default
+  5 min) with hits flagged `cached: true`. Merge, rerank, and the license gate
+  always run fresh. New exports: `withTimeout`, `retryingFetch`, and the
+  `ResilienceOptions`, `TimeoutHandle`, `RetryOptions` types.
+
+  The MCP `search_references` structured output (`explain: true`) now surfaces
+  `latencyMs` per provider and `cached` on cache hits.
+
 ## 0.5.0
 
 ### Minor Changes

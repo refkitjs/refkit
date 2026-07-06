@@ -1,5 +1,57 @@
 # @refkit/mcp
 
+## 0.5.0
+
+### Minor Changes
+
+- 6a9b7e9: New stateless `evaluate_use` and `build_attribution` MCP tools — evaluate a
+  license against an intended use, or build an attribution credit line, without a
+  search round-trip. Zero-config `defaultProviders` now reads unified
+  `REFKIT_<PROVIDER>_KEY` env names first (`REFKIT_UNSPLASH_KEY`,
+  `REFKIT_PEXELS_KEY`, `REFKIT_PIXABAY_KEY`, `REFKIT_FLICKR_KEY`,
+  `REFKIT_SMITHSONIAN_KEY`, `REFKIT_BRAVE_KEY`, `REFKIT_FREESOUND_KEY`,
+  `REFKIT_JAMENDO_CLIENT_ID`, `REFKIT_EUROPEANA_KEY`), falling back to the legacy
+  names (`UNSPLASH_KEY`, `PEXELS_KEY`, `PIXABAY_KEY`, `FLICKR_KEY`, `SI_KEY`,
+  `BRAVE_TOKEN`, `FREESOUND_TOKEN`, `JAMENDO_CLIENT_ID`, `EUROPEANA_KEY`), which
+  are still honored.
+- c6b6061: Harden the search orchestrator: per-provider soft timeout (default 10s) and
+  bounded retry on 429/5xx/network errors (default 1, exponential backoff) — on by
+  default, tunable or disabled via `createRefkit({ resilience })`. Provider
+  statuses in `searchWithMeta` now carry `latencyMs`, and supplying a `cache`
+  (`KeyValueCache`) now memoizes per-provider results (key
+  `refkit:v1:<provider>:<queryHash>`, TTL via the new `cacheTtlMs` option, default
+  5 min) with hits flagged `cached: true`. Merge, rerank, and the license gate
+  always run fresh. New exports: `withTimeout`, `retryingFetch`, and the
+  `ResilienceOptions`, `TimeoutHandle`, `RetryOptions` types.
+
+  The MCP `search_references` structured output (`explain: true`) now surfaces
+  `latencyMs` per provider and `cached` on cache hits.
+
+### Patch Changes
+
+- Updated dependencies [991d467]
+- Updated dependencies [8300c18]
+- Updated dependencies [c6b6061]
+  - @refkit/core@0.6.0
+  - @refkit/provider-openverse@0.3.0
+  - @refkit/provider-flickr@0.3.0
+  - @refkit/provider-wikimedia-commons@0.3.0
+  - @refkit/provider-freesound@0.3.0
+  - @refkit/provider-jamendo@0.3.0
+  - @refkit/provider-europeana@0.3.0
+  - @refkit/provider-internet-archive@0.3.0
+  - @refkit/provider-artic@0.2.2
+  - @refkit/provider-brave@0.2.2
+  - @refkit/provider-gutendex@0.2.2
+  - @refkit/provider-met@0.2.2
+  - @refkit/provider-pexels@0.2.2
+  - @refkit/provider-pixabay@0.2.2
+  - @refkit/provider-poetrydb@0.2.2
+  - @refkit/provider-polyhaven@0.2.1
+  - @refkit/provider-rijksmuseum@0.2.1
+  - @refkit/provider-smithsonian@0.2.2
+  - @refkit/provider-unsplash@0.2.2
+
 ## 0.4.0
 
 ### Minor Changes

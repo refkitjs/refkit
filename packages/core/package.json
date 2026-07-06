@@ -1,6 +1,6 @@
 {
   "name": "@refkit/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "refkit core — neutral reference-retrieval brain: Reference/RightsRecord contract, license normalization, strict-deny use-gate, RRF merge/dedup, ReferenceProvider interfaces. Zero-network, zero-provider, only zod.",
   "type": "module",
   "license": "Apache-2.0",

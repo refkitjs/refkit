@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-europeana",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Europeana provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
