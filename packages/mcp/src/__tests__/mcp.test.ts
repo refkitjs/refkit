@@ -224,6 +224,88 @@ describe('@refkit/mcp', () => {
   })
 })
 
+describe('evaluate_use tool', () => {
+  it('lists the evaluate_use and build_attribution tools', async () => {
+    const client = await connectedClient()
+    const { tools } = await client.listTools()
+    expect(tools.map(t => t.name)).toContain('evaluate_use')
+    expect(tools.map(t => t.name)).toContain('build_attribution')
+    await client.close()
+  })
+
+  it('CC-BY under commercial-product → allowed-with-attribution, with attribution.text containing the author', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'evaluate_use',
+      arguments: {
+        license: 'CC-BY',
+        author: 'Alice',
+        title: 'attribution pic',
+        canonicalUrl: 'https://ov/bbb',
+        intent: 'commercial-product',
+      },
+    })
+    const structured = res.structuredContent as {
+      decision: string
+      reasons: string[]
+      confidence: string
+      disclaimer: string
+      attribution?: { text?: string }
+    }
+    expect(structured.decision).toBe('allowed-with-attribution')
+    expect(structured.attribution?.text).toContain('Alice')
+    await client.close()
+  })
+
+  it('unknown license → needs-review', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'evaluate_use',
+      arguments: {
+        license: 'unknown',
+        canonicalUrl: 'https://example.com/x',
+        intent: 'commercial-product',
+      },
+    })
+    const structured = res.structuredContent as { decision: string }
+    expect(structured.decision).toBe('needs-review')
+    await client.close()
+  })
+})
+
+describe('build_attribution tool', () => {
+  it('CC0 → required false', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'build_attribution',
+      arguments: {
+        license: 'CC0-1.0',
+        canonicalUrl: 'https://example.com/cc0',
+      },
+    })
+    const structured = res.structuredContent as { required: boolean; text?: string }
+    expect(structured.required).toBe(false)
+    await client.close()
+  })
+
+  it('CC-BY-NC with version → text contains "CC-BY-NC 2.0"', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'build_attribution',
+      arguments: {
+        license: 'CC-BY-NC',
+        licenseVersion: '2.0',
+        author: 'Carol',
+        canonicalUrl: 'https://example.com/nc',
+      },
+    })
+    const structured = res.structuredContent as { required: boolean; text?: string }
+    expect(structured.required).toBe(true)
+    expect(structured.text).toContain('CC-BY-NC 2.0')
+    await client.close()
+  })
+})
+
 describe('defaultProviders (zero-config CLI wiring)', () => {
   it('includes every keyless provider by default', () => {
     const ids = defaultProviders({}).map(p => p.id)
@@ -235,6 +317,10 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
   it('adds a BYOK provider only when its env key is present', () => {
     expect(defaultProviders({}).map(p => p.id)).not.toContain('unsplash')
     expect(defaultProviders({ UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  })
+
+  it('adds a BYOK provider when only the unified REFKIT_ env key is present', () => {
+    expect(defaultProviders({ REFKIT_UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
   })
 
   it('adds freesound only when FREESOUND_TOKEN is present', () => {
@@ -250,5 +336,14 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
   it('adds europeana only when EUROPEANA_KEY is present', () => {
     expect(defaultProviders({}).map(p => p.id)).not.toContain('europeana')
     expect(defaultProviders({ EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  })
+
+  it('adds europeana when only the unified REFKIT_EUROPEANA_KEY is present', () => {
+    expect(defaultProviders({ REFKIT_EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  })
+
+  it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', () => {
+    expect(defaultProviders({}).map(p => p.id)).not.toContain('smithsonian')
+    expect(defaultProviders({ SI_KEY: 'k' }).map(p => p.id)).toContain('smithsonian')
   })
 })

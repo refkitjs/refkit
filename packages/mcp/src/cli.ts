@@ -25,21 +25,34 @@ import { internetArchive } from '@refkit/provider-internet-archive'
 import { serveStdio } from './index'
 
 /** Providers a zero-config server boots with: all keyless sources, plus any BYOK
- *  source whose key is present in `env`. Exported so the wiring is unit-testable. */
+ *  source whose key is present in `env`. Exported so the wiring is unit-testable.
+ *
+ *  Env var convention: each BYOK key is read as `REFKIT_<PROVIDER>_KEY` first (the
+ *  unified name), falling back to the provider's legacy env var name — both are
+ *  honored indefinitely, the unified name is just preferred going forward. */
 export function defaultProviders(env: NodeJS.ProcessEnv = process.env): ReferenceProvider[] {
   const providers: ReferenceProvider[] = [
     openverse(), openverseAudio(), wikimediaCommons(), met(), artic(), gutendex(), poetrydb(),
     rijksmuseum(), polyhaven(), ambientcg(), internetArchive(),
   ]
-  if (env.UNSPLASH_KEY) providers.push(unsplash({ accessKey: env.UNSPLASH_KEY }))
-  if (env.PEXELS_KEY) providers.push(pexels({ apiKey: env.PEXELS_KEY }), pexelsVideo({ apiKey: env.PEXELS_KEY }))
-  if (env.PIXABAY_KEY) providers.push(pixabay({ key: env.PIXABAY_KEY }), pixabayVideo({ key: env.PIXABAY_KEY }))
-  if (env.FLICKR_KEY) providers.push(flickr({ apiKey: env.FLICKR_KEY }))
-  if (env.SI_KEY) providers.push(smithsonian({ apiKey: env.SI_KEY }))
-  if (env.BRAVE_TOKEN) providers.push(brave({ token: env.BRAVE_TOKEN }))
-  if (env.FREESOUND_TOKEN) providers.push(freesound({ apiKey: env.FREESOUND_TOKEN }))
-  if (env.JAMENDO_CLIENT_ID) providers.push(jamendo({ clientId: env.JAMENDO_CLIENT_ID }))
-  if (env.EUROPEANA_KEY) providers.push(europeana({ apiKey: env.EUROPEANA_KEY }))
+  const unsplashKey = env.REFKIT_UNSPLASH_KEY ?? env.UNSPLASH_KEY
+  const pexelsKey = env.REFKIT_PEXELS_KEY ?? env.PEXELS_KEY
+  const pixabayKey = env.REFKIT_PIXABAY_KEY ?? env.PIXABAY_KEY
+  const flickrKey = env.REFKIT_FLICKR_KEY ?? env.FLICKR_KEY
+  const smithsonianKey = env.REFKIT_SMITHSONIAN_KEY ?? env.SI_KEY
+  const braveKey = env.REFKIT_BRAVE_KEY ?? env.BRAVE_TOKEN
+  const freesoundKey = env.REFKIT_FREESOUND_KEY ?? env.FREESOUND_TOKEN
+  const jamendoClientId = env.REFKIT_JAMENDO_CLIENT_ID ?? env.JAMENDO_CLIENT_ID
+  const europeanaKey = env.REFKIT_EUROPEANA_KEY ?? env.EUROPEANA_KEY
+  if (unsplashKey) providers.push(unsplash({ accessKey: unsplashKey }))
+  if (pexelsKey) providers.push(pexels({ apiKey: pexelsKey }), pexelsVideo({ apiKey: pexelsKey }))
+  if (pixabayKey) providers.push(pixabay({ key: pixabayKey }), pixabayVideo({ key: pixabayKey }))
+  if (flickrKey) providers.push(flickr({ apiKey: flickrKey }))
+  if (smithsonianKey) providers.push(smithsonian({ apiKey: smithsonianKey }))
+  if (braveKey) providers.push(brave({ token: braveKey }))
+  if (freesoundKey) providers.push(freesound({ apiKey: freesoundKey }))
+  if (jamendoClientId) providers.push(jamendo({ clientId: jamendoClientId }))
+  if (europeanaKey) providers.push(europeana({ apiKey: europeanaKey }))
   return providers
 }
 
