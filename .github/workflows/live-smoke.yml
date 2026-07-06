@@ -5,6 +5,9 @@ on:
     - cron: '17 3 * * 1' # Mondays 03:17 UTC — weekly upstream drift check
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   live:
     runs-on: ubuntu-latest
