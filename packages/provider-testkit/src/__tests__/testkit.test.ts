@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defineProvider, type ProviderContext, type Reference } from '@refkit/core'
-import { expectLicenseMap, searchConformant } from '../index'
+import { expectLicenseMap, searchConformant, type LicenseMapResult } from '../index'
 
 // A minimal, otherwise-conformant reference. Individual tests override
 // exactly the field under examination.
@@ -48,11 +48,38 @@ describe('searchConformant', () => {
     expect(refs[0].id).toBe('fake:abc123')
   })
 
-  it('fails when an image provider emits a page-URL thumbnail (D8)', async () => {
+  it('accepts an extensionless CDN-style thumbnail (real providers: openverse /thumb/, smithsonian deliveryService)', async () => {
     const provider = fakeProvider([
-      baseRef({ thumbnail: { url: 'https://example.com/photo/1' } }), // page URL, not an image resource
+      baseRef({ thumbnail: { url: 'https://api.example.org/v1/images/x/thumb/' } }),
     ])
-    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/thumbnail\.url is not image-like/)
+    const refs = await searchConformant(provider, fixtureFetch)
+    expect(refs).toHaveLength(1)
+  })
+
+  it('fails when an image provider reuses the landing page as the thumbnail (D8)', async () => {
+    const provider = fakeProvider([
+      baseRef({ thumbnail: { url: 'https://example.com/photo/1' } }), // === canonicalUrl: the page itself
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/thumbnail\.url is the item's landing page/)
+  })
+
+  it('fails when an image provider emits a preview with non-image mediaType (D8)', async () => {
+    const provider = fakeProvider([
+      baseRef({ preview: { url: 'https://example.com/photo/1', mediaType: 'text/html' } }),
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/image preview has non-image mediaType: text\/html/)
+  })
+
+  it('fails when a ref carries a different provider\'s id prefix', async () => {
+    const provider = fakeProvider([baseRef({ id: 'other:abc123' })])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/id does not identify the provider/)
+  })
+
+  it('fails when source.providerId does not match the provider', async () => {
+    const provider = fakeProvider([
+      baseRef({ source: { providerId: 'other', sourceUrl: 'https://example.com/photo/1' } }),
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/source\.providerId does not match the provider/)
   })
 
   it('fails when licenseVersion is stamped on a non-CC-family license (CC0-1.0)', async () => {
@@ -78,6 +105,30 @@ describe('expectLicenseMap', () => {
         { input: 'zz', expect: 'unknown' },
       ]),
     ).not.toThrow()
+  })
+
+  it('compares objects field-wise, insensitive to key order', () => {
+    // Construct the result with keys in the opposite order of the expectation.
+    const mapFn = (): LicenseMapResult => JSON.parse('{"version":"4.0","license":"CC-BY"}') as LicenseMapResult
+    expect(() =>
+      expectLicenseMap(mapFn, [{ input: 'x', expect: { license: 'CC-BY', version: '4.0' } }]),
+    ).not.toThrow()
+  })
+
+  it('ignores extra jurisdiction on the result unless the expectation specifies it (mapRightsUrl shape)', () => {
+    const mapFn = (): LicenseMapResult => ({ license: 'PD', jurisdiction: 'US' })
+    // Matches when jurisdiction is asserted…
+    expect(() =>
+      expectLicenseMap(mapFn, [{ input: 'noc-us', expect: { license: 'PD', jurisdiction: 'US' } }]),
+    ).not.toThrow()
+    // …and when the expectation omits it entirely.
+    expect(() =>
+      expectLicenseMap(mapFn, [{ input: 'noc-us', expect: { license: 'PD' } }]),
+    ).not.toThrow()
+    // But a WRONG asserted jurisdiction still fails.
+    expect(() =>
+      expectLicenseMap(mapFn, [{ input: 'noc-us', expect: { license: 'PD', jurisdiction: 'DE' } }]),
+    ).toThrowError(/license mapping mismatches/)
   })
 
   it('reports every mismatch when the mapping is wrong', () => {
