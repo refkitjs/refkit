@@ -225,6 +225,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/provider-testkit:
+    dependencies:
+      '@refkit/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/provider-unsplash:
     dependencies:
       '@refkit/core':
