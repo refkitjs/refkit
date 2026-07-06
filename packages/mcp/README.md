@@ -1,6 +1,6 @@
 # @refkit/mcp
 
-An MCP server that exposes refkit's **license-normalized reference search** as an agent tool (`search_references`).
+An MCP server that exposes refkit's **license-normalized reference search** (`search_references`) plus two stateless verdict tools (`evaluate_use`, `build_attribution`) as agent tools.
 
 ## Zero-config (`npx`)
 
@@ -10,9 +10,12 @@ Point any MCP client at:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute of Chicago, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB) and auto-adds any BYOK source whose key is in the environment:
+It boots with the keyless sources (Met, Art Institute of Chicago, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB) and auto-adds any BYOK source whose key is in the environment. Each key is read as a unified `REFKIT_<PROVIDER>_KEY` name first, falling back to the provider's legacy name (both are honored indefinitely):
 
 ```bash
+REFKIT_UNSPLASH_KEY=… REFKIT_PEXELS_KEY=… REFKIT_PIXABAY_KEY=… REFKIT_FLICKR_KEY=… REFKIT_SMITHSONIAN_KEY=… REFKIT_BRAVE_KEY=… npx -y @refkit/mcp
+
+# legacy names still work:
 UNSPLASH_KEY=… PEXELS_KEY=… PIXABAY_KEY=… FLICKR_KEY=… SI_KEY=… BRAVE_TOKEN=… npx -y @refkit/mcp
 ```
 
@@ -65,6 +68,20 @@ Input: `{ query, modalities?, controls?, filters?, providerOptions?, explain?, l
 Output: `{ references: [{ id, title?, modality, provider, canonicalUrl, license, thumbnail?, excerpt?, useVerdict?, useExplanation?, attribution? }], meta? }`. When `intent` (or `gateFor`) is set, each result carries `useVerdict { decision, reason, confidence }`, a plain `useExplanation`, and — if the license requires it — a ready-to-use `attribution` credit line. When `explain: true`, `meta` includes per-provider `fulfilled` / `failed` / `skipped` status, applied/ignored control details, warnings, and gate/drop counts.
 
 > Results are references with a license id + source link — **not rights clearance, not legal advice**. `unknown` / `needs-review` results require the caller to verify the source's terms.
+
+## The `evaluate_use` tool
+
+Stateless: no search round-trip, no session cache — the caller supplies the rights fields directly.
+
+Input: `{ license, licenseVersion?, author?, title?, canonicalUrl, intent, editorialOnly?, jurisdiction?, userJurisdiction? }`.
+
+Output: `{ decision, reasons, confidence, disclaimer, attribution? }`. `attribution.text`/`.html` are included when `decision` is `allowed-with-attribution` (built from the same input fields via `buildAttribution`).
+
+> Same conservative heuristic as `search_references`' use-gate — **not legal advice**. Every verdict carries a `disclaimer` and a `confidence`.
+
+## The `build_attribution` tool
+
+Input: `{ license, licenseVersion?, author?, title?, canonicalUrl }` → output `{ required, text?, html? }`. `required` is `false` (and `text`/`html` omitted) for licenses that need no attribution (e.g. `CC0-1.0`, `PD`).
 
 ## Discovery (web) source
 

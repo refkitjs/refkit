@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateUse, NOT_LEGAL_ADVICE } from '../evaluate-use'
+import { evaluatePermissions, evaluateUse, NOT_LEGAL_ADVICE } from '../evaluate-use'
 import type { RightsRecord } from '../rights'
 import { LICENSE_FACTS } from '../license'
 import type { LicenseId } from '../license'
@@ -100,5 +100,48 @@ describe('evaluateUse — strict-deny', () => {
     expect(evaluateUse(rec('CC-BY-ND'), 'commercial-product').decision).toBe('allowed-with-attribution')
     expect(evaluateUse(rec('CC-BY-ND'), 'ai-generation-input').decision).toBe('denied')
     expect(evaluateUse(rec('CC-BY-ND'), 'redistribution').decision).toBe('allowed-with-attribution')
+  })
+})
+
+describe('evaluatePermissions — programmable strict-deny gate', () => {
+  it('custom permission set: derivatives-only on CC-BY-ND → denied, naming CC-BY-ND', () => {
+    const v = evaluatePermissions(rec('CC-BY-ND'), ['derivatives'])
+    expect(v.decision).toBe('denied')
+    expect(v.reasons.join(' ')).toContain('CC-BY-ND')
+  })
+
+  it('empty required set on CC-BY with enforceAttribution (default true) → allowed-with-attribution', () => {
+    const v = evaluatePermissions(rec('CC-BY'), [])
+    expect(v.decision).toBe('allowed-with-attribution')
+  })
+
+  it('unknown license → needs-review regardless of required permissions', () => {
+    const v = evaluatePermissions(rec('unknown'), ['commercialUse', 'derivatives', 'redistribution'])
+    expect(v.decision).toBe('needs-review')
+    expect(v.confidence).toBe('low')
+  })
+
+  it('preset parity: evaluatePermissions(rec, [commercialUse], undefined, {denyEditorialOnly:true, label}) equals evaluateUse(rec, commercial-product)', () => {
+    const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY', 'CC-BY-NC', 'CC-BY-ND', 'proprietary', 'unknown']
+    for (const license of licenses) {
+      const viaPermissions = evaluatePermissions(rec(license), ['commercialUse'], undefined, { denyEditorialOnly: true, label: 'commercial-product' })
+      const viaUse = evaluateUse(rec(license), 'commercial-product')
+      expect(viaPermissions.decision).toBe(viaUse.decision)
+      expect(viaPermissions.reasons).toEqual(viaUse.reasons)
+    }
+  })
+
+  it('evaluateUse success reasons name the intent (historical wording)', () => {
+    expect(evaluateUse(rec('CC0-1.0'), 'commercial-product').reasons).toContain('permitted for commercial-product under CC0-1.0')
+    expect(evaluateUse(rec('CC0-1.0'), 'internal-moodboard').reasons).toContain('permitted for internal-moodboard under CC0-1.0')
+  })
+
+  it('standalone evaluatePermissions defaults the label to the permission set', () => {
+    expect(evaluatePermissions(rec('CC0-1.0'), ['commercialUse']).reasons).toContain('permitted for commercialUse under CC0-1.0')
+  })
+
+  it('lenient-attribution note interpolates the custom label', () => {
+    const v = evaluatePermissions(rec('CC-BY'), [], undefined, { enforceAttribution: false, label: 'archival-review' })
+    expect(v.reasons.some(r => r.includes('not enforced for archival-review use'))).toBe(true)
   })
 })

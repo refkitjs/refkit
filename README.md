@@ -108,6 +108,18 @@ console.log(meta.providers)
 console.log(meta.warnings)
 ```
 
+`controls.page` is a **provider-local** cursor: each provider paginates its own result stream independently, and refkit does not track a unified offset across sources. Because pages are fused with Reciprocal Rank Fusion per request, page N+1 is not guaranteed to be disjoint from page N — results can overlap or shift relative to the previous page. For a "load more" UI, dedupe across pages by `canonicalUrl` rather than assuming stable, non-overlapping windows:
+
+```ts
+import { canonicalizeUrl } from '@refkit/core'
+
+const seen = new Set(prev.map((r) => canonicalizeUrl(r.canonicalUrl)))
+const nextPage = await refkit.search({ query, modalities: ['image'], controls: { page: 2 } })
+const newOnly = nextPage.filter((r) => !seen.has(canonicalizeUrl(r.canonicalUrl)))
+```
+
+(core's own merge/dedup normalizes URLs the same way, so this recipe stays consistent with what refkit dedupes internally.)
+
 ## Ranking & rerank
 
 By default, results are fused across sources with **Reciprocal Rank Fusion** — cross-source-orderable, but not query-aware. For sharper relevance, pass a **reranker**:
@@ -229,7 +241,7 @@ Agents can use refkit in two ways:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN`, …). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
+It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
 
 ## Not legal advice
 

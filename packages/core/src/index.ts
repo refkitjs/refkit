@@ -20,8 +20,8 @@ export { hammingDistance, dedupeReferences } from './dedup'
 export type { DedupeOptions } from './dedup'
 export { mergeReferences } from './merge'
 export type { MergeOptions } from './merge'
-export { evaluateUse, NOT_LEGAL_ADVICE } from './evaluate-use'
-export type { Intent, Decision, Verdict } from './evaluate-use'
+export { evaluateUse, evaluatePermissions, NOT_LEGAL_ADVICE, INTENTS } from './evaluate-use'
+export type { Intent, Decision, Verdict, PermissionKey, EvaluateOptions } from './evaluate-use'
 export { defineProvider } from './provider'
 export type {
   ReferenceProvider,

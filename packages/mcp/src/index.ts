@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
-const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
 const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
 const SEARCH_CONTROL_KEYS = [
   'orientation',
@@ -198,6 +198,91 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       return {
         content: [{ type: 'text', text: `${references.length} reference(s) for "${query}".` }],
         structuredContent: { references, ...(result.meta ? { meta: result.meta } : {}) },
+      }
+    },
+  )
+
+  const attributionOutputSchema = { required: z.boolean(), text: z.string().optional(), html: z.string().optional() }
+
+  server.registerTool(
+    'evaluate_use',
+    {
+      title: 'Evaluate a license for an intended use',
+      description:
+        'Stateless license/use-gate check: given a license id + intended use, returns a conservative-heuristic verdict ' +
+        '(allowed / allowed-with-attribution / denied / needs-review) with reasons and confidence. ' +
+        'Not legal advice — a strict-deny heuristic over source-declared license facts.',
+      inputSchema: {
+        license: z.enum(LICENSE_IDS).describe('the reference\'s license id'),
+        licenseVersion: z.string().optional().describe('precise CC version, e.g. "4.0" — attribution only'),
+        author: z.string().optional(),
+        title: z.string().optional(),
+        canonicalUrl: z.string().describe('canonical source link, for attribution and audit'),
+        intent: z.enum(INTENTS).describe('the intended use to evaluate this license against'),
+        editorialOnly: z.boolean().optional().describe('source marked editorial-only'),
+        jurisdiction: z.string().optional().describe('source-declared jurisdiction of the PD/copyright status'),
+        userJurisdiction: z.string().optional().describe('caller\'s jurisdiction; mismatched jurisdictions default to needs-review'),
+      },
+      outputSchema: {
+        decision: z.enum(['allowed', 'allowed-with-attribution', 'denied', 'needs-review']),
+        reasons: z.array(z.string()),
+        confidence: z.enum(['high', 'low']),
+        disclaimer: z.string(),
+        attribution: z.object(attributionOutputSchema).optional(),
+      },
+    },
+    async ({ license, licenseVersion, author, title, canonicalUrl, intent, editorialOnly, jurisdiction, userJurisdiction }) => {
+      const version = ccVersionFor(license, licenseVersion)
+      const rights: RightsRecord = {
+        license,
+        licenseVersion: version,
+        author,
+        rehostPolicy: 'cache-allowed',
+        jurisdiction,
+        editorialOnly,
+        raw: { sourceTerms: '', sourceUrl: canonicalUrl },
+      }
+      const verdict: Verdict = evaluateUse(rights, intent, { userJurisdiction })
+      const attribution =
+        verdict.decision === 'allowed-with-attribution'
+          ? buildAttribution({ license, licenseVersion: version, author, title, canonicalUrl })
+          : undefined
+      const summary = `${verdict.decision}: ${verdict.reasons.join('; ') || 'license facts allow this use'}`
+      return {
+        content: [{ type: 'text', text: summary }],
+        structuredContent: {
+          decision: verdict.decision,
+          reasons: verdict.reasons,
+          confidence: verdict.confidence,
+          disclaimer: verdict.disclaimer,
+          ...(attribution ? { attribution } : {}),
+        },
+      }
+    },
+  )
+
+  server.registerTool(
+    'build_attribution',
+    {
+      title: 'Build an attribution credit line',
+      description:
+        'Mechanically derive an attribution credit line (plain text + HTML) from a license id + author + title + ' +
+        'canonicalUrl. `required` is false when the license needs no attribution (e.g. CC0, PD).',
+      inputSchema: {
+        license: z.enum(LICENSE_IDS),
+        licenseVersion: z.string().optional().describe('precise CC version, e.g. "4.0" — appended to the license name'),
+        author: z.string().optional(),
+        title: z.string().optional(),
+        canonicalUrl: z.string(),
+      },
+      outputSchema: attributionOutputSchema,
+    },
+    async ({ license, licenseVersion, author, title, canonicalUrl }) => {
+      const version = ccVersionFor(license, licenseVersion)
+      const attribution: Attribution = buildAttribution({ license, licenseVersion: version, author, title, canonicalUrl })
+      return {
+        content: [{ type: 'text', text: attribution.required ? (attribution.text ?? '') : 'No attribution required for this license.' }],
+        structuredContent: { required: attribution.required, text: attribution.text, html: attribution.html },
       }
     },
   )
