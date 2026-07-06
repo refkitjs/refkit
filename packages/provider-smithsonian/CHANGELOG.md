@@ -1,5 +1,14 @@
 # @refkit/provider-smithsonian
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [991d467]
+- Updated dependencies [8300c18]
+- Updated dependencies [c6b6061]
+  - @refkit/core@0.6.0
+
 ## 0.2.1
 
 ### Patch Changes

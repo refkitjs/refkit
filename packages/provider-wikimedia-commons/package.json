@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-wikimedia-commons",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Wikimedia Commons provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",

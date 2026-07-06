@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-polyhaven",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Poly Haven provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
