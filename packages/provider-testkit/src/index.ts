@@ -1,10 +1,11 @@
 import {
-  parseReference, isLikelyImageUrl, CC_FAMILY_BY_TOKEN,
+  parseReference, isLikelyImageUrl, CC_VERSIONED_FAMILIES,
   type Reference, type ReferenceProvider, type NormalizedQuery, type ProviderContext, type LicenseId,
 } from '@refkit/core'
 
-/** Licenses allowed to carry rights.licenseVersion (the six versioned CC families). */
-const VERSIONED: ReadonlySet<LicenseId> = new Set(Object.values(CC_FAMILY_BY_TOKEN))
+/** Licenses allowed to carry rights.licenseVersion (the six versioned CC families) —
+ *  core's canonical membership set, kept in sync with `ccVersionFor`. */
+const VERSIONED: ReadonlySet<LicenseId> = CC_VERSIONED_FAMILIES
 
 export interface ConformanceOptions {
   /** Text query for the search. Default 'landscape'. */

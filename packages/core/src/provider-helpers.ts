@@ -94,7 +94,9 @@ export function mapCcDeedUrl(url: string | undefined | null): { license: License
   return { license: 'unknown' }
 }
 
-const CC_VERSIONED_FAMILIES: ReadonlySet<LicenseId> = new Set([
+/** Canonical membership set backing `ccVersionFor`; also consumed by the testkit's
+ *  licenseVersion conformance rule. */
+export const CC_VERSIONED_FAMILIES: ReadonlySet<LicenseId> = new Set([
   'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND',
 ])
 
