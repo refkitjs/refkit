@@ -244,4 +244,6 @@ pnpm test:run    # all packages
 pnpm build       # tsup → dist for every package
 ```
 
+`REFKIT_LIVE=1 pnpm test:run` runs the live smoke suites against real provider APIs (BYOK ones need their key env vars set); the weekly cron in CI runs the same check.
+
 Releases are automated with [changesets](https://github.com/changesets/changesets): run `pnpm changeset` to record a change; merging the CI-generated "Version Packages" PR publishes to npm.

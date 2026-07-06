@@ -1,0 +1,32 @@
+name: live-smoke
+
+on:
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 03:17 UTC — weekly upstream drift check
+  workflow_dispatch: {}
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Live smoke (keyless always; BYOK when secrets exist)
+        env:
+          REFKIT_LIVE: '1'
+          UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
+          FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
+          SI_KEY: ${{ secrets.SI_KEY }}
+          BRAVE_TOKEN: ${{ secrets.BRAVE_TOKEN }}
+          FREESOUND_TOKEN: ${{ secrets.FREESOUND_TOKEN }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+          EUROPEANA_KEY: ${{ secrets.EUROPEANA_KEY }}
+        run: pnpm vitest run
