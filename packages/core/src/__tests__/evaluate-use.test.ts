@@ -121,13 +121,22 @@ describe('evaluatePermissions — programmable strict-deny gate', () => {
     expect(v.confidence).toBe('low')
   })
 
-  it('preset parity: evaluatePermissions(rec, [commercialUse], undefined, {denyEditorialOnly:true}) equals evaluateUse(rec, commercial-product)', () => {
+  it('preset parity: evaluatePermissions(rec, [commercialUse], undefined, {denyEditorialOnly:true, label}) equals evaluateUse(rec, commercial-product)', () => {
     const licenses: LicenseId[] = ['CC0-1.0', 'CC-BY', 'CC-BY-NC', 'CC-BY-ND', 'proprietary', 'unknown']
     for (const license of licenses) {
-      const viaPermissions = evaluatePermissions(rec(license), ['commercialUse'], undefined, { denyEditorialOnly: true })
+      const viaPermissions = evaluatePermissions(rec(license), ['commercialUse'], undefined, { denyEditorialOnly: true, label: 'commercial-product' })
       const viaUse = evaluateUse(rec(license), 'commercial-product')
       expect(viaPermissions.decision).toBe(viaUse.decision)
       expect(viaPermissions.reasons).toEqual(viaUse.reasons)
     }
+  })
+
+  it('evaluateUse success reasons name the intent (historical wording)', () => {
+    expect(evaluateUse(rec('CC0-1.0'), 'commercial-product').reasons).toContain('permitted for commercial-product under CC0-1.0')
+    expect(evaluateUse(rec('CC0-1.0'), 'internal-moodboard').reasons).toContain('permitted for internal-moodboard under CC0-1.0')
+  })
+
+  it('standalone evaluatePermissions defaults the label to the permission set', () => {
+    expect(evaluatePermissions(rec('CC0-1.0'), ['commercialUse']).reasons).toContain('permitted for commercialUse under CC0-1.0')
   })
 })

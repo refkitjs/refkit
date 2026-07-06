@@ -23,6 +23,10 @@ export interface EvaluateOptions {
   /** Enforce attributionRequired as allowed-with-attribution. Default true; presets
    *  disable it for internal-moodboard (note-only). */
   enforceAttribution?: boolean
+  /** Label used in the success-path reason ("permitted for <label> under <license>").
+   *  Defaults to the joined required-permission names (or 'use' if empty). Presets
+   *  pass the original intent name to preserve evaluateUse's historical wording. */
+  label?: string
 }
 
 /** Low-level, programmable strict-deny gate: unknown license → needs-review;
@@ -37,6 +41,7 @@ export function evaluatePermissions(
 ): Verdict {
   const denyEditorialOnly = opts?.denyEditorialOnly ?? false
   const enforceAttribution = opts?.enforceAttribution ?? true
+  const label = opts?.label ?? (required.join('+') || 'use')
 
   const facts = factsFor(r.license)
   const reasons: string[] = []
@@ -75,7 +80,7 @@ export function evaluatePermissions(
     }
   }
 
-  reasons.push(`permitted for ${required.join('+') || 'use'} under ${r.license}`)
+  reasons.push(`permitted for ${label} under ${r.license}`)
   // Lenient callers (e.g. internal-moodboard) surface a note instead of enforcing.
   if (facts.attributionRequired && !enforceAttribution) {
     reasons.push('attribution required by license but not enforced for internal-moodboard use')
@@ -92,14 +97,14 @@ export function evaluatePermissions(
 function presetFor(intent: Intent): { required: PermissionKey[]; opts: EvaluateOptions } {
   switch (intent) {
     case 'commercial-product':
-      return { required: ['commercialUse'], opts: { denyEditorialOnly: true, enforceAttribution: true } }
+      return { required: ['commercialUse'], opts: { denyEditorialOnly: true, enforceAttribution: true, label: intent } }
     case 'ai-generation-input':
-      return { required: ['commercialUse', 'derivatives'], opts: { denyEditorialOnly: true, enforceAttribution: true } }
+      return { required: ['commercialUse', 'derivatives'], opts: { denyEditorialOnly: true, enforceAttribution: true, label: intent } }
     case 'redistribution':
-      return { required: ['redistribution'], opts: { denyEditorialOnly: false, enforceAttribution: true } }
+      return { required: ['redistribution'], opts: { denyEditorialOnly: false, enforceAttribution: true, label: intent } }
     case 'internal-moodboard':
       // lenient; gated only by the unknown/jurisdiction checks in evaluatePermissions
-      return { required: [], opts: { denyEditorialOnly: false, enforceAttribution: false } }
+      return { required: [], opts: { denyEditorialOnly: false, enforceAttribution: false, label: intent } }
   }
 }
 
