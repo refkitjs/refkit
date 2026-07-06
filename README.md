@@ -108,6 +108,14 @@ console.log(meta.providers)
 console.log(meta.warnings)
 ```
 
+`controls.page` is a **provider-local** cursor: each provider paginates its own result stream independently, and refkit does not track a unified offset across sources. Because pages are fused with Reciprocal Rank Fusion per request, page N+1 is not guaranteed to be disjoint from page N — results can overlap or shift relative to the previous page. For a "load more" UI, dedupe across pages by `canonicalUrl` rather than assuming stable, non-overlapping windows:
+
+```ts
+const seen = new Set(prev.map((r) => r.canonicalUrl))
+const nextPage = await refkit.search({ query, modalities: ['image'], controls: { page: 2 } })
+const newOnly = nextPage.filter((r) => !seen.has(r.canonicalUrl))
+```
+
 ## Ranking & rerank
 
 By default, results are fused across sources with **Reciprocal Rank Fusion** — cross-source-orderable, but not query-aware. For sharper relevance, pass a **reranker**:

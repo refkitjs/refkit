@@ -45,6 +45,9 @@ export interface SearchControls {
   media?: SearchMediaControls
   creator?: SearchCreatorControls
   text?: SearchTextControls
+  /** Provider-local page cursor: each provider paginates its own result stream;
+   *  after RRF merging, page N+1 may overlap or shift relative to page N. For
+   *  UI "load more", dedupe across pages by canonicalUrl (see README). */
   page?: number
 }
 
