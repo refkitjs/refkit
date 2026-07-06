@@ -271,6 +271,39 @@ describe('evaluate_use tool', () => {
     expect(structured.decision).toBe('needs-review')
     await client.close()
   })
+
+  it('CC0 editorialOnly + commercial-product intent → denied', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'evaluate_use',
+      arguments: {
+        license: 'CC0-1.0',
+        editorialOnly: true,
+        canonicalUrl: 'https://example.com/editorial',
+        intent: 'commercial-product',
+      },
+    })
+    const structured = res.structuredContent as { decision: string }
+    expect(structured.decision).toBe('denied')
+    await client.close()
+  })
+
+  it('PD with mismatched jurisdiction + commercial-product intent → needs-review', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'evaluate_use',
+      arguments: {
+        license: 'PD',
+        jurisdiction: 'US',
+        userJurisdiction: 'DE',
+        canonicalUrl: 'https://example.com/pd',
+        intent: 'commercial-product',
+      },
+    })
+    const structured = res.structuredContent as { decision: string }
+    expect(structured.decision).toBe('needs-review')
+    await client.close()
+  })
 })
 
 describe('build_attribution tool', () => {
@@ -302,6 +335,23 @@ describe('build_attribution tool', () => {
     const structured = res.structuredContent as { required: boolean; text?: string }
     expect(structured.required).toBe(true)
     expect(structured.text).toContain('CC-BY-NC 2.0')
+    await client.close()
+  })
+
+  it('non-CC license id: licenseVersion is dropped silently (bare license label, no text emitted)', async () => {
+    const client = await connectedClient()
+    const res = await client.callTool({
+      name: 'build_attribution',
+      arguments: {
+        license: 'unsplash',
+        licenseVersion: '4.0',
+        canonicalUrl: 'https://example.com/unsplash',
+      },
+    })
+    const structured = res.structuredContent as { required: boolean; text?: string }
+    // unsplash requires no attribution at all, so text is absent — but critically,
+    // the version must never have been threaded through un-gated (it isn't a CC family).
+    expect(structured.text ?? '').not.toContain('4.0')
     await client.close()
   })
 })

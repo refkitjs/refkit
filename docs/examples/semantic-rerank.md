@@ -55,10 +55,12 @@ export function semanticReranker(): Reranker {
   return async ({ query, refs, signal }: RerankInput): Promise<Reference[]> => {
     if (refs.length === 0) return []
 
-    const [queryVec, ...refVecs] = await fetchEmbeddings(
-      [query, ...refs.map(refText)],
-      signal,
-    )
+    const vectors = await fetchEmbeddings([query, ...refs.map(refText)], signal)
+    const expected = 1 + refs.length
+    if (vectors.length !== expected) {
+      throw new Error(`embeddings count mismatch: got ${vectors.length}, expected ${expected}`)
+    }
+    const [queryVec, ...refVecs] = vectors
 
     const scored = refs.map((ref, i) => ({
       ref,

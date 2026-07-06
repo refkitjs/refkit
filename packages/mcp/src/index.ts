@@ -2,11 +2,10 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, evaluateUse, buildAttribution } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor } from '@refkit/core'
 import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
-const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
 const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
 const SEARCH_CONTROL_KEYS = [
   'orientation',
@@ -233,9 +232,10 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       },
     },
     async ({ license, licenseVersion, author, title, canonicalUrl, intent, editorialOnly, jurisdiction, userJurisdiction }) => {
+      const version = ccVersionFor(license, licenseVersion)
       const rights: RightsRecord = {
         license,
-        licenseVersion,
+        licenseVersion: version,
         author,
         rehostPolicy: 'cache-allowed',
         jurisdiction,
@@ -245,7 +245,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       const verdict: Verdict = evaluateUse(rights, intent, { userJurisdiction })
       const attribution =
         verdict.decision === 'allowed-with-attribution'
-          ? buildAttribution({ license, licenseVersion, author, title, canonicalUrl })
+          ? buildAttribution({ license, licenseVersion: version, author, title, canonicalUrl })
           : undefined
       const summary = `${verdict.decision}: ${verdict.reasons.join('; ') || 'license facts allow this use'}`
       return {
@@ -278,7 +278,8 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       outputSchema: attributionOutputSchema,
     },
     async ({ license, licenseVersion, author, title, canonicalUrl }) => {
-      const attribution: Attribution = buildAttribution({ license, licenseVersion, author, title, canonicalUrl })
+      const version = ccVersionFor(license, licenseVersion)
+      const attribution: Attribution = buildAttribution({ license, licenseVersion: version, author, title, canonicalUrl })
       return {
         content: [{ type: 'text', text: attribution.required ? (attribution.text ?? '') : 'No attribution required for this license.' }],
         structuredContent: { required: attribution.required, text: attribution.text, html: attribution.html },

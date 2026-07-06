@@ -139,4 +139,9 @@ describe('evaluatePermissions — programmable strict-deny gate', () => {
   it('standalone evaluatePermissions defaults the label to the permission set', () => {
     expect(evaluatePermissions(rec('CC0-1.0'), ['commercialUse']).reasons).toContain('permitted for commercialUse under CC0-1.0')
   })
+
+  it('lenient-attribution note interpolates the custom label', () => {
+    const v = evaluatePermissions(rec('CC-BY'), [], undefined, { enforceAttribution: false, label: 'archival-review' })
+    expect(v.reasons.some(r => r.includes('not enforced for archival-review use'))).toBe(true)
+  })
 })

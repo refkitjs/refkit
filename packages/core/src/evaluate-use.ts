@@ -1,7 +1,8 @@
 import { factsFor, type Tri } from './license'
 import type { RightsRecord } from './rights'
 
-export type Intent = 'internal-moodboard' | 'commercial-product' | 'ai-generation-input' | 'redistribution'
+export const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
+export type Intent = (typeof INTENTS)[number]
 export type Decision = 'allowed' | 'allowed-with-attribution' | 'denied' | 'needs-review'
 
 export interface Verdict {
@@ -83,7 +84,7 @@ export function evaluatePermissions(
   reasons.push(`permitted for ${label} under ${r.license}`)
   // Lenient callers (e.g. internal-moodboard) surface a note instead of enforcing.
   if (facts.attributionRequired && !enforceAttribution) {
-    reasons.push('attribution required by license but not enforced for internal-moodboard use')
+    reasons.push(`attribution required by license but not enforced for ${label} use`)
   }
   const decision: Decision =
     facts.attributionRequired && enforceAttribution
