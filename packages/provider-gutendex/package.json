@@ -32,7 +32,8 @@
     "@refkit/core": "workspace:*"
   },
   "devDependencies": {
-    "@refkit/provider-poetrydb": "workspace:*"
+    "@refkit/provider-poetrydb": "workspace:*",
+    "@refkit/provider-testkit": "workspace:*"
   },
   "files": [
     "dist",

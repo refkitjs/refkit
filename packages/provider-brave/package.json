@@ -31,7 +31,8 @@
     "@refkit/core": "workspace:*"
   },
   "devDependencies": {
-    "@refkit/provider-openverse": "workspace:*"
+    "@refkit/provider-openverse": "workspace:*",
+    "@refkit/provider-testkit": "workspace:*"
   },
   "files": [
     "dist",

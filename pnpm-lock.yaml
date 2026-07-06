@@ -122,6 +122,10 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-brave:
     dependencies:
@@ -132,6 +136,9 @@ importers:
       '@refkit/provider-openverse':
         specifier: workspace:*
         version: link:../provider-openverse
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-europeana:
     dependencies:
@@ -148,12 +155,20 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-freesound:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-gutendex:
     dependencies:
@@ -164,24 +179,39 @@ importers:
       '@refkit/provider-poetrydb':
         specifier: workspace:*
         version: link:../provider-poetrydb
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-internet-archive:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-jamendo:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-met:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-openverse:
     dependencies:
@@ -201,54 +231,89 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-pixabay:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-poetrydb:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-polyhaven:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-rijksmuseum:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-smithsonian:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-testkit:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.22.4)
 
   packages/provider-unsplash:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-wikimedia-commons:
     dependencies:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
 packages:
 

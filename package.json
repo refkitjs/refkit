@@ -12,6 +12,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:watch": "vitest watch",
+    "test:live": "REFKIT_LIVE=1 vitest run",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm -r --if-present build && changeset publish"

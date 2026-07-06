@@ -71,6 +71,15 @@ const ITEM_INC = {
   edmIsShownAt: ['https://archive.example.org/item/inc'],
   rights: ['http://rightsstatements.org/vocab/InC/1.0/'],
 }
+// No media resource, only a landing PAGE + a Europeana thumbnail image — exercises
+// the landing-page-rejection path (edmIsShownAt is never surfaced as preview).
+const ITEM_PAGE_ONLY = {
+  ...ITEM_CC0,
+  id: '/x/page_only',
+  edmIsShownBy: [],
+  edmIsShownAt: ['https://www.rijksmuseum.nl/en/collection/SK-A-1'], // a web page, NOT an image
+  edmPreview: ['https://api.europeana.eu/thumbnail/v3/200/pagethumb.jpg'],
+}
 
 const okCtx = (items: unknown[]): ProviderContext => ({
   fetch: (async () =>
@@ -138,15 +147,7 @@ describe('europeana toReference', () => {
   })
 
   it('never uses edmIsShownAt (a landing page) as preview; keeps the item via its thumbnail', async () => {
-    // No media resource, only a landing PAGE + a Europeana thumbnail image.
-    const pageOnly = {
-      ...ITEM_CC0,
-      id: '/x/page_only',
-      edmIsShownBy: [],
-      edmIsShownAt: ['https://www.rijksmuseum.nl/en/collection/SK-A-1'], // a web page, NOT an image
-      edmPreview: ['https://api.europeana.eu/thumbnail/v3/200/pagethumb.jpg'],
-    }
-    const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([pageOnly]))
+    const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([ITEM_PAGE_ONLY]))
     expect(refs).toHaveLength(1)
     expect(refs[0].preview).toBeUndefined() // the landing page is never surfaced as media
     expect(refs[0].thumbnail?.url).toBe('https://api.europeana.eu/thumbnail/v3/200/pagethumb.jpg')
@@ -165,7 +166,11 @@ describe('europeana toReference', () => {
   })
 
   it('passes provider conformance (testkit)', async () => {
-    const refs = await searchConformant(europeana({ apiKey: 'k' }), okCtx([ITEM_CC0, ITEM_BY_SA]).fetch)
+    // Includes ITEM_PAGE_ONLY to exercise the landing-page-rejection path (D8):
+    // europeana keeps it via its thumbnail (kept, not dropped), so all three refs
+    // survive — the count assertion holds regardless of whether a given fixture
+    // item is dropped by provider-specific logic.
+    const refs = await searchConformant(europeana({ apiKey: 'k' }), okCtx([ITEM_CC0, ITEM_BY_SA, ITEM_PAGE_ONLY]).fetch)
     expect(refs.length).toBeGreaterThan(0)
   })
 })
