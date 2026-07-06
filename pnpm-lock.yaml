@@ -138,6 +138,10 @@ importers:
       '@refkit/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-flickr:
     dependencies:
@@ -188,6 +192,9 @@ importers:
       '@refkit/provider-pexels':
         specifier: workspace:*
         version: link:../provider-pexels
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
 
   packages/provider-pexels:
     dependencies:

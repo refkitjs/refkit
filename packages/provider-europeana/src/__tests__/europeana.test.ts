@@ -33,6 +33,7 @@ describe('mapEuropeanaRights', () => {
 })
 
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { europeana } from '../index'
 
 // Realistic Europeana Search API item shapes. Note every metadata field is an
@@ -161,6 +162,11 @@ describe('europeana toReference', () => {
     const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([png]))
     expect(refs[0].preview?.url).toBe('https://images.example.org/no-extension')
     expect(refs[0].preview?.mediaType).toBe('image/png')
+  })
+
+  it('passes provider conformance (testkit)', async () => {
+    const refs = await searchConformant(europeana({ apiKey: 'k' }), okCtx([ITEM_CC0, ITEM_BY_SA]).fetch)
+    expect(refs.length).toBeGreaterThan(0)
   })
 })
 

@@ -32,7 +32,8 @@
     "@refkit/core": "workspace:*"
   },
   "devDependencies": {
-    "@refkit/provider-pexels": "workspace:*"
+    "@refkit/provider-pexels": "workspace:*",
+    "@refkit/provider-testkit": "workspace:*"
   },
   "files": [
     "dist",
