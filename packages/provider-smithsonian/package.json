@@ -4,6 +4,13 @@
   "description": "Smithsonian Open Access provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-smithsonian"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-smithsonian#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

@@ -4,6 +4,13 @@
   "description": "Brave Search web-discovery provider satellite for refkit — open-web image breadth, license:unknown (use-gated to needs-review).",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-brave"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-brave#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

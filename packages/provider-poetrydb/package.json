@@ -4,6 +4,13 @@
   "description": "PoetryDB provider satellite for refkit — classic public-domain poems.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-poetrydb"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-poetrydb#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

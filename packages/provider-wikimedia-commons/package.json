@@ -4,6 +4,13 @@
   "description": "Wikimedia Commons provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-wikimedia-commons"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-wikimedia-commons#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

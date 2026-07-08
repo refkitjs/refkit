@@ -4,6 +4,13 @@
   "description": "refkit core — neutral reference-retrieval brain: Reference/RightsRecord contract, license normalization, strict-deny use-gate, RRF merge/dedup, ReferenceProvider interfaces. Zero-network, zero-provider, only zod.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/core#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",
