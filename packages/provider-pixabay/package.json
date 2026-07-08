@@ -4,6 +4,13 @@
   "description": "Pixabay provider satellite for refkit — image search, cache-allowed.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-pixabay"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-pixabay#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

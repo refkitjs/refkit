@@ -4,6 +4,13 @@
   "description": "Art Institute of Chicago provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-artic"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-artic#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

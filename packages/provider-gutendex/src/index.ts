@@ -93,7 +93,7 @@ export function gutendex(config: GutendexConfig = {}) {
       setIfString(url, 'topic', opts?.topic)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), {
-        headers: { 'User-Agent': config.userAgent ?? 'refkit (+https://github.com/MyPrototypeWhat/refkit)' },
+        headers: { 'User-Agent': config.userAgent ?? 'refkit (+https://github.com/refkitjs/refkit)' },
         signal: ctx.signal,
       })
       if (!res.ok) throw new Error(`gutendex search failed: ${res.status}`)

@@ -4,6 +4,13 @@
   "description": "Rijksmuseum provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-rijksmuseum"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-rijksmuseum#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",

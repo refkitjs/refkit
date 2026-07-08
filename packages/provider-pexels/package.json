@@ -4,6 +4,13 @@
   "description": "Pexels provider satellite for refkit — image search, hotlink-required.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-pexels"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-pexels#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
   "keywords": [
     "refkit",
     "reference-retrieval",
