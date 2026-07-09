@@ -1,5 +1,31 @@
 # @refkit/mcp
 
+## 0.5.1
+
+### Patch Changes
+
+- 5b50432: Repo moved to the refkitjs GitHub org: add `repository` (with per-package `directory`), `homepage`, and `bugs` metadata to every public package, and point the gutendex default User-Agent at github.com/refkitjs/refkit.
+- Updated dependencies [5b50432]
+  - @refkit/core@0.6.1
+  - @refkit/provider-artic@0.2.3
+  - @refkit/provider-brave@0.2.3
+  - @refkit/provider-europeana@0.3.1
+  - @refkit/provider-flickr@0.3.1
+  - @refkit/provider-freesound@0.3.1
+  - @refkit/provider-gutendex@0.2.3
+  - @refkit/provider-internet-archive@0.3.1
+  - @refkit/provider-jamendo@0.3.1
+  - @refkit/provider-met@0.2.3
+  - @refkit/provider-openverse@0.3.1
+  - @refkit/provider-pexels@0.2.3
+  - @refkit/provider-pixabay@0.2.3
+  - @refkit/provider-poetrydb@0.2.3
+  - @refkit/provider-polyhaven@0.2.2
+  - @refkit/provider-rijksmuseum@0.2.2
+  - @refkit/provider-smithsonian@0.2.3
+  - @refkit/provider-unsplash@0.2.3
+  - @refkit/provider-wikimedia-commons@0.3.1
+
 ## 0.5.0
 
 ### Minor Changes

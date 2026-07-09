@@ -1,5 +1,13 @@
 # @refkit/provider-artic
 
+## 0.2.3
+
+### Patch Changes
+
+- 5b50432: Repo moved to the refkitjs GitHub org: add `repository` (with per-package `directory`), `homepage`, and `bugs` metadata to every public package, and point the gutendex default User-Agent at github.com/refkitjs/refkit.
+- Updated dependencies [5b50432]
+  - @refkit/core@0.6.1
+
 ## 0.2.2
 
 ### Patch Changes
