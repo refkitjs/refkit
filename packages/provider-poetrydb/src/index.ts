@@ -65,10 +65,14 @@ function positiveInt(value: unknown): number | undefined {
 
 function poetrydbUrl(text: string, options: PoetryDbSearchOptions | undefined, limit: number | undefined): string {
   const allowedInput = ['author', 'title', 'lines', 'linecount', 'poemcount', 'random']
-  const fields = stringList(options?.inputFields, allowedInput)
-  const terms = searchTerms(options?.searchTerms)
+  let fields = stringList(options?.inputFields, allowedInput)
+  let terms = searchTerms(options?.searchTerms)
   if (fields.length === 0) fields.push('lines')
   if (terms.length === 0) terms.push(text)
+  if (fields.length !== terms.length) {
+    fields = ['lines']
+    terms = [text]
+  }
 
   const explicitRandom = positiveInt(options?.random)
   const explicitCount = positiveInt(options?.poemCount)
