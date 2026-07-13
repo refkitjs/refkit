@@ -176,7 +176,7 @@ describe('internetArchive search', () => {
     )
     const url = new URL(seen)
     expect(url.pathname).toBe('/advancedsearch.php')
-    expect(url.searchParams.get('q')).toBe('jazz')
+    expect(url.searchParams.get('q')).toBe('(jazz) AND mediatype:(movies OR texts)')
     expect(url.searchParams.get('output')).toBe('json')
     expect(url.searchParams.get('rows')).toBe('7')
     expect(url.searchParams.get('page')).toBe('1')

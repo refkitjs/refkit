@@ -88,7 +88,7 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)
-      url.searchParams.set('q', q.text)
+      url.searchParams.set('q', `(${q.text}) AND mediatype:(movies OR texts)`)
       for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'mediatype']) {
         url.searchParams.append('fl[]', f)
       }
