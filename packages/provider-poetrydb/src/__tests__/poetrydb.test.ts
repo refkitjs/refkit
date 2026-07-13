@@ -20,7 +20,12 @@ const FIXTURE = [
     linecount: '14',
   },
 ]
-const ctxWith = (body: unknown): ProviderContext => ({ fetch: (async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch })
+const ctxWith = (body: unknown, onFetch?: (url: string) => void): ProviderContext => ({
+  fetch: (async (input: Parameters<typeof fetch>[0]) => {
+    onFetch?.(String(input))
+    return new Response(JSON.stringify(body), { status: 200 })
+  }) as typeof fetch,
+})
 
 describe('poetrydb provider', () => {
   it('maps a poem to a full-text passage Reference (PD inferred)', async () => {
@@ -43,6 +48,34 @@ describe('poetrydb provider', () => {
     expect(refs).toEqual([])
   })
 
+  it('maps q.limit to poemcount for the default line search', async () => {
+    let calledUrl = ''
+    await poetrydb().search({ text: 'love', modalities: ['text'], limit: 5 }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/lines,poemcount/love;5')
+  })
+
+  it('prefers an explicit positive poemCount over q.limit', async () => {
+    let calledUrl = ''
+    await poetrydb().search({
+      text: 'love',
+      modalities: ['text'],
+      limit: 5,
+      providerOptions: { poemCount: 3 },
+    }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/lines,poemcount/love;3')
+  })
+
+  it('uses an explicit positive random instead of an implicit poemcount', async () => {
+    let calledUrl = ''
+    await poetrydb().search({
+      text: 'love',
+      modalities: ['text'],
+      limit: 5,
+      providerOptions: { random: 2 },
+    }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/lines,random/love;2')
+  })
+
   it('builds documented PoetryDB routes from providerOptions', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
@@ -54,6 +87,7 @@ describe('poetrydb provider', () => {
     await poetrydb().search({
       text: 'ignored',
       modalities: ['text'],
+      limit: 5,
       providerOptions: {
         inputFields: ['title', 'author', 'poemcount'],
         searchTerms: ['Winter', 'William Shakespeare', '2'],
