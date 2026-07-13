@@ -54,6 +54,28 @@ describe('poetrydb provider', () => {
     expect(calledUrl).toBe('https://poetrydb.org/lines,poemcount/love;5')
   })
 
+  it('preserves inputFields when searchTerms are omitted', async () => {
+    let calledUrl = ''
+    await poetrydb().search({
+      text: 'love',
+      modalities: ['text'],
+      limit: 5,
+      providerOptions: { inputFields: ['title'] },
+    }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/title,poemcount/love;5')
+  })
+
+  it('preserves searchTerms when inputFields are omitted', async () => {
+    let calledUrl = ''
+    await poetrydb().search({
+      text: 'ignored',
+      modalities: ['text'],
+      limit: 5,
+      providerOptions: { searchTerms: ['Winter'] },
+    }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/lines,poemcount/Winter;5')
+  })
+
   it('prefers an explicit positive poemCount over q.limit', async () => {
     let calledUrl = ''
     await poetrydb().search({
@@ -74,6 +96,24 @@ describe('poetrydb provider', () => {
       providerOptions: { random: 2 },
     }, ctxWith([], url => { calledUrl = url }))
     expect(calledUrl).toBe('https://poetrydb.org/lines,random/love;2')
+  })
+
+  it.each([
+    ['poemCount', 0],
+    ['poemCount', -1],
+    ['poemCount', 1.5],
+    ['random', 0],
+    ['random', -1],
+    ['random', 1.5],
+  ] as const)('ignores invalid %s=%s and falls back to q.limit', async (option, value) => {
+    let calledUrl = ''
+    await poetrydb().search({
+      text: 'love',
+      modalities: ['text'],
+      limit: 5,
+      providerOptions: { [option]: value },
+    }, ctxWith([], url => { calledUrl = url }))
+    expect(calledUrl).toBe('https://poetrydb.org/lines,poemcount/love;5')
   })
 
   it('builds documented PoetryDB routes from providerOptions', async () => {

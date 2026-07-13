@@ -67,10 +67,8 @@ function poetrydbUrl(text: string, options: PoetryDbSearchOptions | undefined, l
   const allowedInput = ['author', 'title', 'lines', 'linecount', 'poemcount', 'random']
   const fields = stringList(options?.inputFields, allowedInput)
   const terms = searchTerms(options?.searchTerms)
-  if (fields.length === 0 && terms.length === 0) {
-    fields.push('lines')
-    terms.push(text)
-  }
+  if (fields.length === 0) fields.push('lines')
+  if (terms.length === 0) terms.push(text)
 
   const explicitRandom = positiveInt(options?.random)
   const explicitCount = positiveInt(options?.poemCount)
