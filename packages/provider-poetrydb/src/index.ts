@@ -57,27 +57,43 @@ function searchTerms(value: unknown): string[] {
   return []
 }
 
-function poetrydbUrl(text: string, options: PoetryDbSearchOptions | undefined): string {
-  if (!options) return `https://poetrydb.org/lines/${encodeURIComponent(text)}`
+function positiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined
+}
 
+function poetrydbUrl(text: string, options: PoetryDbSearchOptions | undefined, limit: number | undefined): string {
   const allowedInput = ['author', 'title', 'lines', 'linecount', 'poemcount', 'random']
-  const fields = stringList(options.inputFields, allowedInput)
-  const terms = searchTerms(options.searchTerms)
-  if (options.poemCount !== undefined && Number.isInteger(options.poemCount) && options.poemCount > 0 && !fields.includes('poemcount')) {
-    fields.push('poemcount')
-    terms.push(String(options.poemCount))
+  let fields = stringList(options?.inputFields, allowedInput)
+  let terms = searchTerms(options?.searchTerms)
+  if (fields.length === 0) fields.push('lines')
+  if (terms.length === 0) terms.push(text)
+  if (fields.length !== terms.length) {
+    fields = ['lines']
+    terms = [text]
   }
-  if (options.random !== undefined && Number.isInteger(options.random) && options.random > 0 && !fields.includes('random')) {
+
+  const explicitRandom = positiveInt(options?.random)
+  const explicitCount = positiveInt(options?.poemCount)
+  const implicitCount = positiveInt(limit)
+  if (explicitRandom !== undefined && !fields.includes('random')) {
     fields.push('random')
-    terms.push(String(options.random))
+    terms.push(String(explicitRandom))
+  } else if (!fields.includes('random') && !fields.includes('poemcount')) {
+    const count = explicitCount ?? implicitCount
+    if (count !== undefined) {
+      fields.push('poemcount')
+      terms.push(String(count))
+    }
   }
   const inputFields = fields.length > 0 ? fields : ['lines']
   const inputTerms = terms.length > 0 ? terms : [text]
   if (inputFields.length !== inputTerms.length) return `https://poetrydb.org/lines/${encodeURIComponent(text)}`
 
   const encodedTerms = inputTerms.map(term => encodeURIComponent(term)).join(';')
-  const exact = options.matchExact ? ':abs' : ''
-  const output = stringList(options.outputFields, ['author', 'title', 'lines', 'linecount', 'all'])
+  const exact = options?.matchExact ? ':abs' : ''
+  const output = stringList(options?.outputFields, ['author', 'title', 'lines', 'linecount', 'all'])
   if (output.length > 0 && !output.includes('all')) {
     const required = ['author', 'title', 'lines', 'linecount']
     const extras = output.filter(field => !required.includes(field))
@@ -95,7 +111,7 @@ export function poetrydb() {
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       // /lines/<term> finds poems whose line content contains the term (closest to keyword search)
-      const url = poetrydbUrl(q.text, q.providerOptions as PoetryDbSearchOptions | undefined)
+      const url = poetrydbUrl(q.text, q.providerOptions as PoetryDbSearchOptions | undefined, q.limit)
       const res = await ctx.fetch(url, { signal: ctx.signal })
       if (!res.ok) throw new Error(`poetrydb search failed: ${res.status}`)
       const json = (await res.json()) as PoetryDbPoem[] | { status: number }
