@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-poetrydb",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "PoetryDB provider satellite for refkit — classic public-domain poems.",
   "type": "module",
   "license": "Apache-2.0",

@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-internet-archive",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Internet Archive provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",

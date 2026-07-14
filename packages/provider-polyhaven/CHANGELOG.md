@@ -1,5 +1,13 @@
 # @refkit/provider-polyhaven
 
+## 0.2.3
+
+### Patch Changes
+
+- 3cce5e3: Declare and honor the `page` search control (`capabilities.controls: ['page']`), wiring `controls.page` to each source's native pagination — native `page` params where they exist, offset translation for offset-based APIs (Wikimedia `gsroffset`, Smithsonian/Europeana `start`, Jamendo/ambientCG `offset`), and a window over the full result list for Met/Poly Haven. Enables core's unified load-more cursor across these sources. (Brave, PoetryDB, and Rijksmuseum expose no usable offset pagination and keep `page` undeclared.)
+- Updated dependencies [3cce5e3]
+  - @refkit/core@0.7.0
+
 ## 0.2.2
 
 ### Patch Changes
