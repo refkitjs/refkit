@@ -3,6 +3,7 @@ import {
   setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
+  offsetForPage,
 } from '@refkit/core'
 
 export interface JamendoConfig {
@@ -97,7 +98,8 @@ export function jamendo(config: JamendoConfig) {
       url.searchParams.set('client_id', config.clientId)
       url.searchParams.set('format', 'json')
       url.searchParams.set('search', q.text)
-      url.searchParams.set('limit', String(Math.min(q.limit ?? 20, 200)))
+      const pageSize = Math.min(q.limit ?? 20, 200)
+      url.searchParams.set('limit', String(pageSize))
       const opts = q.providerOptions as JamendoSearchOptions | undefined
       setIfString(url, 'audioformat', opts?.audioformat, ['mp31', 'mp32', 'ogg', 'flac'])
       setIfString(url, 'order', opts?.order, ['relevance', 'popularity_total', 'popularity_month', 'popularity_week', 'releasedate_asc', 'releasedate_desc', 'buzzrate'])
@@ -108,7 +110,7 @@ export function jamendo(config: JamendoConfig) {
       setIfStringList(url, 'tags', opts?.tags, { separator: ' ' })
       setIfString(url, 'artist_name', opts?.artist_name)
       // offset-based API: translate the 1-based page control (providerOptions.offset overrides below)
-      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('offset', String((q.controls.page - 1) * Math.min(q.limit ?? 20, 200)))
+      setIfNonNegativeInt(url, 'offset', offsetForPage(q.controls?.page, pageSize))
       // jamendo's offset is non-negative (0 is valid) → setIfNonNegativeInt, not PositiveInt.
       setIfNonNegativeInt(url, 'offset', opts?.offset)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })

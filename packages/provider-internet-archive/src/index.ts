@@ -2,6 +2,7 @@ import {
   defineProvider, referenceId, mapRightsUrl, ccVersionFor,
   type Reference, type RightsRecord, type Modality,
   type NormalizedQuery, type ProviderContext,
+  setIfPositiveInt,
 } from '@refkit/core'
 
 const BASE = 'https://archive.org/advancedsearch.php'
@@ -20,6 +21,13 @@ export interface InternetArchiveConfig {
  *  `mapRightsUrl(undefined) → unknown`). A PRESENT rightsstatements.org statement is a real
  *  declaration mapped faithfully (NoC-US → PD is the source's word, not a guess). */
 export const mapIaLicense = mapRightsUrl
+
+/** Escape Lucene reserved syntax in the user query so it stays a literal term
+ *  inside the composed expression — unescaped `)` would break the grouping and
+ *  `) OR (mediatype:...` could escape the movies/texts scope entirely. */
+export function escapeLucene(text: string): string {
+  return text.replace(/&&|\|\||[+\-!(){}[\]^"~*?:\\/]/g, (m) => [...m].map(c => `\\${c}`).join(''))
+}
 
 const MEDIATYPE_MODALITY: Record<string, Modality> = { movies: 'video', texts: 'text' }
 
@@ -87,12 +95,13 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)
-      url.searchParams.set('q', `(${q.text}) AND mediatype:(movies OR texts)`)
+      url.searchParams.set('q', `(${escapeLucene(q.text)}) AND mediatype:(movies OR texts)`)
       for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'mediatype']) {
         url.searchParams.append('fl[]', f)
       }
       url.searchParams.set('output', 'json')
-      url.searchParams.set('page', String(q.controls?.page ?? 1))
+      url.searchParams.set('page', '1')
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const rows = Math.min(config.maxRows ?? q.limit ?? 20, 100)
       url.searchParams.set('rows', String(rows))
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })

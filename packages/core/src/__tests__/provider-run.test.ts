@@ -30,11 +30,12 @@ function memoryCache(): KeyValueCache & { store: Map<string, string> } {
 }
 
 describe('providerCacheKey', () => {
-  it('embeds the full normalized query — distinct queries can never collide', () => {
-    const a = providerCacheKey('p', { text: 'lion', modalities: ['image'] })
+  it('is short, fixed-shape, and free of raw query characters', () => {
+    const a = providerCacheKey('p', { text: 'lion cub  "quoted" \n spaced', modalities: ['image'] })
     const b = providerCacheKey('p', { text: 'tiger', modalities: ['image'] })
     expect(a).not.toBe(b)
-    expect(a).toContain('lion')
+    expect(a).toMatch(/^refkit:v2:p:[a-z0-9]+$/) // no spaces/quotes → safe for strict KV backends
+    expect(a.length).toBeLessThan(64)
   })
 
   it('is insensitive to object key order', () => {
@@ -52,7 +53,7 @@ describe('runProviderSearch cacheRaw', () => {
     await runProviderSearch(provider([ref('https://a/1')]), { text: 'q', modalities: ['image'] }, { ...deps, cache, cacheRaw: true })
     await new Promise(r => setTimeout(r)) // cache write is fire-and-forget
     const [payload] = [...cache.store.values()]
-    expect(JSON.parse(payload)[0].raw).toEqual({ upstream: 'payload' })
+    expect(JSON.parse(payload).refs[0].raw).toEqual({ upstream: 'payload' })
   })
 
   it('cacheRaw: false strips raw from the cached payload but not from live results', async () => {
@@ -61,6 +62,6 @@ describe('runProviderSearch cacheRaw', () => {
     expect(run.ok && run.valid[0].raw).toEqual({ upstream: 'payload' })
     await new Promise(r => setTimeout(r))
     const [payload] = [...cache.store.values()]
-    expect(JSON.parse(payload)[0].raw).toBeUndefined()
+    expect(JSON.parse(payload).refs[0].raw).toBeUndefined()
   })
 })

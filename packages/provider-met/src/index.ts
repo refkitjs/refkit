@@ -2,6 +2,7 @@ import {
   defineProvider, referenceId,
   setIfBoolean, setIfInt, setIfString,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  offsetForPage,
 } from '@refkit/core'
 
 export interface MetConfig {
@@ -91,7 +92,7 @@ export function met(config: MetConfig = {}) {
       if (!objectIDs || objectIDs.length === 0) return []
       const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
       // the search endpoint returns every matching id — page = a window over that list
-      const from = ((q.controls?.page ?? 1) - 1) * n
+      const from = offsetForPage(q.controls?.page, n) ?? 0
       const objects = await Promise.all(objectIDs.slice(from, from + n).map(async (id) => {
         try {
           const r = await ctx.fetch(`${BASE}/objects/${id}`, { signal: ctx.signal })

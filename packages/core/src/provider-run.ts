@@ -6,6 +6,7 @@ import type { Reference } from './reference'
 import { parseReference } from './reference'
 import type { KeyValueCache, NormalizedQuery, ProviderContext, ReferenceProvider } from './provider'
 import { withTimeout } from './resilience'
+import { fnv1a } from './hash'
 
 // Deterministic JSON for cache keys: object keys sorted recursively, so a
 // caller's providerOptions key order can't split otherwise-identical keys.
@@ -20,13 +21,24 @@ export function stableStringify(value: unknown): string {
   return JSON.stringify(value) ?? 'null'
 }
 
-/** Cache key for one provider's slice of a search. Embeds the FULL normalized
- *  query (not a truncated hash): a 32-bit digest would let two different queries
- *  silently collide and serve each other's cached results. Keys can therefore be
- *  a few hundred bytes — KeyValueCache implementations must tolerate that. */
+/** Cache key for one provider's slice of a search: short, fixed-shape, and safe
+ *  for restrictive backends (no raw query characters, no unbounded length — a
+ *  memcached-style 250-byte/no-whitespace key contract holds). Collisions are
+ *  made harmless rather than merely improbable: the cached VALUE embeds the full
+ *  normalized-query string and the read path verifies it before trusting a hit
+ *  (see runProviderSearch), so a colliding key degrades to a cache miss. The two
+ *  hash passes (raw + length-salted) exist only to make that degradation rare. */
 export function providerCacheKey(providerId: string, query: NormalizedQuery): string {
-  return `refkit:v1:${providerId}:${stableStringify(query)}`
+  return keyForFingerprint(providerId, stableStringify(query))
 }
+
+function keyForFingerprint(providerId: string, fingerprint: string): string {
+  return `refkit:v2:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
+}
+
+/** Shape of a cached entry: the query fingerprint (verified on read so a key
+ *  collision degrades to a miss, never to another query's results) + the refs. */
+interface CachePayload { q: string; refs: unknown[] }
 
 export interface ProviderRunDeps {
   /** Already retry-wrapped by the orchestrator and shared across the fan-out. */
@@ -59,7 +71,8 @@ export async function runProviderSearch(
     cache: deps.cache,
     signal: timeout?.signal ?? deps.signal,
   }
-  const cacheKey = deps.cache ? providerCacheKey(provider.id, query) : undefined
+  const fingerprint = deps.cache ? stableStringify(query) : undefined
+  const cacheKey = fingerprint !== undefined ? keyForFingerprint(provider.id, fingerprint) : undefined
   // Race a promise against the deadline without leaking an unhandled rejection
   // for whichever side loses the race.
   const raceDeadline = <T>(p: Promise<T>): Promise<T> => {
@@ -95,21 +108,24 @@ export async function runProviderSearch(
         try {
           // cached refs keep their original verifiedAt — staleness is bounded
           // by the TTL when the cache honors ttlMs. Only a whole-payload
-          // failure (not JSON, not an array) falls through to live; a single
-          // bad item within an otherwise-valid array is reported and dropped,
-          // same as the live path.
-          const raw = JSON.parse(hit) as unknown[]
-          if (!Array.isArray(raw)) throw new Error('cached payload is not an array')
-          const valid = parseItems(raw)
-          return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started, cached: true }
+          // failure (bad JSON, wrong shape, fingerprint mismatch) falls through
+          // to live; a single bad item within an otherwise-valid entry is
+          // reported and dropped, same as the live path.
+          const payload = JSON.parse(hit) as CachePayload
+          if (!payload || payload.q !== fingerprint || !Array.isArray(payload.refs)) {
+            throw new Error('cached payload mismatch') // hash collision or format drift → miss
+          }
+          const valid = parseItems(payload.refs)
+          return { ok: true, valid, returned: payload.refs.length, latencyMs: Date.now() - started, cached: true }
         } catch { /* fall through to live */ }
       }
     }
     const searching = provider.search(query, ctx)
     const raw = await raceDeadline(searching)
     const valid = parseItems(raw)
-    if (deps.cache && cacheKey) {
-      const payload = deps.cacheRaw ? valid : valid.map(({ raw: _raw, ...rest }) => rest)
+    if (deps.cache && cacheKey && fingerprint !== undefined) {
+      const refsPayload = deps.cacheRaw ? valid : valid.map(({ raw: _raw, ...rest }) => rest)
+      const payload: CachePayload = { q: fingerprint, refs: refsPayload }
       // fire-and-forget: cache write failure must never fail the search
       void deps.cache.set(cacheKey, JSON.stringify(payload), deps.cacheTtlMs).catch(() => {})
     }

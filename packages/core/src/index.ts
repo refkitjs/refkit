@@ -45,7 +45,7 @@ export type {
 } from './provider'
 export {
   setIfString, setIfBoolean, setIfStringList,
-  setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
+  setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber, offsetForPage,
   first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, CC_FAMILY_BY_TOKEN, CC_VERSIONED_FAMILIES,
   isLikelyImageUrl, imageMediaType, IMAGE_EXT,
 } from './provider-helpers'

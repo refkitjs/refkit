@@ -113,12 +113,12 @@ console.log(meta.warnings)
 Use the built-in cursor: every `searchWithMeta` result carries an opaque `meta.nextCursor`; pass it back as `cursor` and refkit advances the provider-local page **and dedupes against everything already returned** — no caller-side bookkeeping:
 
 ```ts
-const page1 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'] })
-const page2 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'], cursor: page1.meta.nextCursor })
-// page2.references never repeats page1's; an empty page (no meta.nextCursor) means exhausted.
+const batch1 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'] })
+const batch2 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'], cursor: batch1.meta.nextCursor })
+// batch2 never repeats batch1; an empty batch (no meta.nextCursor) means exhausted.
 ```
 
-Under the hood `controls.page` is still a **provider-local** cursor (each source paginates its own stream; RRF-fused pages can overlap or shift), which is exactly why the cursor tracks seen results for you. Raw `controls.page` remains available if you want to manage pages yourself — then dedupe across pages by `canonicalizeUrl(r.canonicalUrl)`.
+The cursor first **drains the overfetched pool** of the current provider page (each search fetches `limit × poolFactor` candidates but returns `limit`), and only then advances the provider-local page — so ranked results are never skipped. Under the hood `controls.page` is still provider-local (each source paginates its own stream; RRF-fused pages can overlap), which is exactly why the cursor tracks seen results for you. The seen set is capped (oldest evicted) so cursors stay small. Raw `controls.page` remains available if you want to manage pages yourself — then dedupe across pages by `canonicalizeUrl(r.canonicalUrl)`.
 
 ## Ranking & rerank
 
@@ -180,7 +180,7 @@ With many sources registered, bound the fan-out with `concurrency` — at most N
 createRefkit({ providers, concurrency: 6 }) // default: unlimited
 ```
 
-Pass a `cache` to memoize **per-provider** results (keyed by provider + the full normalized query — keys can be a few hundred bytes; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
+Pass a `cache` to memoize **per-provider** results (short fixed-shape hashed keys, safe for strict KV backends; the cached value embeds the full normalized query and is verified on read, so a key collision degrades to a miss instead of serving another query's results; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
 
 ```ts
 createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false })
@@ -251,7 +251,7 @@ Agents can use refkit in two ways:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results; `rerank: true` for query-aware re-ranking (term coverage incl. CJK, resolution, source diversity); `cursor` (from `meta.nextCursor`, with `explain: true`) to page through results without repeats. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
+It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results; `rerank: true` for query-aware re-ranking (term coverage incl. CJK, resolution, source diversity); `cursor` (from the previous result's top-level `nextCursor` — always returned, no `explain` needed) to page through results without repeats. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
 
 ## Not legal advice
 

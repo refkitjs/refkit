@@ -17,6 +17,37 @@ describe('normalizeQuery', () => {
     expect(nq.controls).toEqual({ color: 'red' }) // derived channel stays consistent
   })
 
+  it('legacy compat: a capabilities-less provider declaring only queryFeatures still receives its filters', () => {
+    const legacy: ReferenceProvider = {
+      id: 'p',
+      modalities: ['image'],
+      queryFeatures: ['keyword', 'orientation'], // pre-capabilities third-party shape
+      search: async () => [],
+    }
+    const nq = normalizeQuery(
+      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape', color: 'red' } },
+      legacy,
+    )
+    expect(nq.filters).toEqual({ orientation: 'landscape' }) // color not declared → dropped
+    expect(nq.controls).toEqual({ orientation: 'landscape' })
+  })
+
+  it('capabilities, once declared, win over queryFeatures', () => {
+    const both: ReferenceProvider = {
+      id: 'p',
+      modalities: ['image'],
+      queryFeatures: ['keyword', 'orientation'],
+      capabilities: { controls: [] }, // explicit: supports nothing
+      search: async () => [],
+    }
+    const nq = normalizeQuery(
+      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape' } },
+      both,
+    )
+    expect(nq.filters).toBeUndefined()
+    expect(nq.controls).toBeUndefined()
+  })
+
   it('omits filters entirely when none survive', () => {
     const nq = normalizeQuery(
       { query: 'cat', modalities: ['image'], filters: { color: 'red' } },

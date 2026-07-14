@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapIaLicense, mediatypeToModality } from '../index'
+import { escapeLucene, mapIaLicense, mediatypeToModality } from '../index'
 
 describe('mapIaLicense', () => {
   it('maps CC0 / PD mark / PD dedication URLs', () => {
@@ -183,5 +183,18 @@ describe('internetArchive search', () => {
     expect(url.searchParams.getAll('fl[]')).toEqual(
       expect.arrayContaining(['identifier', 'title', 'creator', 'licenseurl', 'mediatype']),
     )
+  })
+
+  it('escapes Lucene syntax in the user query so it cannot break or escape the mediatype scope', async () => {
+    expect(escapeLucene('smile :)')).toBe('smile \\:\\)')
+    expect(escapeLucene('x) OR (mediatype:audio')).toBe('x\\) OR \\(mediatype\\:audio')
+    expect(escapeLucene('a && b || c')).toBe('a \\&\\& b \\|\\| c')
+    let seen = ''
+    await internetArchive().search(
+      { text: 'x) OR (mediatype:audio', modalities: ['video'] },
+      ctxResponding({ response: { numFound: 0, docs: [] } }, u => { seen = u }),
+    )
+    const q = new URL(seen).searchParams.get('q')!
+    expect(q).toBe('(x\\) OR \\(mediatype\\:audio) AND mediatype:(movies OR texts)')
   })
 })

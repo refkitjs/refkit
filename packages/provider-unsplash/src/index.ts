@@ -33,10 +33,6 @@ function setCollections(url: URL, value: unknown) {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set('collections', value.join(','))
 }
 
-function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
-  return control === undefined ? legacy : undefined
-}
-
 function toReference(r: UnsplashResult): Reference {
   const rights: RightsRecord = {
     license: 'unsplash',
@@ -69,7 +65,7 @@ export function unsplash(config: UnsplashConfig) {
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 10, 30))) // Unsplash hard-caps per_page at 30; default kept low for free-tier rate limits
       const controls = q.controls
-      if (controls?.page) url.searchParams.set('page', String(controls.page))
+      setIfPositiveInt(url, 'page', controls?.page)
       if (controls?.color) url.searchParams.set('color', controls.color)
       if (controls?.orientation) url.searchParams.set('orientation', controls.orientation === 'square' ? 'squarish' : controls.orientation)
       if (controls?.language) url.searchParams.set('lang', controls.language)
@@ -78,12 +74,6 @@ export function unsplash(config: UnsplashConfig) {
       }
       if (controls?.safety === 'strict') url.searchParams.set('content_filter', 'high')
       if (controls?.safety === 'moderate') url.searchParams.set('content_filter', 'low')
-      const legacyColor = useLegacyFilter(controls?.color, q.filters?.color)
-      if (legacyColor) url.searchParams.set('color', legacyColor)
-      const legacyOrientation = useLegacyFilter(controls?.orientation, q.filters?.orientation)
-      if (legacyOrientation) url.searchParams.set('orientation', legacyOrientation === 'square' ? 'squarish' : legacyOrientation)
-      const legacyLanguage = useLegacyFilter(controls?.language, q.filters?.language)
-      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
       const opts = q.providerOptions as UnsplashSearchOptions | undefined
       setIfString(url, 'order_by', opts?.orderBy, ['latest', 'relevant'])
       setIfString(url, 'content_filter', opts?.contentFilter, ['low', 'high'])

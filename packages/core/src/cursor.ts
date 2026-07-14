@@ -1,21 +1,31 @@
-// Unified "load more" cursor (v1). RRF fusion means provider page N+1 overlaps
-// page N, so raw `controls.page` pushes cross-page dedup onto every caller. The
-// cursor internalizes that: it carries the next provider-local page plus compact
-// hashes of every already-returned result, and the client filters repeats out
-// before applying `limit`. The string is an implementation detail — treat it as
-// opaque; only `meta.nextCursor` from a previous search is a valid input.
+// Unified "load more" cursor (v1). Providers fetch an overfetched pool per page
+// (fetchLimit ≥ limit) while each call returns only `limit`, and RRF fusion makes
+// raw provider pages overlap — so the cursor carries the CURRENT provider-local
+// page plus compact hashes of every already-returned result. The client filters
+// repeats out and advances the page internally only once a page's pool is
+// exhausted. The string is an implementation detail — treat it as opaque; only
+// `meta.nextCursor` from a previous search is a valid input.
+import { z } from 'zod'
 import { fnv1a } from './hash'
 import { canonicalizeUrl } from './dedup-key'
 
 export interface SearchCursorState {
   v: 1
-  /** Provider-local page to request next (routed as controls.page; 1-based). */
+  /** Provider-local page the current pool comes from (routed as controls.page;
+   *  1-based). Advanced by the client, not per call. */
   page: number
-  /** {@link cursorSeenKey} hashes of results returned on previous pages. Grows
-   *  linearly with pages consumed — a 32-bit hash keeps entries compact; the
-   *  worst case of a collision is one new result suppressed as already-seen. */
+  /** {@link cursorSeenKey} hashes of results returned on previous calls. Capped
+   *  by the client (most recent kept) so cursor size stays bounded; a 32-bit
+   *  hash keeps entries compact — the worst case of a collision or an evicted
+   *  entry is one result suppressed or repeated. */
   seen: string[]
 }
+
+const cursorSchema = z.object({
+  v: z.literal(1),
+  page: z.number().int().min(1),
+  seen: z.array(z.string()),
+})
 
 /** Compact already-seen key for a result — same URL canonicalization as merge/dedup. */
 export function cursorSeenKey(canonicalUrl: string): string {
@@ -36,13 +46,9 @@ export function decodeCursor(cursor: string): SearchCursorState {
   } catch {
     throw new Error('refkit.search: invalid cursor (not produced by meta.nextCursor)')
   }
-  const s = parsed as Partial<SearchCursorState> | null
-  if (
-    !s || typeof s !== 'object' || s.v !== 1
-    || typeof s.page !== 'number' || !Number.isInteger(s.page) || s.page < 1
-    || !Array.isArray(s.seen) || !s.seen.every(k => typeof k === 'string')
-  ) {
+  const result = cursorSchema.safeParse(parsed)
+  if (!result.success) {
     throw new Error('refkit.search: invalid cursor (not produced by meta.nextCursor)')
   }
-  return { v: 1, page: s.page, seen: s.seen }
+  return result.data
 }

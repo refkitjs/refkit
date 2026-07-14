@@ -104,7 +104,7 @@ export function freesound(config: FreesoundConfig) {
       url.searchParams.set('page_size', String(opts?.pageSize ?? q.limit ?? 20))
       setIfString(url, 'sort', opts?.sort)
       setIfString(url, 'filter', opts?.filter)
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`freesound search failed: ${res.status}`)

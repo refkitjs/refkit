@@ -4,6 +4,7 @@ import {
   CC_FAMILY_BY_TOKEN, ccVersionFor,
   type Reference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
+  offsetForPage,
 } from '@refkit/core'
 
 export interface WikimediaCommonsConfig {
@@ -152,7 +153,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       url.searchParams.set('gsrnamespace', '6') // File:
       url.searchParams.set('gsrlimit', String(q.limit ?? 20))
       // offset-based API: translate the 1-based page control (providerOptions.gsroffset overrides below)
-      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('gsroffset', String((q.controls.page - 1) * (q.limit ?? 20)))
+      setIfNonNegativeInt(url, 'gsroffset', offsetForPage(q.controls?.page, q.limit ?? 20))
       url.searchParams.set('prop', 'imageinfo')
       url.searchParams.set('iiprop', 'url|mime|size|extmetadata')
       url.searchParams.set('iiurlwidth', String(config.thumbWidth ?? 1024))

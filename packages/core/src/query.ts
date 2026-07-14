@@ -2,11 +2,30 @@ import type { Modality } from './modality'
 import type {
   NormalizedQuery,
   ProviderOptionsById,
+  QueryFeature,
   ReferenceProvider,
   SearchControlKey,
   SearchControls,
   SearchFilters,
 } from './provider'
+
+// Legacy-compat routing: a provider with NO capabilities but with deprecated
+// queryFeatures keeps receiving the filter-ish controls those features implied —
+// a pre-capabilities third-party provider must degrade loudly (deprecation),
+// never silently (unfiltered results). Providers that declare capabilities are
+// routed by capabilities alone.
+const LEGACY_FEATURE_CONTROLS: Partial<Record<QueryFeature, SearchControlKey>> = {
+  color: 'color',
+  orientation: 'orientation',
+  language: 'language',
+}
+
+function effectiveControlCaps(provider: ReferenceProvider): readonly SearchControlKey[] {
+  if (provider.capabilities) return provider.capabilities.controls
+  return (provider.queryFeatures ?? [])
+    .map(f => LEGACY_FEATURE_CONTROLS[f])
+    .filter((k): k is SearchControlKey => k !== undefined)
+}
 
 function controlsFromFilters(filters: SearchFilters | undefined): SearchControls {
   if (!filters) return {}
@@ -76,13 +95,12 @@ export function requestedControlKeys(controls: SearchControls): SearchControlKey
 }
 
 export function supportedControlKeys(provider: ReferenceProvider, controls: SearchControls): SearchControlKey[] {
-  const caps = provider.capabilities?.controls ?? []
-  return caps.filter(key => hasControl(controls, key))
+  return effectiveControlCaps(provider).filter(key => hasControl(controls, key))
 }
 
 export function unsupportedControlKeys(provider: ReferenceProvider, controls: SearchControls): SearchControlKey[] {
   const requested = requestedControlKeys(controls)
-  const supported = new Set(provider.capabilities?.controls ?? [])
+  const supported = new Set(effectiveControlCaps(provider))
   return requested.filter(key => !supported.has(key))
 }
 

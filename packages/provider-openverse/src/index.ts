@@ -158,7 +158,7 @@ export function openverse(config: OpenverseConfig = {}) {
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // performance/relevance hint only — the AUTHORITATIVE rights gate is mapOpenverseLicense below, not this filter
       url.searchParams.set('page_size', String(q.limit ?? 20))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const opts = q.providerOptions as OpenverseImageSearchOptions | undefined
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'aspect_ratio', opts?.aspectRatio)
@@ -229,7 +229,7 @@ export function openverseAudio(config: OpenverseConfig = {}) {
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // relevance hint; mapOpenverseLicense authoritative
       url.searchParams.set('page_size', String(q.limit ?? 20))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const opts = q.providerOptions as OpenverseAudioSearchOptions | undefined
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'length', opts?.length)

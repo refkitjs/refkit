@@ -66,10 +66,6 @@ function setColorsList(url: URL, key: string, value: unknown, allowed?: readonly
   }
 }
 
-function useLegacyFilter<T>(control: T | undefined, legacy: T | undefined): T | undefined {
-  return control === undefined ? legacy : undefined
-}
-
 function pixabayOrientation(orientation: string | undefined): string | undefined {
   if (orientation === 'landscape') return 'horizontal'
   if (orientation === 'portrait') return 'vertical'
@@ -109,7 +105,7 @@ export function pixabay(config: PixabayConfig) {
       url.searchParams.set('q', q.text)
       url.searchParams.set('image_type', 'photo')
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       if (q.controls?.language) url.searchParams.set('lang', q.controls.language)
       if (q.controls?.color) url.searchParams.set('colors', q.controls.color)
       const controlsOrientation = pixabayOrientation(q.controls?.orientation)
@@ -122,12 +118,6 @@ export function pixabay(config: PixabayConfig) {
       }
       if (q.controls?.media?.minWidth !== undefined) url.searchParams.set('min_width', String(q.controls.media.minWidth))
       if (q.controls?.media?.minHeight !== undefined) url.searchParams.set('min_height', String(q.controls.media.minHeight))
-      const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
-      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
-      const legacyColor = useLegacyFilter(q.controls?.color, q.filters?.color)
-      if (legacyColor) url.searchParams.set('colors', legacyColor)
-      const orientation = pixabayOrientation(useLegacyFilter(q.controls?.orientation, q.filters?.orientation))
-      if (orientation) url.searchParams.set('orientation', orientation)
       const opts = q.providerOptions as PixabayImageSearchOptions | undefined
       setIfString(url, 'lang', opts?.lang)
       setIfString(url, 'id', opts?.id)
@@ -197,7 +187,7 @@ export function pixabayVideo(config: PixabayConfig) {
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       if (q.controls?.language) url.searchParams.set('lang', q.controls.language)
       if (q.controls?.sort === 'latest' || q.controls?.sort === 'popular') url.searchParams.set('order', q.controls.sort)
       if (q.controls?.safety === 'strict') url.searchParams.set('safesearch', 'true')
@@ -207,8 +197,6 @@ export function pixabayVideo(config: PixabayConfig) {
       }
       if (q.controls?.media?.minWidth !== undefined) url.searchParams.set('min_width', String(q.controls.media.minWidth))
       if (q.controls?.media?.minHeight !== undefined) url.searchParams.set('min_height', String(q.controls.media.minHeight))
-      const legacyLanguage = useLegacyFilter(q.controls?.language, q.filters?.language)
-      if (legacyLanguage) url.searchParams.set('lang', legacyLanguage)
       const opts = q.providerOptions as PixabayVideoSearchOptions | undefined
       setIfString(url, 'lang', opts?.lang)
       setIfString(url, 'id', opts?.id)

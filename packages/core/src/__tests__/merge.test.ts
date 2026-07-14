@@ -93,6 +93,20 @@ describe('mergeReferences (RRF)', () => {
     expect(same.rights.license).toBe('CC-BY')
   })
 
+  it('reports a 3-source conflict ONCE with only source-declared licenses (no phantom unknown)', () => {
+    const seen: RightsConflict[] = []
+    const out = mergeReferences([
+      [withLicense(make('a-1', 'https://shared/1'), 'CC-BY-NC')],
+      [withLicense(make('b-1', 'https://shared/1'), 'CC-BY-SA')],
+      [withLicense(make('c-1', 'https://shared/1'), 'CC-BY-NC')], // re-declares an already-seen license
+    ], { onRightsConflict: (c) => seen.push(c) })
+    expect(seen).toHaveLength(1)
+    expect(seen[0].licenses.sort()).toEqual(['CC-BY-NC', 'CC-BY-SA'])
+    expect(seen[0].licenses).not.toContain('unknown') // resolution value never reported as a claim
+    expect(seen[0].resolvedLicense).toBe('unknown') // NC vs SA are incomparable → strict-deny
+    expect(out[0].rights.license).toBe('unknown')
+  })
+
   it('stricterLicense: dominance picks the stricter; incomparable pairs return undefined', () => {
     expect(stricterLicense('CC-BY', 'CC-BY-NC')).toBe('CC-BY-NC')
     expect(stricterLicense('CC0-1.0', 'proprietary')).toBe('proprietary')

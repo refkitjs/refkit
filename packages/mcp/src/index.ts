@@ -173,12 +173,16 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
         explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
-        cursor: z.string().optional().describe('opaque cursor from a previous result\'s meta.nextCursor — fetches the next page, deduped against earlier pages (requires explain to read the next cursor)'),
+        cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
         rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK, resolution, source diversity) instead of raw cross-source rank fusion'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
-      outputSchema: { references: z.array(agentRefSchema), meta: searchMetaSchema.optional() },
+      outputSchema: {
+        references: z.array(agentRefSchema),
+        nextCursor: z.string().optional().describe('pass back as `cursor` for the next batch; absent = exhausted'),
+        meta: searchMetaSchema.optional(),
+      },
     },
     async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor }) => {
       const searchInput = {
@@ -192,7 +196,9 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         ...(rerank ? { rerank: lexicalReranker() } : {}),
         gateFor,
       }
-      const result = explain ? await refkit.searchWithMeta(searchInput) : { references: await refkit.search(searchInput), meta: undefined }
+      // Always searchWithMeta: the continuation token (meta.nextCursor) must not
+      // depend on the explain diagnostics flag — only the meta DUMP is gated.
+      const result = await refkit.searchWithMeta(searchInput)
       const refs = result.references
       const assessIntent = intent ?? gateFor
       const references = refs.map(r =>
@@ -202,7 +208,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       )
       return {
         content: [{ type: 'text', text: `${references.length} reference(s) for "${query}".` }],
-        structuredContent: { references, ...(result.meta ? { meta: result.meta } : {}) },
+        structuredContent: {
+          references,
+          ...(result.meta.nextCursor ? { nextCursor: result.meta.nextCursor } : {}),
+          ...(explain ? { meta: result.meta } : {}),
+        },
       }
     },
   )

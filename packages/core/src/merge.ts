@@ -5,13 +5,14 @@ import { canonicalizeUrl } from './dedup-key'
 import { dedupeReferences, type DedupeOptions } from './dedup'
 
 /** A cross-source disagreement about the license of the same canonical URL,
- *  reported once per conflicting pair as the merge encounters it. */
+ *  reported once per URL after the merge pass. */
 export interface RightsConflict {
   canonicalUrl: string
-  /** The two license ids that disagreed (already-resolved vs newly seen). */
-  licenses: [LicenseId, LicenseId]
-  /** What the merge resolved to: the stricter of the two, or 'unknown' when
-   *  neither is stricter on every axis (strict-deny → needs-review). */
+  /** Every distinct SOURCE-DECLARED license id for this URL (never includes a
+   *  synthetic resolution value a source didn't claim). */
+  licenses: LicenseId[]
+  /** What the merge resolved to: the strictest comparable claim, or 'unknown'
+   *  when claims are incomparable (strict-deny → needs-review). */
   resolvedLicense: LicenseId
 }
 
@@ -80,7 +81,11 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
   const score = new Map<string, number>() // dedup key -> accumulated RRF score
   const rep = new Map<string, Reference>() // dedup key -> best representative
   const rights = new Map<string, RightsRecord>() // dedup key -> conservatively-resolved rights
-  const conflicted = new Set<string>() // keys whose rights were resolved across sources
+  // Allocated only on an actual conflict: dedup key -> distinct SOURCE-DECLARED
+  // license ids. Comparing new refs against this set (not against the resolved
+  // record, which may already be a synthetic 'unknown') keeps a third source
+  // re-declaring an already-seen license from re-triggering a phantom conflict.
+  const conflictLicenses = new Map<string, Set<LicenseId>>()
 
   for (const list of perSource) {
     list.forEach((ref, rank) => {
@@ -96,17 +101,30 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
       const known = rights.get(key)
       if (known === undefined) {
         rights.set(key, ref.rights)
+        return
+      }
+      const declared = conflictLicenses.get(key)
+      if (declared) {
+        if (!declared.has(ref.rights.license)) {
+          declared.add(ref.rights.license)
+          rights.set(key, resolveRightsConflict(known, ref.rights))
+        }
       } else if (known.license !== ref.rights.license) {
-        const resolved = resolveRightsConflict(known, ref.rights)
-        rights.set(key, resolved)
-        conflicted.add(key)
-        opts.onRightsConflict?.({
-          canonicalUrl: ref.canonicalUrl,
-          licenses: [known.license, ref.rights.license],
-          resolvedLicense: resolved.license,
-        })
+        conflictLicenses.set(key, new Set([known.license, ref.rights.license]))
+        rights.set(key, resolveRightsConflict(known, ref.rights))
       }
     })
+  }
+
+  // Report each conflicted URL once, with the full set of source-declared claims.
+  if (opts.onRightsConflict) {
+    for (const [key, declared] of conflictLicenses) {
+      opts.onRightsConflict({
+        canonicalUrl: rep.get(key)!.canonicalUrl,
+        licenses: [...declared],
+        resolvedLicense: rights.get(key)!.license,
+      })
+    }
   }
 
   // Normalize by the actual max so the top result's relevance is exactly 1.0.
@@ -122,7 +140,7 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
       ...rep.get(key)!,
       // A conflicted key carries the conservatively-resolved rights instead of
       // whichever source happened to supply the representative.
-      ...(conflicted.has(key) ? { rights: rights.get(key)! } : {}),
+      ...(conflictLicenses.has(key) ? { rights: rights.get(key)! } : {}),
       relevance: s / maxScore,
     }))
     .sort((a, b) => b.relevance - a.relevance)

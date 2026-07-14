@@ -2,6 +2,7 @@ import {
   defineProvider, referenceId,
   setIfString, setIfNonNegativeInt, setIfStringList,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  setIfPositiveInt,
 } from '@refkit/core'
 
 interface ArticArtwork {
@@ -79,7 +80,7 @@ export function artic() {
       url.searchParams.set('query[term][is_public_domain]', 'true')
       url.searchParams.set('fields', articFields(opts?.fields))
       url.searchParams.set('limit', String(q.limit ?? 20))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       setIfString(url, 'sort', opts?.sort)
       setIfNonNegativeInt(url, 'from', opts?.from)
       setIfNonNegativeInt(url, 'size', opts?.size)

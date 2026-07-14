@@ -3,6 +3,7 @@ import {
   setIfString, setIfInt, setIfStringList,
   type Reference, type RightsRecord, type LicenseId, type SearchLicenseControls,
   type NormalizedQuery, type ProviderContext,
+  setIfPositiveInt,
 } from '@refkit/core'
 
 export interface FlickrConfig {
@@ -216,7 +217,7 @@ export function flickr(config: FlickrConfig) {
       setBooleanFlag(url, 'in_gallery', opts?.inGallery)
       setBooleanFlag(url, 'is_getty', opts?.isGetty)
       url.searchParams.set('extras', flickrExtras(opts?.extras))
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       setIfInt(url, 'page', opts?.page, { min: 1 })
       url.searchParams.set('per_page', String(q.limit ?? 20))
       setIfInt(url, 'per_page', opts?.perPage, { min: 1, max: 500 })

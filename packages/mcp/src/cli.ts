@@ -91,16 +91,28 @@ export async function defaultProviders(env: NodeJS.ProcessEnv = process.env): Pr
     openverse(), openverseAudio(), wikimediaCommons(), met(), artic(), gutendex(), poetrydb(),
     rijksmuseum(), polyhaven(), ambientcg(), internetArchive(),
   ]
-  for (const source of BYOK_SOURCES) {
+  // Independent module loads — run them concurrently (startup cost = max, not sum)
+  // and keep BYOK_SOURCES order in the provider list.
+  const loaded = await Promise.all(BYOK_SOURCES.map(async (source) => {
     const key = source.key(env)
-    if (!key) continue
+    if (!key) return []
     try {
-      providers.push(...await source.load(key))
-    } catch {
-      // stderr only — stdout is the MCP transport.
-      console.error(`[refkit-mcp] key for ${source.pkg} is set but the package is not installed — skipping this source. Reinstall @refkit/mcp with optional dependencies (or add ${source.pkg}) to enable it.`)
+      return await source.load(key)
+    } catch (err) {
+      // stderr only — stdout is the MCP transport. Only a genuinely missing
+      // module gets the "not installed" hint; anything else (factory throw,
+      // broken transitive import) surfaces the REAL error so the operator
+      // doesn't chase the wrong remediation.
+      const code = (err as { code?: string } | null)?.code
+      if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
+        console.error(`[refkit-mcp] key for ${source.pkg} is set but the package is not installed — skipping this source. Reinstall @refkit/mcp with optional dependencies (or add ${source.pkg}) to enable it.`)
+      } else {
+        console.error(`[refkit-mcp] failed to initialize ${source.pkg} — skipping this source.`, err)
+      }
+      return []
     }
-  }
+  }))
+  for (const group of loaded) providers.push(...group)
   return providers
 }
 

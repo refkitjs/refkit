@@ -2,6 +2,7 @@ import {
   defineProvider, referenceId,
   setIfString, setIfNonNegativeInt,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  offsetForPage,
 } from '@refkit/core'
 
 export interface SmithsonianConfig {
@@ -74,7 +75,7 @@ export function smithsonian(config: SmithsonianConfig) {
       url.searchParams.set('q', q.text)
       url.searchParams.set('rows', String(q.limit ?? 20))
       // offset-based API: translate the 1-based page control (providerOptions.start overrides below)
-      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('start', String((q.controls.page - 1) * (q.limit ?? 20)))
+      setIfNonNegativeInt(url, 'start', offsetForPage(q.controls?.page, q.limit ?? 20))
       // bias toward CC0 image records; toReference stays authoritative per media
       url.searchParams.set('fq', 'online_media_type:"Images" AND media_usage:"CC0"')
       const opts = q.providerOptions as SmithsonianSearchOptions | undefined
