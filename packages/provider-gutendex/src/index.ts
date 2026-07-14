@@ -92,11 +92,13 @@ export function gutendex(config: GutendexConfig = {}) {
       setIfString(url, 'topic', opts?.topic)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), {
-        // Cloudflare in front of gutendex.com 403s "bot-looking" requests from
-        // datacenter IPs; a descriptive bot UA was still blocked (live-smoke run 1-2),
-        // so default to a browser-like UA + explicit Accept. Override via config.
+        // Cloudflare in front of gutendex.com intermittently 403s datacenter IPs
+        // (e.g. GitHub Actions) at the fingerprint level — verified that neither a
+        // descriptive bot UA nor a browser UA gets through (live-smoke runs 1-3),
+        // so we keep the honest UA. Residential/user traffic is unaffected; the
+        // live-smoke suite treats these 403s as inconclusive rather than as drift.
         headers: {
-          'User-Agent': config.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'User-Agent': config.userAgent ?? 'refkit (+https://github.com/refkitjs/refkit)',
           Accept: 'application/json',
         },
         signal: ctx.signal,
