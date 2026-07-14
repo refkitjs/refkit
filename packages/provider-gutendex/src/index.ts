@@ -92,7 +92,13 @@ export function gutendex(config: GutendexConfig = {}) {
       setIfString(url, 'topic', opts?.topic)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), {
-        headers: { 'User-Agent': config.userAgent ?? 'refkit (+https://github.com/refkitjs/refkit)' },
+        // Cloudflare in front of gutendex.com 403s "bot-looking" requests from
+        // datacenter IPs; a descriptive bot UA was still blocked (live-smoke run 1-2),
+        // so default to a browser-like UA + explicit Accept. Override via config.
+        headers: {
+          'User-Agent': config.userAgent ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'application/json',
+        },
         signal: ctx.signal,
       })
       if (!res.ok) throw new Error(`gutendex search failed: ${res.status}`)
