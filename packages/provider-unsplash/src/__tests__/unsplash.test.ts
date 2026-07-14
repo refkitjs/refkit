@@ -48,7 +48,9 @@ describe('unsplash provider', () => {
     await unsplash({ accessKey: 'k' }).search({
       text: 'coffee',
       modalities: ['image'],
-      filters: { color: 'blue', orientation: 'square', language: 'zh-Hans' },
+      // NormalizedQuery.filters is deprecated (a mirror derived from controls);
+      // providers read controls — this exercises the current contract.
+      controls: { color: 'blue', orientation: 'square', language: 'zh-Hans' },
       providerOptions: { orderBy: 'latest', contentFilter: 'high', collections: ['abc', 'def'], page: 3, perPage: 12 },
     }, ctx)
     const url = new URL(calledUrl)

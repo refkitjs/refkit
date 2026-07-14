@@ -16,11 +16,16 @@ export interface TimeoutHandle {
  *  (H9: keeps core runtime-agnostic). */
 export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number): TimeoutHandle {
   const ctrl = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
 
   let rejectExpired: (e: Error) => void
   const expired = new Promise<never>((_, reject) => { rejectExpired = reject })
   expired.catch(() => {}) // the race may settle first; never let this become an unhandled rejection
+
+  const timer = setTimeout(() => {
+    const err = new Error(`timeout after ${timeoutMs}ms`)
+    ctrl.abort(err)
+    rejectExpired(err)
+  }, timeoutMs)
 
   const onParentAbort = () => {
     clearTimeout(timer) // self-clean: a parent abort makes the deadline moot
@@ -29,12 +34,6 @@ export function withTimeout(parent: AbortSignal | undefined, timeoutMs: number):
   }
   if (parent?.aborted) onParentAbort()
   else parent?.addEventListener('abort', onParentAbort, { once: true })
-
-  timer = setTimeout(() => {
-    const err = new Error(`timeout after ${timeoutMs}ms`)
-    ctrl.abort(err)
-    rejectExpired(err)
-  }, timeoutMs)
 
   return {
     signal: ctrl.signal,

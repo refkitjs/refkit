@@ -73,7 +73,6 @@ export function gutendex(config: GutendexConfig = {}) {
   return defineProvider({
     id: 'gutendex',
     modalities: ['text'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://gutendex.com/books/')
@@ -81,7 +80,7 @@ export function gutendex(config: GutendexConfig = {}) {
       if (q.controls?.language) url.searchParams.set('languages', q.controls.language)
       if (q.controls?.text?.copyright === 'public-domain') url.searchParams.set('copyright', 'false')
       if (q.controls?.text?.copyright === 'copyrighted') url.searchParams.set('copyright', 'true')
-      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const opts = q.providerOptions as GutendexSearchOptions | undefined
       setIfInt(url, 'author_year_start', opts?.authorYearStart)
       setIfInt(url, 'author_year_end', opts?.authorYearEnd)

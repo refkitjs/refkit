@@ -19,7 +19,7 @@ describe('rightsRecordSchema', () => {
   })
 
   it('requires the auditable raw anchor', () => {
-    const { raw, ...withoutRaw } = valid
+    const { raw: _raw, ...withoutRaw } = valid
     expect(() => rightsRecordSchema.parse(withoutRaw)).toThrow()
   })
 

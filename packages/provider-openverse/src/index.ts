@@ -152,13 +152,13 @@ export function openverse(config: OpenverseConfig = {}) {
   return defineProvider({
     id: 'openverse',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown'] },
+    capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.openverse.org/v1/images/')
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // performance/relevance hint only — the AUTHORITATIVE rights gate is mapOpenverseLicense below, not this filter
       url.searchParams.set('page_size', String(q.limit ?? 20))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const opts = q.providerOptions as OpenverseImageSearchOptions | undefined
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'aspect_ratio', opts?.aspectRatio)
@@ -223,13 +223,13 @@ export function openverseAudio(config: OpenverseConfig = {}) {
   return defineProvider({
     id: 'openverse-audio',
     modalities: ['audio'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown'] },
+    capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.openverse.org/v1/audio/')
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // relevance hint; mapOpenverseLicense authoritative
       url.searchParams.set('page_size', String(q.limit ?? 20))
+      setIfPositiveInt(url, 'page', q.controls?.page)
       const opts = q.providerOptions as OpenverseAudioSearchOptions | undefined
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'length', opts?.length)

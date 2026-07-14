@@ -61,6 +61,15 @@ export function setIfNumber(url: URL, key: string, value: unknown, opts?: { min?
   url.searchParams.set(key, String(value))
 }
 
+/** Translate the 1-based `controls.page` into a row offset for offset-based APIs.
+ *  Single-sourced so every provider derives page windows with the same (validated)
+ *  math: undefined for page 1 / missing / non-integer input — callers then omit
+ *  the param. `base` shifts the origin (e.g. Europeana's 1-based `start`). */
+export function offsetForPage(page: unknown, pageSize: number, base = 0): number | undefined {
+  if (typeof page !== 'number' || !Number.isInteger(page) || page <= 1) return undefined
+  return (page - 1) * pageSize + base
+}
+
 // — array helper —
 
 /** First element of an array-typed field, or undefined. */

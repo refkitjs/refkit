@@ -107,7 +107,6 @@ export function poetrydb() {
   return defineProvider({
     id: 'poetrydb',
     modalities: ['text'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       // /lines/<term> finds poems whose line content contains the term (closest to keyword search)

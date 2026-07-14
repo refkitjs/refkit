@@ -2,11 +2,30 @@ import type { Modality } from './modality'
 import type {
   NormalizedQuery,
   ProviderOptionsById,
+  QueryFeature,
   ReferenceProvider,
   SearchControlKey,
   SearchControls,
   SearchFilters,
 } from './provider'
+
+// Legacy-compat routing: a provider with NO capabilities but with deprecated
+// queryFeatures keeps receiving the filter-ish controls those features implied —
+// a pre-capabilities third-party provider must degrade loudly (deprecation),
+// never silently (unfiltered results). Providers that declare capabilities are
+// routed by capabilities alone.
+const LEGACY_FEATURE_CONTROLS: Partial<Record<QueryFeature, SearchControlKey>> = {
+  color: 'color',
+  orientation: 'orientation',
+  language: 'language',
+}
+
+function effectiveControlCaps(provider: ReferenceProvider): readonly SearchControlKey[] {
+  if (provider.capabilities) return provider.capabilities.controls
+  return (provider.queryFeatures ?? [])
+    .map(f => LEGACY_FEATURE_CONTROLS[f])
+    .filter((k): k is SearchControlKey => k !== undefined)
+}
 
 function controlsFromFilters(filters: SearchFilters | undefined): SearchControls {
   if (!filters) return {}
@@ -76,13 +95,12 @@ export function requestedControlKeys(controls: SearchControls): SearchControlKey
 }
 
 export function supportedControlKeys(provider: ReferenceProvider, controls: SearchControls): SearchControlKey[] {
-  const caps = provider.capabilities?.controls ?? []
-  return caps.filter(key => hasControl(controls, key))
+  return effectiveControlCaps(provider).filter(key => hasControl(controls, key))
 }
 
 export function unsupportedControlKeys(provider: ReferenceProvider, controls: SearchControls): SearchControlKey[] {
   const requested = requestedControlKeys(controls)
-  const supported = new Set(provider.capabilities?.controls ?? [])
+  const supported = new Set(effectiveControlCaps(provider))
   return requested.filter(key => !supported.has(key))
 }
 
@@ -102,13 +120,16 @@ export function normalizeQuery(
   input: { query: string; modalities: Modality[]; filters?: SearchFilters; controls?: SearchControls; providerOptions?: ProviderOptionsById; limit?: number },
   provider: ReferenceProvider,
 ): NormalizedQuery {
-  const feats = new Set(provider.queryFeatures)
-  const filters: SearchFilters = {}
-  if (input.filters?.color && feats.has('color')) filters.color = input.filters.color
-  if (input.filters?.orientation && feats.has('orientation')) filters.orientation = input.filters.orientation
-  if (input.filters?.language && feats.has('language')) filters.language = input.filters.language
-  const hasFilters = Object.keys(filters).length > 0
+  // Single-track routing: legacy `filters` are merged into `controls` (controls
+  // win on conflict) and routed by `capabilities.controls` alone. The deprecated
+  // NormalizedQuery.filters channel is then DERIVED from the routed controls, so
+  // a provider reading either channel sees the same values — no double semantics.
   const controls = normalizeControlsForProvider(input, provider)
+  const filters: SearchFilters = {}
+  if (controls?.color) filters.color = controls.color
+  if (controls?.orientation) filters.orientation = controls.orientation
+  if (controls?.language) filters.language = controls.language
+  const hasFilters = Object.keys(filters).length > 0
   return {
     text: input.query,
     modalities: input.modalities.filter(m => provider.modalities.includes(m)),

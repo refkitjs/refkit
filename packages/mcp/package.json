@@ -38,22 +38,13 @@
   "dependencies": {
     "@refkit/core": "workspace:*",
     "@refkit/provider-artic": "workspace:*",
-    "@refkit/provider-brave": "workspace:*",
-    "@refkit/provider-europeana": "workspace:*",
-    "@refkit/provider-flickr": "workspace:*",
-    "@refkit/provider-freesound": "workspace:*",
     "@refkit/provider-gutendex": "workspace:*",
     "@refkit/provider-internet-archive": "workspace:*",
-    "@refkit/provider-jamendo": "workspace:*",
     "@refkit/provider-met": "workspace:*",
     "@refkit/provider-openverse": "workspace:*",
-    "@refkit/provider-pexels": "workspace:*",
-    "@refkit/provider-pixabay": "workspace:*",
     "@refkit/provider-poetrydb": "workspace:*",
     "@refkit/provider-polyhaven": "workspace:*",
     "@refkit/provider-rijksmuseum": "workspace:*",
-    "@refkit/provider-smithsonian": "workspace:*",
-    "@refkit/provider-unsplash": "workspace:*",
     "@refkit/provider-wikimedia-commons": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.3.6"
@@ -71,5 +62,16 @@
         "import": "./dist/index.js"
       }
     }
+  },
+  "optionalDependencies": {
+    "@refkit/provider-brave": "workspace:*",
+    "@refkit/provider-europeana": "workspace:*",
+    "@refkit/provider-flickr": "workspace:*",
+    "@refkit/provider-freesound": "workspace:*",
+    "@refkit/provider-jamendo": "workspace:*",
+    "@refkit/provider-pexels": "workspace:*",
+    "@refkit/provider-pixabay": "workspace:*",
+    "@refkit/provider-smithsonian": "workspace:*",
+    "@refkit/provider-unsplash": "workspace:*"
   }
 }

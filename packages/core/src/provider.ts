@@ -1,6 +1,9 @@
 import type { Modality } from './modality'
 import type { Reference } from './reference'
 
+/** @deprecated Superseded by {@link ProviderCapabilities}`.controls` — declare
+ *  supported {@link SearchControlKey}s instead. No longer read by core routing;
+ *  will be removed in a future minor. */
 export type QueryFeature =
   | 'keyword'
   | 'color'
@@ -74,6 +77,9 @@ export interface ProviderCapabilities {
   controls: readonly SearchControlKey[]
 }
 
+/** @deprecated Compatibility alias for {@link SearchControls} `color` /
+ *  `orientation` / `language`. Values are merged into `controls` (controls win on
+ *  conflict) and routed by `capabilities.controls`; use `controls` directly. */
 export interface SearchFilters {
   color?: string
   orientation?: 'landscape' | 'portrait' | 'square'
@@ -87,6 +93,9 @@ export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
 export interface NormalizedQuery {
   text: string
   modalities: Modality[]
+  /** @deprecated Mirror of the routed `controls` color/orientation/language, kept
+   *  for providers still reading the legacy channel — always consistent with
+   *  `controls`. Read `controls` instead. */
   filters?: SearchFilters
   controls?: SearchControls
   providerOptions?: ProviderOptions
@@ -111,13 +120,14 @@ export interface ProviderContext {
   signal?: AbortSignal
 }
 
-// 4 load-bearing fields. Keys are held by the provider's factory closure
+// 3 load-bearing fields. Keys are held by the provider's factory closure
 // (e.g. `unsplash({ accessKey })`), not declared here; rate-limit metadata is added
 // in P1 when the orchestrator implements throttling.
 export interface ReferenceProvider {
   id: string
   modalities: Modality[]
-  queryFeatures: QueryFeature[]
+  /** @deprecated Not read by core anymore — declare `capabilities.controls`. */
+  queryFeatures?: QueryFeature[]
   capabilities?: ProviderCapabilities
   search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]>
 }

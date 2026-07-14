@@ -1,6 +1,7 @@
 import {
   defineProvider, referenceId, imageMediaType,
   type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  offsetForPage, setIfNonNegativeInt,
 } from '@refkit/core'
 
 const PH_BASE = 'https://api.polyhaven.com'
@@ -83,8 +84,7 @@ export function polyhaven(config: PolyHavenConfig = {}) {
   return defineProvider({
     id: 'polyhaven',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const listUrl = new URL(`${PH_BASE}/assets`)
       listUrl.searchParams.set('t', assetType)
@@ -102,7 +102,9 @@ export function polyhaven(config: PolyHavenConfig = {}) {
           a.tags?.some((t) => t.toLowerCase().includes(text)))
       }
       const n = Math.min(config.maxAssets ?? q.limit ?? 12, 30)
-      const picked = entries.slice(0, n)
+      // the list endpoint returns everything — page = a window over the filtered list
+      const from = offsetForPage(q.controls?.page, n) ?? 0
+      const picked = entries.slice(from, from + n)
       const refs = await Promise.all(picked.map(async ([id, asset]) => {
         try {
           const fr = await ctx.fetch(`${PH_BASE}/files/${id}`, { signal: ctx.signal })
@@ -171,13 +173,15 @@ export function ambientcg(config: AmbientCgConfig = {}) {
   return defineProvider({
     id: 'ambientcg',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(ACG_BASE)
       url.searchParams.set('type', 'Material') // image-based PBR materials only (D1)
       url.searchParams.set('include', 'displayData,imageData')
-      url.searchParams.set('limit', String(Math.min(config.limit ?? q.limit ?? 12, 30)))
+      const pageSize = Math.min(config.limit ?? q.limit ?? 12, 30)
+      url.searchParams.set('limit', String(pageSize))
+      // offset-based API: translate the 1-based page control
+      setIfNonNegativeInt(url, 'offset', offsetForPage(q.controls?.page, pageSize))
       if (q.text?.trim()) url.searchParams.set('q', q.text.trim())
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
       if (!res.ok) throw new Error(`ambientcg search failed: ${res.status}`)

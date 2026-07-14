@@ -3,8 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createRefkit, defineProvider } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
+import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
-import { defaultProviders } from '../cli'
+import { defaultProviders, BYOK_SOURCES } from '../cli'
 
 const OPENVERSE = { results: [
   { id: 'aaa', title: 'cc0 sky', creator: 'Alice', foreign_landing_url: 'https://ov/aaa', url: 'https://cdn/aaa.jpg', thumbnail: 'https://ov/aaa/thumb', width: 10, height: 10, license: 'cc0', license_version: '1.0', license_url: 'https://cc/cc0' },
@@ -84,12 +85,51 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('returns nextCursor at the top level WITHOUT explain, and the cursor round-trips', async () => {
+    const item = (i: number) => ({
+      id: `pg:${i}`,
+      modality: 'image' as const,
+      source: { providerId: 'pg', sourceUrl: `https://pg/${i}` },
+      canonicalUrl: `https://pg/${i}`,
+      rights: { license: 'CC0-1.0' as const, rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: `https://pg/${i}` } },
+      verifiedAt: '2026-06-22T00:00:00.000Z',
+      relevance: 0,
+    })
+    const pool = Array.from({ length: 6 }, (_, i) => item(i + 1))
+    const paging = defineProvider({
+      id: 'pg',
+      modalities: ['image'],
+      capabilities: { controls: ['page'] },
+      search: async (q) => {
+        const size = q.limit ?? 20
+        const page = q.controls?.page ?? 1
+        return pool.slice((page - 1) * size, page * size)
+      },
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [paging] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+
+    type Out = { references: Array<{ canonicalUrl: string }>; nextCursor?: string; meta?: unknown }
+    const batch1 = (await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], limit: 2 } })).structuredContent as Out
+    expect(batch1.references).toHaveLength(2)
+    expect(batch1.nextCursor).toBeDefined() // present WITHOUT explain
+    expect(batch1.meta).toBeUndefined() // meta dump still gated by explain
+
+    const batch2 = (await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], limit: 2, cursor: batch1.nextCursor } })).structuredContent as Out
+    expect(batch2.references).toHaveLength(2)
+    const urls1 = batch1.references.map(r => r.canonicalUrl)
+    expect(batch2.references.every(r => !urls1.includes(r.canonicalUrl))).toBe(true) // no repeats
+    await client.close()
+  })
+
   it('accepts filters and providerOptions for provider-specific search controls', async () => {
     let seen: { filters?: unknown; providerOptions?: unknown } = {}
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword', 'orientation'],
+      capabilities: { controls: ['orientation'] },
       search: async (q) => {
         seen = { filters: q.filters, providerOptions: q.providerOptions }
         return []
@@ -357,43 +397,57 @@ describe('build_attribution tool', () => {
 })
 
 describe('defaultProviders (zero-config CLI wiring)', () => {
-  it('includes every keyless provider by default', () => {
-    const ids = defaultProviders({}).map(p => p.id)
+  it('includes every keyless provider by default', async () => {
+    const ids = (await defaultProviders({})).map(p => p.id)
     for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive']) {
       expect(ids).toContain(id)
     }
   })
 
-  it('adds a BYOK provider only when its env key is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('unsplash')
-    expect(defaultProviders({ UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  it('adds a BYOK provider only when its env key is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('unsplash')
+    expect((await defaultProviders({ UNSPLASH_KEY: 'k' })).map(p => p.id)).toContain('unsplash')
   })
 
-  it('adds a BYOK provider when only the unified REFKIT_ env key is present', () => {
-    expect(defaultProviders({ REFKIT_UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  it('adds a BYOK provider when only the unified REFKIT_ env key is present', async () => {
+    expect((await defaultProviders({ REFKIT_UNSPLASH_KEY: 'k' })).map(p => p.id)).toContain('unsplash')
   })
 
-  it('adds freesound only when FREESOUND_TOKEN is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('freesound')
-    expect(defaultProviders({ FREESOUND_TOKEN: 'k' }).map(p => p.id)).toContain('freesound')
+  it('adds freesound only when FREESOUND_TOKEN is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('freesound')
+    expect((await defaultProviders({ FREESOUND_TOKEN: 'k' })).map(p => p.id)).toContain('freesound')
   })
 
-  it('adds jamendo only when JAMENDO_CLIENT_ID is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('jamendo')
-    expect(defaultProviders({ JAMENDO_CLIENT_ID: 'k' }).map(p => p.id)).toContain('jamendo')
+  it('adds jamendo only when JAMENDO_CLIENT_ID is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('jamendo')
+    expect((await defaultProviders({ JAMENDO_CLIENT_ID: 'k' })).map(p => p.id)).toContain('jamendo')
   })
 
-  it('adds europeana only when EUROPEANA_KEY is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('europeana')
-    expect(defaultProviders({ EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  it('adds europeana only when EUROPEANA_KEY is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('europeana')
+    expect((await defaultProviders({ EUROPEANA_KEY: 'k' })).map(p => p.id)).toContain('europeana')
   })
 
-  it('adds europeana when only the unified REFKIT_EUROPEANA_KEY is present', () => {
-    expect(defaultProviders({ REFKIT_EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  it('adds europeana when only the unified REFKIT_EUROPEANA_KEY is present', async () => {
+    expect((await defaultProviders({ REFKIT_EUROPEANA_KEY: 'k' })).map(p => p.id)).toContain('europeana')
   })
 
-  it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('smithsonian')
-    expect(defaultProviders({ SI_KEY: 'k' }).map(p => p.id)).toContain('smithsonian')
+  it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('smithsonian')
+    expect((await defaultProviders({ SI_KEY: 'k' })).map(p => p.id)).toContain('smithsonian')
+  })
+
+  it('BYOK_SOURCES and package.json optionalDependencies stay in sync', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      optionalDependencies?: Record<string, string>
+      dependencies?: Record<string, string>
+    }
+    const optional = Object.keys(pkg.optionalDependencies ?? {}).sort()
+    const table = BYOK_SOURCES.map(s => s.pkg).sort()
+    // an entry in one but not the other ships a source that either can never
+    // load (missing dep) or never installs for a purpose (dep without loader)
+    expect(table).toEqual(optional)
+    // and no BYOK package may ALSO be a hard dependency
+    for (const p of table) expect(pkg.dependencies ?? {}).not.toHaveProperty(p)
   })
 })

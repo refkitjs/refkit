@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker } from '@refkit/core'
 import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
@@ -148,6 +148,7 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
     after: z.number(),
     dropped: z.number(),
   }).optional(),
+  nextCursor: z.string().optional().describe('opaque load-more cursor; pass back as `cursor` to fetch the next page with cross-page dedup'),
   warnings: z.array(z.string()),
 })
 
@@ -170,14 +171,20 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         filters: filtersSchema.optional().describe('compatibility alias for controls.orientation, controls.color, and controls.language'),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
-        explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, and gate/drop metadata'),
+        explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
+        cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
+        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK, resolution, source diversity) instead of raw cross-source rank fusion'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
-      outputSchema: { references: z.array(agentRefSchema), meta: searchMetaSchema.optional() },
+      outputSchema: {
+        references: z.array(agentRefSchema),
+        nextCursor: z.string().optional().describe('pass back as `cursor` for the next batch; absent = exhausted'),
+        meta: searchMetaSchema.optional(),
+      },
     },
-    async ({ query, modalities, filters, controls, providerOptions, explain, limit, intent, gateFor }) => {
+    async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor }) => {
       const searchInput = {
         query,
         modalities: modalities ?? ['image'],
@@ -185,9 +192,13 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         controls: controls as SearchControls | undefined,
         providerOptions: providerOptions as ProviderOptionsById | undefined,
         limit,
+        cursor,
+        ...(rerank ? { rerank: lexicalReranker() } : {}),
         gateFor,
       }
-      const result = explain ? await refkit.searchWithMeta(searchInput) : { references: await refkit.search(searchInput), meta: undefined }
+      // Always searchWithMeta: the continuation token (meta.nextCursor) must not
+      // depend on the explain diagnostics flag — only the meta DUMP is gated.
+      const result = await refkit.searchWithMeta(searchInput)
       const refs = result.references
       const assessIntent = intent ?? gateFor
       const references = refs.map(r =>
@@ -197,7 +208,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       )
       return {
         content: [{ type: 'text', text: `${references.length} reference(s) for "${query}".` }],
-        structuredContent: { references, ...(result.meta ? { meta: result.meta } : {}) },
+        structuredContent: {
+          references,
+          ...(result.meta.nextCursor ? { nextCursor: result.meta.nextCursor } : {}),
+          ...(explain ? { meta: result.meta } : {}),
+        },
       }
     },
   )

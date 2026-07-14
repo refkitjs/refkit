@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRefkit } from '../client'
-import { defineProvider } from '../provider'
+import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
 import type { Reference } from '../reference'
 import type { LicenseId } from '../license'
@@ -75,6 +75,93 @@ describe('createRefkit', () => {
     const r = ref('a-1', 'https://a/1', 'CC-BY')
     expect(rk.evaluateUse(r, 'commercial-product').decision).toBe('allowed-with-attribution')
     expect(rk.buildAttribution(r).required).toBe(true)
+  })
+
+  it('cursor: drains the overfetched pool before advancing the provider page', async () => {
+    // fetchLimit > limit: the page-1 pool holds MORE than one batch. The cursor
+    // must keep returning from the same provider page until it is exhausted —
+    // advancing per batch would skip ranked results forever.
+    const pages: Record<number, Reference[]> = {
+      1: [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')],
+      2: [ref('a-5', 'https://a/5')],
+    }
+    const seenPages: Array<number | undefined> = []
+    const paging = defineProvider({
+      id: 'a',
+      modalities: ['image'],
+      capabilities: { controls: ['page'] },
+      search: async (q) => {
+        seenPages.push(q.controls?.page)
+        return pages[q.controls?.page ?? 1] ?? []
+      },
+    })
+    const rk = createRefkit({ providers: [paging] })
+
+    const batch1 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2 })
+    expect(batch1.references.map(r => r.canonicalUrl)).toEqual(['https://a/1', 'https://a/2'])
+    expect(batch1.meta.nextCursor).toBeDefined()
+
+    // Batch 2 comes from the REMAINDER of page 1 — no page advance.
+    const batch2 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: batch1.meta.nextCursor })
+    expect(batch2.references.map(r => r.canonicalUrl)).toEqual(['https://a/3', 'https://a/4'])
+    expect(seenPages).toEqual([undefined, 1])
+
+    // Page 1 exhausted → the next call advances to page 2 internally.
+    const batch3 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: batch2.meta.nextCursor })
+    expect(batch3.references.map(r => r.canonicalUrl)).toEqual(['https://a/5'])
+    expect(seenPages).toEqual([undefined, 1, 1, 2])
+
+    // Page 2 exhausted and page 3 empty → chain ends.
+    const batch4 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: batch3.meta.nextCursor })
+    expect(batch4.references).toEqual([])
+    expect(batch4.meta.nextCursor).toBeUndefined()
+    expect(seenPages).toEqual([undefined, 1, 1, 2, 2, 3])
+  })
+
+  it('cursor: rejects strings that did not come from meta.nextCursor', async () => {
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: 'not-a-cursor' })).rejects.toThrow(/invalid cursor/)
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: '{"v":9}' })).rejects.toThrow(/invalid cursor/)
+  })
+
+  it('rejects a Promise passed as providers (un-awaited async factory)', () => {
+    const promised = Promise.resolve([provider('a', [])])
+    expect(() => createRefkit({ providers: promised as unknown as ReferenceProvider[] })).toThrow(/non-empty array/)
+    promised.catch(() => {})
+  })
+
+  it('surfaces cross-source license conflicts as meta.warnings with conservative rights', async () => {
+    const rk = createRefkit({
+      providers: [
+        provider('a', [ref('a-1', 'https://shared/1', 'CC-BY')]),
+        provider('b', [ref('b-1', 'https://shared/1', 'CC-BY-NC')]),
+      ],
+    })
+    const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    expect(references).toHaveLength(1)
+    expect(references[0].rights.license).toBe('CC-BY-NC')
+    expect(meta.warnings.some(w => w.includes('cross-source license conflict'))).toBe(true)
+  })
+
+  it('concurrency bounds in-flight provider searches without changing results', async () => {
+    let active = 0
+    let maxActive = 0
+    const slow = (id: string) => defineProvider({
+      id,
+      modalities: ['image'],
+      search: async () => {
+        active++
+        maxActive = Math.max(maxActive, active)
+        await new Promise(r => setTimeout(r, 5))
+        active--
+        return [ref(`${id}-1`, `https://${id}/1`)]
+      },
+    })
+    const providers = [slow('a'), slow('b'), slow('c'), slow('d')]
+    const rk = createRefkit({ providers, concurrency: 2 })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out).toHaveLength(4)
+    expect(maxActive).toBeLessThanOrEqual(2)
   })
 
   it('queries only providers matching the modality', async () => {
@@ -544,10 +631,10 @@ describe('createRefkit', () => {
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'] }) // live search, populates cache
-    // seed the cache entry with 1 valid + 1 malformed item
+    // seed the cache entry with 1 valid + 1 malformed item (keep the {q, refs} envelope)
     for (const k of cache.store.keys()) {
-      const valid = JSON.parse(cache.store.get(k)!)
-      cache.store.set(k, JSON.stringify([...valid, { id: '', modality: 'image' }]))
+      const payload = JSON.parse(cache.store.get(k)!)
+      cache.store.set(k, JSON.stringify({ ...payload, refs: [...payload.refs, { id: '', modality: 'image' }] }))
     }
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], onProviderError })
     expect(out.references.map(r => r.id)).toEqual(['c-1'])

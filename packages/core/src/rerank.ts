@@ -28,12 +28,25 @@ const STOPWORDS = new Set([
   'by', 'from', 'as', 'is', 'are', 'it', 'this', 'that',
 ])
 
-/** Lowercase, split on runs of non-alphanumerics, drop stopwords and 1-char tokens. */
+// CJK scripts have no word boundaries to split on, so character bigrams are the
+// standard zero-dependency indexing unit (Han incl. compatibility ideographs,
+// kana, hangul — BMP ranges).
+const CJK_RUNS = /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]+/g
+
+/** Latin/digit runs: lowercase, split on non-alphanumerics, drop stopwords and
+ *  1-char tokens. CJK runs: character bigrams (a lone char stays a unigram), so
+ *  CJK queries score instead of tokenizing to nothing. */
 export function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
+  const lower = text.toLowerCase()
+  const out = lower
     .split(/[^a-z0-9]+/)
     .filter((t) => t.length > 1 && !STOPWORDS.has(t))
+  for (const run of lower.match(CJK_RUNS) ?? []) {
+    const chars = [...run]
+    if (chars.length === 1) out.push(chars[0])
+    else for (let i = 0; i < chars.length - 1; i++) out.push(chars[i] + chars[i + 1])
+  }
+  return out
 }
 
 /** Tuning weights for {@link lexicalReranker}. All weights are clamped to ≥ 0. */

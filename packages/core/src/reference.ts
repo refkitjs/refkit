@@ -30,7 +30,10 @@ export interface Reference {
   visual?: VisualMeta
   text?: TextMeta
   // — retrieval —
-  relevance: number // 0..1 orderable score; RRF-fused at merge, may be rewritten by a reranker
+  // 0..1. Providers emit a placeholder 0 (per-source order carries the signal);
+  // mergeReferences rewrites it to the normalized RRF score, and a reranker may
+  // rewrite it again. Only post-merge values are meaningful for comparison.
+  relevance: number
   raw?: unknown
 }
 

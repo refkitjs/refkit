@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { mergeReferences } from '../merge'
+import { mergeReferences, stricterLicense, type RightsConflict } from '../merge'
 import type { Reference } from '../reference'
+import type { LicenseId } from '../license'
 
 const make = (id: string, url: string, hash?: string): Reference => ({
   id,
@@ -11,6 +12,11 @@ const make = (id: string, url: string, hash?: string): Reference => ({
   verifiedAt: '2026-06-22T00:00:00.000Z',
   relevance: 0,
   perceptualHash: hash,
+})
+
+const withLicense = (ref: Reference, license: LicenseId, licenseVersion?: string): Reference => ({
+  ...ref,
+  rights: { ...ref.rights, license, licenseVersion },
 })
 
 describe('mergeReferences (RRF)', () => {
@@ -44,6 +50,69 @@ describe('mergeReferences (RRF)', () => {
   it('returns [] for empty / all-empty input without throwing', () => {
     expect(mergeReferences([])).toEqual([])
     expect(mergeReferences([[], []])).toEqual([])
+  })
+
+  it('resolves a cross-source license conflict to the stricter license, regardless of source order', () => {
+    const a = withLicense(make('a-1', 'https://shared/1'), 'CC-BY')
+    const b = withLicense(make('b-1', 'https://shared/1'), 'CC-BY-NC')
+    for (const perSource of [[[a], [b]], [[b], [a]]]) {
+      const out = mergeReferences(perSource)
+      expect(out).toHaveLength(1)
+      expect(out[0].rights.license).toBe('CC-BY-NC')
+    }
+  })
+
+  it('collapses an incomparable license conflict to unknown (strict-deny) and drops licenseVersion', () => {
+    // unsplash grants derivatives but not redistribution; CC-BY-ND the reverse —
+    // neither dominates, so no single honest license id exists.
+    const a = withLicense(make('a-1', 'https://shared/1'), 'CC-BY-ND', '4.0')
+    const b = withLicense(make('b-1', 'https://shared/1'), 'unsplash')
+    const out = mergeReferences([[a], [b]])
+    expect(out).toHaveLength(1)
+    expect(out[0].rights.license).toBe('unknown')
+    expect(out[0].rights.licenseVersion).toBeUndefined()
+  })
+
+  it('reports conflicts via onRightsConflict; same-license duplicates never conflict', () => {
+    const seen: RightsConflict[] = []
+    const a = withLicense(make('a-1', 'https://shared/1'), 'CC0-1.0')
+    const b = withLicense(make('b-1', 'https://shared/1'), 'proprietary')
+    const c1 = withLicense(make('a-2', 'https://same/2'), 'CC-BY', '4.0')
+    const c2 = withLicense(make('b-2', 'https://same/2'), 'CC-BY', '2.0')
+    const out = mergeReferences([[a, c1], [b, c2]], { onRightsConflict: (c) => seen.push(c) })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toEqual({
+      canonicalUrl: 'https://shared/1',
+      licenses: ['CC0-1.0', 'proprietary'],
+      resolvedLicense: 'proprietary',
+    })
+    const shared = out.find(r => r.canonicalUrl === 'https://shared/1')!
+    expect(shared.rights.license).toBe('proprietary')
+    // same license id, different version: not a conflict, representative's record kept
+    const same = out.find(r => r.canonicalUrl === 'https://same/2')!
+    expect(same.rights.license).toBe('CC-BY')
+  })
+
+  it('reports a 3-source conflict ONCE with only source-declared licenses (no phantom unknown)', () => {
+    const seen: RightsConflict[] = []
+    const out = mergeReferences([
+      [withLicense(make('a-1', 'https://shared/1'), 'CC-BY-NC')],
+      [withLicense(make('b-1', 'https://shared/1'), 'CC-BY-SA')],
+      [withLicense(make('c-1', 'https://shared/1'), 'CC-BY-NC')], // re-declares an already-seen license
+    ], { onRightsConflict: (c) => seen.push(c) })
+    expect(seen).toHaveLength(1)
+    expect(seen[0].licenses.sort()).toEqual(['CC-BY-NC', 'CC-BY-SA'])
+    expect(seen[0].licenses).not.toContain('unknown') // resolution value never reported as a claim
+    expect(seen[0].resolvedLicense).toBe('unknown') // NC vs SA are incomparable → strict-deny
+    expect(out[0].rights.license).toBe('unknown')
+  })
+
+  it('stricterLicense: dominance picks the stricter; incomparable pairs return undefined', () => {
+    expect(stricterLicense('CC-BY', 'CC-BY-NC')).toBe('CC-BY-NC')
+    expect(stricterLicense('CC0-1.0', 'proprietary')).toBe('proprietary')
+    expect(stricterLicense('CC0-1.0', 'PD')).toBeDefined() // equal permissiveness — either
+    expect(stricterLicense('unsplash', 'CC-BY-ND')).toBeUndefined()
+    expect(stricterLicense('CC-BY-SA', 'unknown')).toBe('unknown') // unknown grants nothing determinable
   })
 
   it('handles a large pool without a Math.max(...spread) stack overflow', () => {

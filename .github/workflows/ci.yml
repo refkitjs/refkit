@@ -17,5 +17,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm build
       - run: pnpm test:run
+      # source suites resolve workspace src/*.ts — only this exercises the bits we publish
+      - name: Artifact smoke (pack → clean install → boot MCP cli)
+        run: pnpm smoke:artifact

@@ -3,34 +3,67 @@ import { normalizeQuery } from '../query'
 import type { ReferenceProvider } from '../provider'
 
 const provider = (
-  qf: ReferenceProvider['queryFeatures'],
+  controls: NonNullable<ReferenceProvider['capabilities']>['controls'] = [],
   modalities: ReferenceProvider['modalities'] = ['image'],
-): ReferenceProvider => ({ id: 'p', modalities, queryFeatures: qf, search: async () => [] })
+): ReferenceProvider => ({ id: 'p', modalities, capabilities: { controls }, search: async () => [] })
 
 describe('normalizeQuery', () => {
-  it('drops filters the provider does not support', () => {
+  it('routes legacy filters by capabilities.controls and mirrors them on both channels', () => {
     const nq = normalizeQuery(
       { query: 'cat', modalities: ['image'], filters: { color: 'red', orientation: 'landscape' } },
-      provider(['keyword', 'color']),
+      provider(['color']),
     )
-    expect(nq.filters).toEqual({ color: 'red' }) // orientation dropped
+    expect(nq.filters).toEqual({ color: 'red' }) // orientation dropped (not in capabilities)
+    expect(nq.controls).toEqual({ color: 'red' }) // derived channel stays consistent
+  })
+
+  it('legacy compat: a capabilities-less provider declaring only queryFeatures still receives its filters', () => {
+    const legacy: ReferenceProvider = {
+      id: 'p',
+      modalities: ['image'],
+      queryFeatures: ['keyword', 'orientation'], // pre-capabilities third-party shape
+      search: async () => [],
+    }
+    const nq = normalizeQuery(
+      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape', color: 'red' } },
+      legacy,
+    )
+    expect(nq.filters).toEqual({ orientation: 'landscape' }) // color not declared → dropped
+    expect(nq.controls).toEqual({ orientation: 'landscape' })
+  })
+
+  it('capabilities, once declared, win over queryFeatures', () => {
+    const both: ReferenceProvider = {
+      id: 'p',
+      modalities: ['image'],
+      queryFeatures: ['keyword', 'orientation'],
+      capabilities: { controls: [] }, // explicit: supports nothing
+      search: async () => [],
+    }
+    const nq = normalizeQuery(
+      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape' } },
+      both,
+    )
+    expect(nq.filters).toBeUndefined()
+    expect(nq.controls).toBeUndefined()
   })
 
   it('omits filters entirely when none survive', () => {
     const nq = normalizeQuery(
       { query: 'cat', modalities: ['image'], filters: { color: 'red' } },
-      provider(['keyword']),
+      provider([]),
     )
     expect(nq.filters).toBeUndefined()
+    expect(nq.controls).toBeUndefined()
   })
 
   it('intersects modalities with the provider', () => {
-    const nq = normalizeQuery({ query: 'x', modalities: ['image', 'text'] }, provider(['keyword'], ['image']))
+    const nq = normalizeQuery({ query: 'x', modalities: ['image', 'text'] }, provider([], ['image']))
     expect(nq.modalities).toEqual(['image'])
   })
 
   it('passes through query text and limit', () => {
-    const nq = normalizeQuery({ query: 'cat', modalities: ['image'], limit: 10 }, provider(['keyword']))
+    const nq = normalizeQuery({ query: 'cat', modalities: ['image'], limit: 10 }, provider())
     expect(nq.text).toBe('cat')
     expect(nq.limit).toBe(10)
   })
@@ -45,7 +78,7 @@ describe('normalizeQuery', () => {
           other: { orderBy: 'relevant' },
         },
       },
-      provider(['keyword']),
+      provider(),
     )
     expect(nq.providerOptions).toEqual({ orderBy: 'latest' })
   })

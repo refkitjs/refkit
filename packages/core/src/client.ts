@@ -1,5 +1,4 @@
 import type { Reference } from './reference'
-import { parseReference } from './reference'
 import type { Reranker } from './rerank'
 import type { Modality } from './modality'
 import type { Intent, Verdict } from './evaluate-use'
@@ -8,17 +7,17 @@ import type { Attribution } from './attribution'
 import { buildAttribution } from './attribution'
 import type {
   ReferenceProvider,
-  ProviderContext,
   KeyValueCache,
   SearchFilters,
   SearchControls,
   SearchControlKey,
   ProviderOptionsById,
 } from './provider'
-import { mergeReferences, type MergeOptions } from './merge'
+import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
 import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
-import { retryingFetch, withTimeout } from './resilience'
-import { fnv1a } from './hash'
+import { retryingFetch } from './resilience'
+import { runProviderSearch } from './provider-run'
+import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
 
 export interface ResilienceOptions {
   /** Soft deadline per provider search. Default 10_000. */
@@ -37,6 +36,15 @@ export interface RefkitOptions {
   resilience?: ResilienceOptions | false
   /** TTL for per-provider cached results; used only when `cache` is set. Default 300_000. */
   cacheTtlMs?: number
+  /** Include each result's `raw` provider payload in cached entries. Default true.
+   *  Pass false to shrink cache entries — cache-hit refs then carry no `raw`, so a
+   *  `merge.isDuplicate` hook reading `raw` won't see it on hits. */
+  cacheRaw?: boolean
+  /** Max provider searches in flight at once per search call. Default: unlimited
+   *  (every matching provider fires simultaneously). Set when querying many
+   *  sources at once — a provider's timeout only starts when its slot starts, so
+   *  queueing never burns a queued provider's deadline. */
+  concurrency?: number
 }
 
 export interface ProviderError {
@@ -80,6 +88,10 @@ export interface SearchMeta {
   providerOptions?: string[]
   providers: ProviderSearchStatus[]
   gate?: SearchGateMeta
+  /** Opaque "load more" cursor: pass as `SearchInput.cursor` to fetch the next
+   *  batch with cross-page dedup handled internally. Present when this call
+   *  returned at least one result; absent = the stream is exhausted. */
+  nextCursor?: string
   warnings: string[]
 }
 
@@ -91,12 +103,20 @@ export interface SearchResult {
 export interface SearchInput {
   query: string
   modalities: Modality[]
+  /** @deprecated Compatibility alias for `controls.color` / `controls.orientation`
+   *  / `controls.language` (controls win on conflict). Use `controls`. */
   filters?: SearchFilters
   controls?: SearchControls
   /** Provider-specific search controls keyed by provider id. Core routes only the
    * matching entry to each provider; providers whitelist what they translate. */
   providerOptions?: ProviderOptionsById
   limit?: number
+  /** Opaque cursor from a previous search's `meta.nextCursor`. Resumes the
+   *  provider-local page (overriding `controls.page`), filters out results
+   *  already returned on earlier calls, and advances the page automatically once
+   *  the current page's pool is exhausted — "load more" needs no caller-side
+   *  bookkeeping. Throws on a string that did not come from `meta.nextCursor`. */
+  cursor?: string
   /** Overfetch this many × `limit` candidates per provider before merge/rerank/gate,
    *  then narrow to `limit` — a wider pool means better dedup + ranking. Default 4
    *  (capped so a source is never asked for more than {@link MAX_POOL_LIMIT}); min 1.
@@ -123,6 +143,12 @@ const MAX_POOL_LIMIT = 100 // never ask a single source for more than this, even
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_RETRIES = 1
 const DEFAULT_CACHE_TTL_MS = 300_000
+// Cursor: how many further provider pages one load-more call may try when the
+// current page's pool is fully consumed, before reporting an empty batch.
+const MAX_CURSOR_ADVANCES = 3
+// Cursor: cap on remembered already-returned keys (most recent kept). Bounds
+// cursor size (~7 bytes/key); overflowing just risks re-showing very old results.
+const MAX_CURSOR_SEEN = 500
 
 function errorSummary(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -130,22 +156,26 @@ function errorSummary(error: unknown): string {
   return 'unknown error'
 }
 
-// Deterministic JSON for cache keys: object keys sorted recursively, so a
-// caller's providerOptions key order can't split otherwise-identical keys.
-// Keys whose value is `undefined` are skipped, matching JSON.stringify's own
-// object semantics — `{ a: 1, b: undefined }` and `{ a: 1 }` must key alike.
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  if (value && typeof value === 'object') {
-    const rec = value as Record<string, unknown>
-    return `{${Object.keys(rec).filter(k => rec[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
+// Bounded-parallel map: at most `limit` fn calls in flight, results in input
+// order. fn never rejects here (runProvider returns failures as values).
+async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const worker = async () => {
+    for (let i = next++; i < items.length; i = next++) {
+      results[i] = await fn(items[i])
+    }
   }
-  return JSON.stringify(value) ?? 'null'
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
 
 export function createRefkit(options: RefkitOptions): RefkitClient {
-  if (!options.providers || options.providers.length === 0) {
-    throw new Error('createRefkit: at least one provider is required')
+  // Array.isArray (not just truthiness): a Promise<providers[]> — e.g. an
+  // un-awaited async factory — must fail here with a clear message, not pass
+  // construction and crash cryptically on the first search.
+  if (!Array.isArray(options.providers) || options.providers.length === 0) {
+    throw new Error('createRefkit: providers must be a non-empty array (did you forget to await an async provider factory?)')
   }
 
   async function searchInternal(input: SearchInput): Promise<SearchResult> {
@@ -162,17 +192,8 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // Overfetch a wider candidate pool per provider, then narrow to `limit` after
     // merge/rerank/gate — you can't rank or dedup candidates you never fetched.
     const fetchLimit = Math.max(limit, Math.min(Math.ceil(limit * poolFactor), MAX_POOL_LIMIT))
-    const requestedControlsSource = mergeSearchControls(input.controls, input.filters)
-    const requestedControls = requestedControlKeys(requestedControlsSource)
-    const controlsMeta = requestedControls.length > 0 ? {
-      requested: requestedControls,
-      appliedByProvider: Object.fromEntries(options.providers.map(p => [p.id, supportedControlKeys(p, requestedControlsSource)])),
-      ignoredByProvider: Object.fromEntries(options.providers.map(p => [p.id, unsupportedControlKeys(p, requestedControlsSource)])),
-    } : undefined
-    const statusByProvider = new Map<string, ProviderSearchStatus>()
-    for (const p of options.providers) {
-      if (!chosen.includes(p)) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' })
-    }
+    const cursorState = input.cursor !== undefined ? decodeCursor(input.cursor) : undefined
+    const seenSet = cursorState ? new Set(cursorState.seen) : undefined
     const resilience = options.resilience === false ? undefined : {
       timeoutMs: options.resilience?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       retries: options.resilience?.retries ?? DEFAULT_RETRIES,
@@ -181,139 +202,156 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // shared across every provider in the fan-out below, instead of allocating
     // a fresh wrapper per provider.
     const sharedFetch = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
+    const concurrency = options.concurrency !== undefined && options.concurrency >= 1
+      ? Math.floor(options.concurrency)
+      : undefined
 
-    type ProviderRun =
-      | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
-      | { ok: false; error: unknown; latencyMs: number }
-
-    const runProvider = async (p: ReferenceProvider): Promise<ProviderRun> => {
-      const started = Date.now()
-      const timeout = resilience ? withTimeout(input.signal ?? options.signal, resilience.timeoutMs) : undefined
-      const ctx: ProviderContext = {
-        fetch: sharedFetch,
-        cache: options.cache,
-        signal: timeout?.signal ?? input.signal ?? options.signal,
-      }
-      const query = normalizeQuery({
-        query: input.query,
-        modalities: input.modalities,
-        filters: input.filters,
-        controls: input.controls,
-        providerOptions: input.providerOptions,
-        limit: fetchLimit,
-      }, p)
-      const cacheKey = options.cache
-        ? `refkit:v1:${p.id}:${fnv1a(stableStringify(query))}`
-        : undefined
-      // Race a promise against the deadline without leaking an unhandled rejection
-      // for whichever side loses the race.
-      const raceDeadline = <T>(p: Promise<T>): Promise<T> => {
-        p.catch(() => {})
-        return timeout ? Promise.race([p, timeout.expired]) : p
-      }
-      // Parse raw provider items one at a time — a single bad item must not
-      // discard the rest (shared by the cache-hit and live-search paths).
-      const parseItems = (raw: unknown[]): Reference[] => {
-        const valid: Reference[] = []
-        for (const item of raw) {
-          try {
-            valid.push(parseReference(item))
-          } catch (error) {
-            input.onProviderError?.({ providerId: p.id, error })
-          }
-        }
-        return valid
-      }
-      try {
-        if (options.cache && cacheKey) {
-          // best-effort: a broken/corrupt/stale cache degrades to a live search
-          const pending = options.cache.get(cacheKey)
-          // A slow cache read must not outlive the provider deadline: at expiry it
-          // degrades to a miss, and the live search below then fails fast on the
-          // same (already-expired) deadline.
-          const hit = await (timeout
-            ? Promise.race([pending, timeout.expired.catch(() => undefined)])
-            : pending
-          ).catch(() => undefined)
-          pending.catch(() => {}) // raced-past rejection must not go unhandled
-          if (hit !== undefined) {
-            try {
-              // cached refs keep their original verifiedAt — staleness is bounded
-              // by the TTL when the cache honors ttlMs. Only a whole-payload
-              // failure (not JSON, not an array) falls through to live; a single
-              // bad item within an otherwise-valid array is reported and dropped,
-              // same as the live path.
-              const raw = JSON.parse(hit) as unknown[]
-              if (!Array.isArray(raw)) throw new Error('cached payload is not an array')
-              const valid = parseItems(raw)
-              return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started, cached: true }
-            } catch { /* fall through to live */ }
-          }
-        }
-        const searching = p.search(query, ctx)
-        const raw = await raceDeadline(searching)
-        const valid = parseItems(raw)
-        if (options.cache && cacheKey) {
-          // fire-and-forget: cache write failure must never fail the search
-          void options.cache.set(cacheKey, JSON.stringify(valid), options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS).catch(() => {})
-        }
-        return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
-      } catch (error) {
-        input.onProviderError?.({ providerId: p.id, error })
-        return { ok: false, error, latencyMs: Date.now() - started }
-      } finally {
-        timeout?.cancel()
-      }
+    interface PassOutcome {
+      refs: Reference[] // post merge/rerank/gate/seen-filter, best-first
+      controlsMeta?: SearchControlsMeta
+      statusByProvider: Map<string, ProviderSearchStatus>
+      gate?: SearchGateMeta
+      rightsConflicts: RightsConflict[]
+      totalReturned: number // raw items across fulfilled providers (pre-parse)
     }
 
-    const runs = await Promise.all(chosen.map(runProvider))
+    // One full fan-out → merge → rerank → gate → seen-filter pass at the given
+    // provider-local page. The cursor path may run several passes per call.
+    const runPass = async (page: number | undefined): Promise<PassOutcome> => {
+      const controls = page !== undefined ? { ...input.controls, page } : input.controls
+      const requestedControlsSource = mergeSearchControls(controls, input.filters)
+      const requestedControls = requestedControlKeys(requestedControlsSource)
+      const controlsMeta = requestedControls.length > 0 ? {
+        requested: requestedControls,
+        appliedByProvider: Object.fromEntries(options.providers.map(p => [p.id, supportedControlKeys(p, requestedControlsSource)])),
+        ignoredByProvider: Object.fromEntries(options.providers.map(p => [p.id, unsupportedControlKeys(p, requestedControlsSource)])),
+      } : undefined
+      const statusByProvider = new Map<string, ProviderSearchStatus>()
+      for (const p of options.providers) {
+        if (!chosen.includes(p)) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' })
+      }
 
-    const perSource: Reference[][] = []
-    let anyOk = false
-    runs.forEach((run, i) => {
-      const provider = chosen[i]
-      if (run.ok) {
-        anyOk = true
-        statusByProvider.set(provider.id, {
-          providerId: provider.id,
-          status: 'fulfilled',
-          returned: run.returned,
-          accepted: run.valid.length,
-          rejected: run.returned - run.valid.length,
-          latencyMs: run.latencyMs,
-          ...(run.cached ? { cached: true } : {}),
+      const runProvider = (p: ReferenceProvider) => {
+        const query = normalizeQuery({
+          query: input.query,
+          modalities: input.modalities,
+          filters: input.filters,
+          controls,
+          providerOptions: input.providerOptions,
+          limit: fetchLimit,
+        }, p)
+        return runProviderSearch(p, query, {
+          fetch: sharedFetch,
+          cache: options.cache,
+          cacheTtlMs: options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
+          cacheRaw: options.cacheRaw ?? true,
+          timeoutMs: resilience?.timeoutMs,
+          signal: input.signal ?? options.signal,
+          onError: (error) => input.onProviderError?.({ providerId: p.id, error }),
         })
-        perSource.push(run.valid)
-      } else {
-        statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
       }
-    })
 
-    if (!anyOk) {
-      throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
+      const runs = concurrency
+        ? await mapBounded(chosen, concurrency, runProvider)
+        : await Promise.all(chosen.map(runProvider))
+
+      const perSource: Reference[][] = []
+      let anyOk = false
+      let totalReturned = 0
+      runs.forEach((run, i) => {
+        const provider = chosen[i]
+        if (run.ok) {
+          anyOk = true
+          totalReturned += run.returned
+          statusByProvider.set(provider.id, {
+            providerId: provider.id,
+            status: 'fulfilled',
+            returned: run.returned,
+            accepted: run.valid.length,
+            rejected: run.returned - run.valid.length,
+            latencyMs: run.latencyMs,
+            ...(run.cached ? { cached: true } : {}),
+          })
+          perSource.push(run.valid)
+        } else {
+          statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
+        }
+      })
+
+      if (!anyOk) {
+        throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
+      }
+
+      // Collect cross-source license conflicts for meta.warnings while still
+      // forwarding them to a host-supplied observer.
+      const rightsConflicts: RightsConflict[] = []
+      let refs = mergeReferences(perSource, {
+        ...options.merge,
+        onRightsConflict: (c) => {
+          rightsConflicts.push(c)
+          options.merge?.onRightsConflict?.(c)
+        },
+      })
+      // Rerank runs over the FULL merged pool, before the license gate — ordering
+      // (and a reranker's batch-relative scoring, e.g. quality normalised across
+      // the pool) is computed against every candidate, then the gate drops denied
+      // ones while preserving order. Core does not re-validate the returned refs;
+      // a reranker is trusted to honour the Reranker contract.
+      if (input.rerank) {
+        refs = await input.rerank({ query: input.query, refs, signal: input.signal ?? options.signal })
+      }
+      const beforeGate = refs.length
+      let gate: SearchGateMeta | undefined
+      if (input.gateFor) {
+        const intent = input.gateFor
+        refs = refs.filter(r => evaluateUse(r.rights, intent).decision.startsWith('allowed'))
+        gate = { intent, before: beforeGate, after: refs.length, dropped: beforeGate - refs.length }
+      }
+      // Cursor pagination: drop results already returned on earlier calls (RRF
+      // pages overlap by design), AFTER rank/gate so ordering is batch-consistent
+      // but BEFORE the limit so repeats don't consume the batch budget.
+      if (seenSet) {
+        refs = refs.filter(r => !seenSet.has(cursorSeenKey(r.canonicalUrl)))
+      }
+      return { refs, controlsMeta, statusByProvider, gate, rightsConflicts, totalReturned }
     }
 
-    let refs = mergeReferences(perSource, options.merge)
-    // Rerank runs over the FULL merged pool, before the license gate — ordering
-    // (and a reranker's batch-relative scoring, e.g. quality normalised across
-    // the pool) is computed against every candidate, then the gate drops denied
-    // ones while preserving order. Core does not re-validate the returned refs;
-    // a reranker is trusted to honour the Reranker contract.
-    if (input.rerank) {
-      refs = await input.rerank({ query: input.query, refs, signal: input.signal ?? options.signal })
+    // Providers fetch fetchLimit (≥ limit) candidates per page, but each call
+    // returns only `limit` — so the cursor must NOT advance the provider page
+    // per call, or the unreturned overfetch remainder would be skipped forever.
+    // Instead nextCursor keeps pointing at the SAME page (the seen-filter makes
+    // repeats free) and the page advances here, internally, only once a page's
+    // pool yields nothing new — up to MAX_CURSOR_ADVANCES pages per call.
+    let page = cursorState ? cursorState.page : input.controls?.page
+    let pass = await runPass(page)
+    if (cursorState) {
+      for (
+        let advances = 0;
+        pass.refs.length === 0 && pass.totalReturned > 0 && advances < MAX_CURSOR_ADVANCES;
+        advances++
+      ) {
+        page = (page ?? 1) + 1
+        pass = await runPass(page)
+      }
     }
-    const beforeGate = refs.length
-    let gate: SearchGateMeta | undefined
-    if (input.gateFor) {
-      const intent = input.gateFor
-      refs = refs.filter(r => evaluateUse(r.rights, intent).decision.startsWith('allowed'))
-      gate = { intent, before: beforeGate, after: refs.length, dropped: beforeGate - refs.length }
-    }
-    const references = refs.slice(0, limit)
+
+    const references = pass.refs.slice(0, limit)
+    const nextCursor = references.length > 0
+      ? encodeCursor({
+          v: 1,
+          // Same page on purpose — its overfetched pool may still hold
+          // unreturned results; the next call advances internally if not.
+          page: page ?? 1,
+          seen: [...(cursorState?.seen ?? []), ...references.map(r => cursorSeenKey(r.canonicalUrl))].slice(-MAX_CURSOR_SEEN),
+        })
+      : undefined
     const warnings: string[] = []
-    const failedCount = [...statusByProvider.values()].filter(s => s.status === 'failed').length
+    const failedCount = [...pass.statusByProvider.values()].filter(s => s.status === 'failed').length
     if (failedCount > 0) warnings.push(`${failedCount} provider(s) failed; returning partial results.`)
-    if (gate && gate.dropped > 0) warnings.push(`${gate.dropped} result(s) dropped by ${gate.intent} gate.`)
+    for (const c of pass.rightsConflicts) {
+      warnings.push(`cross-source license conflict for ${c.canonicalUrl}: ${c.licenses.join(' vs ')} → resolved to ${c.resolvedLicense}.`)
+    }
+    if (pass.gate && pass.gate.dropped > 0) warnings.push(`${pass.gate.dropped} result(s) dropped by ${pass.gate.intent} gate.`)
     return {
       references,
       meta: {
@@ -323,10 +361,11 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         poolFactor,
         fetchLimit,
         ...(input.filters ? { appliedFilters: input.filters } : {}),
-        ...(controlsMeta ? { controls: controlsMeta } : {}),
+        ...(pass.controlsMeta ? { controls: pass.controlsMeta } : {}),
         ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
-        providers: options.providers.map(p => statusByProvider.get(p.id) ?? { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' }),
-        ...(gate ? { gate } : {}),
+        providers: options.providers.map(p => pass.statusByProvider.get(p.id) ?? { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' }),
+        ...(pass.gate ? { gate: pass.gate } : {}),
+        ...(nextCursor ? { nextCursor } : {}),
         warnings,
       },
     }

@@ -108,17 +108,17 @@ console.log(meta.providers)
 console.log(meta.warnings)
 ```
 
-`controls.page` is a **provider-local** cursor: each provider paginates its own result stream independently, and refkit does not track a unified offset across sources. Because pages are fused with Reciprocal Rank Fusion per request, page N+1 is not guaranteed to be disjoint from page N — results can overlap or shift relative to the previous page. For a "load more" UI, dedupe across pages by `canonicalUrl` rather than assuming stable, non-overlapping windows:
+### Pagination ("load more")
+
+Use the built-in cursor: every `searchWithMeta` result carries an opaque `meta.nextCursor`; pass it back as `cursor` and refkit advances the provider-local page **and dedupes against everything already returned** — no caller-side bookkeeping:
 
 ```ts
-import { canonicalizeUrl } from '@refkit/core'
-
-const seen = new Set(prev.map((r) => canonicalizeUrl(r.canonicalUrl)))
-const nextPage = await refkit.search({ query, modalities: ['image'], controls: { page: 2 } })
-const newOnly = nextPage.filter((r) => !seen.has(canonicalizeUrl(r.canonicalUrl)))
+const batch1 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'] })
+const batch2 = await refkit.searchWithMeta({ query: 'forest path', modalities: ['image'], cursor: batch1.meta.nextCursor })
+// batch2 never repeats batch1; an empty batch (no meta.nextCursor) means exhausted.
 ```
 
-(core's own merge/dedup normalizes URLs the same way, so this recipe stays consistent with what refkit dedupes internally.)
+The cursor first **drains the overfetched pool** of the current provider page (each search fetches `limit × poolFactor` candidates but returns `limit`), and only then advances the provider-local page — so ranked results are never skipped. Under the hood `controls.page` is still provider-local (each source paginates its own stream; RRF-fused pages can overlap), which is exactly why the cursor tracks seen results for you. The seen set is capped (oldest evicted) so cursors stay small. Raw `controls.page` remains available if you want to manage pages yourself — then dedupe across pages by `canonicalizeUrl(r.canonicalUrl)`.
 
 ## Ranking & rerank
 
@@ -148,6 +148,10 @@ rerank: async ({ query, refs }) => myEmbeddingRerank(query, refs)
 
 Rerank is **opt-in** — omit it for the default RRF order. It runs post-merge, before the `gateFor` license filter and the limit.
 
+`lexicalReranker`'s term matching understands CJK text (character bigrams), so Chinese/Japanese/Korean queries score against titles instead of tokenizing to nothing. Note that most bundled sources index English metadata — for best recall, query in English (or have your agent translate) even though ranking handles CJK.
+
+When two sources disagree about the license of the **same canonical URL**, the merge resolves conservatively: the stricter license wins, and incomparable claims collapse to `unknown` (→ needs-review). Each conflict is reported in `meta.warnings` (and to an optional `merge.onRightsConflict` observer) — results never silently inherit the more permissive claim.
+
 URL dedupe is built in, and perceptual hashes are supported when providers or hosts supply them. For host-computed fingerprints or embeddings, add a duplicate hook without making core fetch or decode media:
 
 ```ts
@@ -170,10 +174,16 @@ createRefkit({ providers, resilience: { timeoutMs: 4000, retries: 2 } })
 createRefkit({ providers, resilience: false }) // raw fan-out, no timeout/retry
 ```
 
-Pass a `cache` to memoize **per-provider** results (keyed by provider + normalized query, TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`:
+With many sources registered, bound the fan-out with `concurrency` — at most N provider searches run at once (a queued provider's timeout only starts when its slot starts):
 
 ```ts
-createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000 })
+createRefkit({ providers, concurrency: 6 }) // default: unlimited
+```
+
+Pass a `cache` to memoize **per-provider** results (short fixed-shape hashed keys, safe for strict KV backends; the cached value embeds the full normalized query and is verified on read, so a key collision degrades to a miss instead of serving another query's results; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
+
+```ts
+createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false })
 ```
 
 ## Providers
@@ -241,7 +251,7 @@ Agents can use refkit in two ways:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
+It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results; `rerank: true` for query-aware re-ranking (term coverage incl. CJK, resolution, source diversity); `cursor` (from the previous result's top-level `nextCursor` — always returned, no `explain` needed) to page through results without repeats. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
 
 ## Not legal advice
 
@@ -252,6 +262,7 @@ It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Pro
 ```bash
 pnpm install
 pnpm typecheck   # all packages
+pnpm lint        # eslint (typescript-eslint, syntactic rules; tsc stays the type gate)
 pnpm test:run    # all packages
 pnpm build       # tsup → dist for every package
 ```

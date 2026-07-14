@@ -138,7 +138,6 @@ export function rijksmuseum(config: RijksmuseumConfig = {}) {
   return defineProvider({
     id: 'rijksmuseum',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as RijksmuseumSearchOptions | undefined

@@ -3,6 +3,7 @@ import {
   first, isLikelyImageUrl, imageMediaType, mapRightsUrl, ccVersionFor,
   type Reference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
+  offsetForPage, setIfNonNegativeInt,
 } from '@refkit/core'
 
 const BASE = 'https://api.europeana.eu/record/v2/search.json'
@@ -96,13 +97,14 @@ export function europeana(config: EuropeanaConfig) {
   return defineProvider({
     id: 'europeana',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)
       url.searchParams.set('wskey', config.apiKey)
       url.searchParams.set('query', q.text)
       url.searchParams.set('rows', String(q.limit ?? 20))
+      // 1-based `start` offset: item index of the first result, not a page number
+      setIfNonNegativeInt(url, 'start', offsetForPage(q.controls?.page, q.limit ?? 20, 1))
       url.searchParams.set('media', 'true')   // only items that actually carry media
       url.searchParams.set('qf', 'TYPE:IMAGE') // v1 image-only scope (D1)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
