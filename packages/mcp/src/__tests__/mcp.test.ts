@@ -84,6 +84,45 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('returns nextCursor at the top level WITHOUT explain, and the cursor round-trips', async () => {
+    const item = (i: number) => ({
+      id: `pg:${i}`,
+      modality: 'image' as const,
+      source: { providerId: 'pg', sourceUrl: `https://pg/${i}` },
+      canonicalUrl: `https://pg/${i}`,
+      rights: { license: 'CC0-1.0' as const, rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: `https://pg/${i}` } },
+      verifiedAt: '2026-06-22T00:00:00.000Z',
+      relevance: 0,
+    })
+    const pool = Array.from({ length: 6 }, (_, i) => item(i + 1))
+    const paging = defineProvider({
+      id: 'pg',
+      modalities: ['image'],
+      capabilities: { controls: ['page'] },
+      search: async (q) => {
+        const size = q.limit ?? 20
+        const page = q.controls?.page ?? 1
+        return pool.slice((page - 1) * size, page * size)
+      },
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [paging] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+
+    type Out = { references: Array<{ canonicalUrl: string }>; nextCursor?: string; meta?: unknown }
+    const batch1 = (await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], limit: 2 } })).structuredContent as Out
+    expect(batch1.references).toHaveLength(2)
+    expect(batch1.nextCursor).toBeDefined() // present WITHOUT explain
+    expect(batch1.meta).toBeUndefined() // meta dump still gated by explain
+
+    const batch2 = (await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], limit: 2, cursor: batch1.nextCursor } })).structuredContent as Out
+    expect(batch2.references).toHaveLength(2)
+    const urls1 = batch1.references.map(r => r.canonicalUrl)
+    expect(batch2.references.every(r => !urls1.includes(r.canonicalUrl))).toBe(true) // no repeats
+    await client.close()
+  })
+
   it('accepts filters and providerOptions for provider-specific search controls', async () => {
     let seen: { filters?: unknown; providerOptions?: unknown } = {}
     const fakeProvider = defineProvider({
