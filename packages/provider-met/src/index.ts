@@ -69,7 +69,7 @@ export function met(config: MetConfig = {}) {
   return defineProvider({
     id: 'met',
     modalities: ['image'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const searchUrl = new URL(`${BASE}/search`)
       searchUrl.searchParams.set('q', q.text)
@@ -90,7 +90,9 @@ export function met(config: MetConfig = {}) {
       const { objectIDs } = (await res.json()) as MetSearchResponse
       if (!objectIDs || objectIDs.length === 0) return []
       const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
-      const objects = await Promise.all(objectIDs.slice(0, n).map(async (id) => {
+      // the search endpoint returns every matching id — page = a window over that list
+      const from = ((q.controls?.page ?? 1) - 1) * n
+      const objects = await Promise.all(objectIDs.slice(from, from + n).map(async (id) => {
         try {
           const r = await ctx.fetch(`${BASE}/objects/${id}`, { signal: ctx.signal })
           if (!r.ok) return null

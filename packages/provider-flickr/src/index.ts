@@ -179,7 +179,7 @@ export function flickr(config: FlickrConfig) {
   return defineProvider({
     id: 'flickr',
     modalities: ['image'],
-    capabilities: { controls: ['sort', 'safety', 'license.commercial', 'license.modification', 'license.allowUnknown', 'creator.id'] },
+    capabilities: { controls: ['sort', 'safety', 'license.commercial', 'license.modification', 'license.allowUnknown', 'creator.id', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as FlickrSearchOptions | undefined
       const url = new URL('https://api.flickr.com/services/rest/')
@@ -216,6 +216,7 @@ export function flickr(config: FlickrConfig) {
       setBooleanFlag(url, 'in_gallery', opts?.inGallery)
       setBooleanFlag(url, 'is_getty', opts?.isGetty)
       url.searchParams.set('extras', flickrExtras(opts?.extras))
+      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
       setIfInt(url, 'page', opts?.page, { min: 1 })
       url.searchParams.set('per_page', String(q.limit ?? 20))
       setIfInt(url, 'per_page', opts?.perPage, { min: 1, max: 500 })

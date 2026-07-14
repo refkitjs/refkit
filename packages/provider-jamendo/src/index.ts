@@ -91,7 +91,7 @@ export function jamendo(config: JamendoConfig) {
   return defineProvider({
     id: 'jamendo',
     modalities: ['audio'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)
       url.searchParams.set('client_id', config.clientId)
@@ -107,6 +107,8 @@ export function jamendo(config: JamendoConfig) {
       // jamendo joins tags with a SPACE (not the core default comma).
       setIfStringList(url, 'tags', opts?.tags, { separator: ' ' })
       setIfString(url, 'artist_name', opts?.artist_name)
+      // offset-based API: translate the 1-based page control (providerOptions.offset overrides below)
+      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('offset', String((q.controls.page - 1) * Math.min(q.limit ?? 20, 200)))
       // jamendo's offset is non-negative (0 is valid) → setIfNonNegativeInt, not PositiveInt.
       setIfNonNegativeInt(url, 'offset', opts?.offset)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })

@@ -23,12 +23,12 @@ describe('referenceSchema / parseReference', () => {
   })
 
   it('rejects a reference missing canonicalUrl (provenance required)', () => {
-    const { canonicalUrl, ...bad } = ref
+    const { canonicalUrl: _canonicalUrl, ...bad } = ref
     expect(() => parseReference(bad)).toThrow()
   })
 
   it('rejects a reference missing rights (provenance required)', () => {
-    const { rights, ...bad } = ref
+    const { rights: _rights, ...bad } = ref
     expect(() => parseReference(bad)).toThrow()
   })
 

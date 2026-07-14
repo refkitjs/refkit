@@ -67,12 +67,14 @@ export function smithsonian(config: SmithsonianConfig) {
   return defineProvider({
     id: 'smithsonian',
     modalities: ['image'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.si.edu/openaccess/api/v1.0/search')
       url.searchParams.set('api_key', config.apiKey)
       url.searchParams.set('q', q.text)
       url.searchParams.set('rows', String(q.limit ?? 20))
+      // offset-based API: translate the 1-based page control (providerOptions.start overrides below)
+      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('start', String((q.controls.page - 1) * (q.limit ?? 20)))
       // bias toward CC0 image records; toReference stays authoritative per media
       url.searchParams.set('fq', 'online_media_type:"Images" AND media_usage:"CC0"')
       const opts = q.providerOptions as SmithsonianSearchOptions | undefined

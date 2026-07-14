@@ -63,12 +63,13 @@ export function unsplash(config: UnsplashConfig) {
   return defineProvider({
     id: 'unsplash',
     modalities: ['image'],
-    capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety'] },
+    capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.unsplash.com/search/photos')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 10, 30))) // Unsplash hard-caps per_page at 30; default kept low for free-tier rate limits
       const controls = q.controls
+      if (controls?.page) url.searchParams.set('page', String(controls.page))
       if (controls?.color) url.searchParams.set('color', controls.color)
       if (controls?.orientation) url.searchParams.set('orientation', controls.orientation === 'square' ? 'squarish' : controls.orientation)
       if (controls?.language) url.searchParams.set('lang', controls.language)

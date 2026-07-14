@@ -127,6 +127,27 @@ describe('createRefkit', () => {
     expect(meta.warnings.some(w => w.includes('cross-source license conflict'))).toBe(true)
   })
 
+  it('concurrency bounds in-flight provider searches without changing results', async () => {
+    let active = 0
+    let maxActive = 0
+    const slow = (id: string) => defineProvider({
+      id,
+      modalities: ['image'],
+      search: async () => {
+        active++
+        maxActive = Math.max(maxActive, active)
+        await new Promise(r => setTimeout(r, 5))
+        active--
+        return [ref(`${id}-1`, `https://${id}/1`)]
+      },
+    })
+    const providers = [slow('a'), slow('b'), slow('c'), slow('d')]
+    const rk = createRefkit({ providers, concurrency: 2 })
+    const out = await rk.search({ query: 'x', modalities: ['image'] })
+    expect(out).toHaveLength(4)
+    expect(maxActive).toBeLessThanOrEqual(2)
+  })
+
   it('queries only providers matching the modality', async () => {
     const textOnly = defineProvider({
       id: 't', modalities: ['text'], queryFeatures: [],

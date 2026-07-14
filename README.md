@@ -174,6 +174,12 @@ createRefkit({ providers, resilience: { timeoutMs: 4000, retries: 2 } })
 createRefkit({ providers, resilience: false }) // raw fan-out, no timeout/retry
 ```
 
+With many sources registered, bound the fan-out with `concurrency` — at most N provider searches run at once (a queued provider's timeout only starts when its slot starts):
+
+```ts
+createRefkit({ providers, concurrency: 6 }) // default: unlimited
+```
+
 Pass a `cache` to memoize **per-provider** results (keyed by provider + the full normalized query — keys can be a few hundred bytes; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
 
 ```ts
@@ -256,6 +262,7 @@ It boots with the keyless sources (Met, Art Institute, Wikimedia, Openverse, Pro
 ```bash
 pnpm install
 pnpm typecheck   # all packages
+pnpm lint        # eslint (typescript-eslint, syntactic rules; tsc stays the type gate)
 pnpm test:run    # all packages
 pnpm build       # tsup → dist for every package
 ```

@@ -40,6 +40,11 @@ export interface RefkitOptions {
    *  Pass false to shrink cache entries — cache-hit refs then carry no `raw`, so a
    *  `merge.isDuplicate` hook reading `raw` won't see it on hits. */
   cacheRaw?: boolean
+  /** Max provider searches in flight at once per search call. Default: unlimited
+   *  (every matching provider fires simultaneously). Set when querying many
+   *  sources at once — a provider's timeout only starts when its slot starts, so
+   *  queueing never burns a queued provider's deadline. */
+  concurrency?: number
 }
 
 export interface ProviderError {
@@ -144,6 +149,20 @@ function errorSummary(error: unknown): string {
   return 'unknown error'
 }
 
+// Bounded-parallel map: at most `limit` fn calls in flight, results in input
+// order. fn never rejects here (runProvider returns failures as values).
+async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const worker = async () => {
+    for (let i = next++; i < items.length; i = next++) {
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 export function createRefkit(options: RefkitOptions): RefkitClient {
   if (!options.providers || options.providers.length === 0) {
     throw new Error('createRefkit: at least one provider is required')
@@ -207,7 +226,12 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       })
     }
 
-    const runs = await Promise.all(chosen.map(runProvider))
+    const concurrency = options.concurrency !== undefined && options.concurrency >= 1
+      ? Math.floor(options.concurrency)
+      : undefined
+    const runs = concurrency
+      ? await mapBounded(chosen, concurrency, runProvider)
+      : await Promise.all(chosen.map(runProvider))
 
     const perSource: Reference[][] = []
     let anyOk = false
