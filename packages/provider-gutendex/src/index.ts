@@ -6,6 +6,13 @@ import {
 } from '@refkit/core'
 
 export interface GutendexConfig {
+  /** Root of the Gutendex instance to query. Defaults to the maintainer's public
+   *  instance (https://gutendex.com), which its own docs frame as for TESTING —
+   *  "You should run your own server, but you can test queries at gutendex.com" —
+   *  and whose Cloudflare front blocks datacenter IPs regardless of headers.
+   *  For production or CI traffic, self-host Gutendex
+   *  (https://github.com/garethbjohnson/gutendex) and point this at it. */
+  baseUrl?: string
   /** Gutendex/Cloudflare 403s without a real User-Agent; override if you want your own. */
   userAgent?: string
 }
@@ -75,7 +82,8 @@ export function gutendex(config: GutendexConfig = {}) {
     modalities: ['text'],
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
-      const url = new URL('https://gutendex.com/books/')
+      const base = config.baseUrl ?? 'https://gutendex.com'
+      const url = new URL('books/', base.endsWith('/') ? base : `${base}/`)
       url.searchParams.set('search', q.text)
       if (q.controls?.language) url.searchParams.set('languages', q.controls.language)
       if (q.controls?.text?.copyright === 'public-domain') url.searchParams.set('copyright', 'false')
