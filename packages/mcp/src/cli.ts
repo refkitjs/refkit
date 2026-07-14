@@ -28,7 +28,10 @@ interface ByokSource {
 // Env var convention: each BYOK key is read as `REFKIT_<PROVIDER>_KEY` first (the
 // unified name), falling back to the provider's legacy env var name — both are
 // honored indefinitely, the unified name is just preferred going forward.
-const BYOK_SOURCES: ByokSource[] = [
+// Exported so tests can assert this table stays in sync with the package's
+// optionalDependencies — an entry in one but not the other ships a source that
+// either can never load or never installs.
+export const BYOK_SOURCES: ByokSource[] = [
   {
     pkg: '@refkit/provider-unsplash',
     key: (env) => env.REFKIT_UNSPLASH_KEY ?? env.UNSPLASH_KEY,

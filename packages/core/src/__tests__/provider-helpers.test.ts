@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  offsetForPage,
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
   first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, isLikelyImageUrl, imageMediaType,
@@ -60,6 +61,19 @@ describe('int/number setters', () => {
   it('setIfNumber allows non-integers', () => {
     expect(params(u => setIfNumber(u, 'f', 1.5, { min: 0, max: 10 })).get('f')).toBe('1.5')
     expect(params(u => setIfNumber(u, 'f', 20, { max: 10 })).get('f')).toBeNull()
+  })
+})
+
+describe('offsetForPage', () => {
+  it('translates a 1-based page into a row offset; page 1 / missing / invalid → undefined', () => {
+    expect(offsetForPage(2, 20)).toBe(20)
+    expect(offsetForPage(3, 12)).toBe(24)
+    expect(offsetForPage(2, 20, 1)).toBe(21) // 1-based origins (e.g. Europeana `start`)
+    expect(offsetForPage(1, 20)).toBeUndefined() // first page → omit the param
+    expect(offsetForPage(undefined, 20)).toBeUndefined()
+    expect(offsetForPage(2.5, 20)).toBeUndefined() // non-integer rejected, not truncated
+    expect(offsetForPage(0, 20)).toBeUndefined()
+    expect(offsetForPage(-3, 20)).toBeUndefined()
   })
 })
 

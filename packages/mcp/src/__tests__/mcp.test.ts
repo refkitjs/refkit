@@ -3,8 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createRefkit, defineProvider } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
+import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
-import { defaultProviders } from '../cli'
+import { defaultProviders, BYOK_SOURCES } from '../cli'
 
 const OPENVERSE = { results: [
   { id: 'aaa', title: 'cc0 sky', creator: 'Alice', foreign_landing_url: 'https://ov/aaa', url: 'https://cdn/aaa.jpg', thumbnail: 'https://ov/aaa/thumb', width: 10, height: 10, license: 'cc0', license_version: '1.0', license_url: 'https://cc/cc0' },
@@ -434,5 +435,19 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
   it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', async () => {
     expect((await defaultProviders({})).map(p => p.id)).not.toContain('smithsonian')
     expect((await defaultProviders({ SI_KEY: 'k' })).map(p => p.id)).toContain('smithsonian')
+  })
+
+  it('BYOK_SOURCES and package.json optionalDependencies stay in sync', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      optionalDependencies?: Record<string, string>
+      dependencies?: Record<string, string>
+    }
+    const optional = Object.keys(pkg.optionalDependencies ?? {}).sort()
+    const table = BYOK_SOURCES.map(s => s.pkg).sort()
+    // an entry in one but not the other ships a source that either can never
+    // load (missing dep) or never installs for a purpose (dep without loader)
+    expect(table).toEqual(optional)
+    // and no BYOK package may ALSO be a hard dependency
+    for (const p of table) expect(pkg.dependencies ?? {}).not.toHaveProperty(p)
   })
 })
