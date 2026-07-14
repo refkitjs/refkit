@@ -142,8 +142,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
   return defineProvider({
     id: 'wikimedia-commons',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://commons.wikimedia.org/w/api.php')
       url.searchParams.set('action', 'query')
@@ -152,6 +151,8 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       url.searchParams.set('gsrsearch', `${q.text} filetype:bitmap`) // raster images only
       url.searchParams.set('gsrnamespace', '6') // File:
       url.searchParams.set('gsrlimit', String(q.limit ?? 20))
+      // offset-based API: translate the 1-based page control (providerOptions.gsroffset overrides below)
+      if (q.controls?.page && q.controls.page > 1) url.searchParams.set('gsroffset', String((q.controls.page - 1) * (q.limit ?? 20)))
       url.searchParams.set('prop', 'imageinfo')
       url.searchParams.set('iiprop', 'url|mime|size|extmetadata')
       url.searchParams.set('iiurlwidth', String(config.thumbWidth ?? 1024))

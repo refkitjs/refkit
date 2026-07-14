@@ -67,7 +67,6 @@ export function smithsonian(config: SmithsonianConfig) {
   return defineProvider({
     id: 'smithsonian',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.si.edu/openaccess/api/v1.0/search')

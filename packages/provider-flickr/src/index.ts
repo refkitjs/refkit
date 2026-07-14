@@ -179,7 +179,6 @@ export function flickr(config: FlickrConfig) {
   return defineProvider({
     id: 'flickr',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: ['sort', 'safety', 'license.commercial', 'license.modification', 'license.allowUnknown', 'creator.id'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as FlickrSearchOptions | undefined

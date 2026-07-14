@@ -91,7 +91,6 @@ export function jamendo(config: JamendoConfig) {
   return defineProvider({
     id: 'jamendo',
     modalities: ['audio'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)

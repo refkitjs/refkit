@@ -18,8 +18,8 @@ export { fnv1a } from './hash'
 export { canonicalizeUrl, referenceId } from './dedup-key'
 export { hammingDistance, dedupeReferences } from './dedup'
 export type { DedupeOptions } from './dedup'
-export { mergeReferences } from './merge'
-export type { MergeOptions } from './merge'
+export { mergeReferences, stricterLicense } from './merge'
+export type { MergeOptions, RightsConflict } from './merge'
 export { evaluateUse, evaluatePermissions, NOT_LEGAL_ADVICE, INTENTS } from './evaluate-use'
 export type { Intent, Decision, Verdict, PermissionKey, EvaluateOptions } from './evaluate-use'
 export { defineProvider } from './provider'
@@ -50,6 +50,8 @@ export {
   isLikelyImageUrl, imageMediaType, IMAGE_EXT,
 } from './provider-helpers'
 export { normalizeQuery } from './query'
+export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
+export type { ProviderRun, ProviderRunDeps } from './provider-run'
 export { createRefkit } from './client'
 export type {
   RefkitClient,

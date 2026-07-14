@@ -83,7 +83,6 @@ export function polyhaven(config: PolyHavenConfig = {}) {
   return defineProvider({
     id: 'polyhaven',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const listUrl = new URL(`${PH_BASE}/assets`)
@@ -171,7 +170,6 @@ export function ambientcg(config: AmbientCgConfig = {}) {
   return defineProvider({
     id: 'ambientcg',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(ACG_BASE)

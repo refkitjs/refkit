@@ -89,7 +89,7 @@ describe('@refkit/mcp', () => {
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword', 'orientation'],
+      capabilities: { controls: ['orientation'] },
       search: async (q) => {
         seen = { filters: q.filters, providerOptions: q.providerOptions }
         return []
@@ -357,43 +357,43 @@ describe('build_attribution tool', () => {
 })
 
 describe('defaultProviders (zero-config CLI wiring)', () => {
-  it('includes every keyless provider by default', () => {
-    const ids = defaultProviders({}).map(p => p.id)
+  it('includes every keyless provider by default', async () => {
+    const ids = (await defaultProviders({})).map(p => p.id)
     for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive']) {
       expect(ids).toContain(id)
     }
   })
 
-  it('adds a BYOK provider only when its env key is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('unsplash')
-    expect(defaultProviders({ UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  it('adds a BYOK provider only when its env key is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('unsplash')
+    expect((await defaultProviders({ UNSPLASH_KEY: 'k' })).map(p => p.id)).toContain('unsplash')
   })
 
-  it('adds a BYOK provider when only the unified REFKIT_ env key is present', () => {
-    expect(defaultProviders({ REFKIT_UNSPLASH_KEY: 'k' }).map(p => p.id)).toContain('unsplash')
+  it('adds a BYOK provider when only the unified REFKIT_ env key is present', async () => {
+    expect((await defaultProviders({ REFKIT_UNSPLASH_KEY: 'k' })).map(p => p.id)).toContain('unsplash')
   })
 
-  it('adds freesound only when FREESOUND_TOKEN is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('freesound')
-    expect(defaultProviders({ FREESOUND_TOKEN: 'k' }).map(p => p.id)).toContain('freesound')
+  it('adds freesound only when FREESOUND_TOKEN is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('freesound')
+    expect((await defaultProviders({ FREESOUND_TOKEN: 'k' })).map(p => p.id)).toContain('freesound')
   })
 
-  it('adds jamendo only when JAMENDO_CLIENT_ID is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('jamendo')
-    expect(defaultProviders({ JAMENDO_CLIENT_ID: 'k' }).map(p => p.id)).toContain('jamendo')
+  it('adds jamendo only when JAMENDO_CLIENT_ID is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('jamendo')
+    expect((await defaultProviders({ JAMENDO_CLIENT_ID: 'k' })).map(p => p.id)).toContain('jamendo')
   })
 
-  it('adds europeana only when EUROPEANA_KEY is present', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('europeana')
-    expect(defaultProviders({ EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  it('adds europeana only when EUROPEANA_KEY is present', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('europeana')
+    expect((await defaultProviders({ EUROPEANA_KEY: 'k' })).map(p => p.id)).toContain('europeana')
   })
 
-  it('adds europeana when only the unified REFKIT_EUROPEANA_KEY is present', () => {
-    expect(defaultProviders({ REFKIT_EUROPEANA_KEY: 'k' }).map(p => p.id)).toContain('europeana')
+  it('adds europeana when only the unified REFKIT_EUROPEANA_KEY is present', async () => {
+    expect((await defaultProviders({ REFKIT_EUROPEANA_KEY: 'k' })).map(p => p.id)).toContain('europeana')
   })
 
-  it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', () => {
-    expect(defaultProviders({}).map(p => p.id)).not.toContain('smithsonian')
-    expect(defaultProviders({ SI_KEY: 'k' }).map(p => p.id)).toContain('smithsonian')
+  it('adds smithsonian via the legacy SI_KEY name (no unified alias renames the id)', async () => {
+    expect((await defaultProviders({})).map(p => p.id)).not.toContain('smithsonian')
+    expect((await defaultProviders({ SI_KEY: 'k' })).map(p => p.id)).toContain('smithsonian')
   })
 })

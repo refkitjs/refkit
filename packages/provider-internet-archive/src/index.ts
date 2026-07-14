@@ -84,8 +84,7 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
   return defineProvider({
     id: 'internet-archive',
     modalities: ['video', 'text'],
-    queryFeatures: ['keyword'],
-    capabilities: { controls: [] },
+    capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)
       url.searchParams.set('q', `(${q.text}) AND mediatype:(movies OR texts)`)
@@ -93,7 +92,7 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
         url.searchParams.append('fl[]', f)
       }
       url.searchParams.set('output', 'json')
-      url.searchParams.set('page', '1')
+      url.searchParams.set('page', String(q.controls?.page ?? 1))
       const rows = Math.min(config.maxRows ?? q.limit ?? 20, 100)
       url.searchParams.set('rows', String(rows))
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })

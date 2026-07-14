@@ -59,7 +59,6 @@ export function brave(config: BraveConfig) {
   return defineProvider({
     id: 'brave',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: ['safety'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.search.brave.com/res/v1/images/search')

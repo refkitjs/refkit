@@ -107,6 +107,22 @@ describe('tokenize', () => {
     expect(tokenize('   the of a   ')).toEqual([])
     expect(tokenize('')).toEqual([])
   })
+
+  it('tokenizes CJK runs into character bigrams (lone char stays a unigram)', () => {
+    expect(tokenize('青花瓷')).toEqual(['青花', '花瓷'])
+    expect(tokenize('瓷')).toEqual(['瓷'])
+    expect(tokenize('Ming 青花瓷 vase')).toEqual(['ming', 'vase', '青花', '花瓷'])
+  })
+
+  it('lexicalReranker scores CJK queries against CJK titles', async () => {
+    const rerank = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0 })
+    const out = await rerank({
+      query: '青花瓷',
+      refs: [ref('miss', 'Roman marble bust'), ref('match', '明代青花瓷盘')],
+    })
+    expect(out.map((r) => r.id)).toEqual(['match', 'miss'])
+    expect(out[0].relevance).toBeGreaterThan(out[1].relevance)
+  })
 })
 
 describe('public surface', () => {

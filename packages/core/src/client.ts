@@ -1,5 +1,4 @@
 import type { Reference } from './reference'
-import { parseReference } from './reference'
 import type { Reranker } from './rerank'
 import type { Modality } from './modality'
 import type { Intent, Verdict } from './evaluate-use'
@@ -8,17 +7,17 @@ import type { Attribution } from './attribution'
 import { buildAttribution } from './attribution'
 import type {
   ReferenceProvider,
-  ProviderContext,
   KeyValueCache,
   SearchFilters,
   SearchControls,
   SearchControlKey,
   ProviderOptionsById,
 } from './provider'
-import { mergeReferences, type MergeOptions } from './merge'
+import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
 import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
-import { retryingFetch, withTimeout } from './resilience'
-import { fnv1a } from './hash'
+import { retryingFetch } from './resilience'
+import { runProviderSearch, type ProviderRun } from './provider-run'
+import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
 
 export interface ResilienceOptions {
   /** Soft deadline per provider search. Default 10_000. */
@@ -37,6 +36,10 @@ export interface RefkitOptions {
   resilience?: ResilienceOptions | false
   /** TTL for per-provider cached results; used only when `cache` is set. Default 300_000. */
   cacheTtlMs?: number
+  /** Include each result's `raw` provider payload in cached entries. Default true.
+   *  Pass false to shrink cache entries — cache-hit refs then carry no `raw`, so a
+   *  `merge.isDuplicate` hook reading `raw` won't see it on hits. */
+  cacheRaw?: boolean
 }
 
 export interface ProviderError {
@@ -80,6 +83,10 @@ export interface SearchMeta {
   providerOptions?: string[]
   providers: ProviderSearchStatus[]
   gate?: SearchGateMeta
+  /** Opaque "load more" cursor: pass as `SearchInput.cursor` to fetch the next
+   *  page with cross-page dedup handled internally. Present when this page
+   *  returned at least one result. */
+  nextCursor?: string
   warnings: string[]
 }
 
@@ -91,12 +98,19 @@ export interface SearchResult {
 export interface SearchInput {
   query: string
   modalities: Modality[]
+  /** @deprecated Compatibility alias for `controls.color` / `controls.orientation`
+   *  / `controls.language` (controls win on conflict). Use `controls`. */
   filters?: SearchFilters
   controls?: SearchControls
   /** Provider-specific search controls keyed by provider id. Core routes only the
    * matching entry to each provider; providers whitelist what they translate. */
   providerOptions?: ProviderOptionsById
   limit?: number
+  /** Opaque cursor from a previous search's `meta.nextCursor`. Sets the
+   *  provider-local page (overriding `controls.page`) and filters out results
+   *  already returned on earlier pages, so "load more" needs no caller-side
+   *  dedup. Throws on a string that did not come from `meta.nextCursor`. */
+  cursor?: string
   /** Overfetch this many × `limit` candidates per provider before merge/rerank/gate,
    *  then narrow to `limit` — a wider pool means better dedup + ranking. Default 4
    *  (capped so a source is never asked for more than {@link MAX_POOL_LIMIT}); min 1.
@@ -130,19 +144,6 @@ function errorSummary(error: unknown): string {
   return 'unknown error'
 }
 
-// Deterministic JSON for cache keys: object keys sorted recursively, so a
-// caller's providerOptions key order can't split otherwise-identical keys.
-// Keys whose value is `undefined` are skipped, matching JSON.stringify's own
-// object semantics — `{ a: 1, b: undefined }` and `{ a: 1 }` must key alike.
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  if (value && typeof value === 'object') {
-    const rec = value as Record<string, unknown>
-    return `{${Object.keys(rec).filter(k => rec[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${stableStringify(rec[k])}`).join(',')}}`
-  }
-  return JSON.stringify(value) ?? 'null'
-}
-
 export function createRefkit(options: RefkitOptions): RefkitClient {
   if (!options.providers || options.providers.length === 0) {
     throw new Error('createRefkit: at least one provider is required')
@@ -162,7 +163,11 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // Overfetch a wider candidate pool per provider, then narrow to `limit` after
     // merge/rerank/gate — you can't rank or dedup candidates you never fetched.
     const fetchLimit = Math.max(limit, Math.min(Math.ceil(limit * poolFactor), MAX_POOL_LIMIT))
-    const requestedControlsSource = mergeSearchControls(input.controls, input.filters)
+    // A cursor overrides controls.page and carries the already-seen set; the
+    // effective controls are what routing, providers, and meta all see.
+    const cursorState = input.cursor !== undefined ? decodeCursor(input.cursor) : undefined
+    const controls = cursorState ? { ...input.controls, page: cursorState.page } : input.controls
+    const requestedControlsSource = mergeSearchControls(controls, input.filters)
     const requestedControls = requestedControlKeys(requestedControlsSource)
     const controlsMeta = requestedControls.length > 0 ? {
       requested: requestedControls,
@@ -182,88 +187,24 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // a fresh wrapper per provider.
     const sharedFetch = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
 
-    type ProviderRun =
-      | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
-      | { ok: false; error: unknown; latencyMs: number }
-
-    const runProvider = async (p: ReferenceProvider): Promise<ProviderRun> => {
-      const started = Date.now()
-      const timeout = resilience ? withTimeout(input.signal ?? options.signal, resilience.timeoutMs) : undefined
-      const ctx: ProviderContext = {
-        fetch: sharedFetch,
-        cache: options.cache,
-        signal: timeout?.signal ?? input.signal ?? options.signal,
-      }
+    const runProvider = (p: ReferenceProvider): Promise<ProviderRun> => {
       const query = normalizeQuery({
         query: input.query,
         modalities: input.modalities,
         filters: input.filters,
-        controls: input.controls,
+        controls,
         providerOptions: input.providerOptions,
         limit: fetchLimit,
       }, p)
-      const cacheKey = options.cache
-        ? `refkit:v1:${p.id}:${fnv1a(stableStringify(query))}`
-        : undefined
-      // Race a promise against the deadline without leaking an unhandled rejection
-      // for whichever side loses the race.
-      const raceDeadline = <T>(p: Promise<T>): Promise<T> => {
-        p.catch(() => {})
-        return timeout ? Promise.race([p, timeout.expired]) : p
-      }
-      // Parse raw provider items one at a time — a single bad item must not
-      // discard the rest (shared by the cache-hit and live-search paths).
-      const parseItems = (raw: unknown[]): Reference[] => {
-        const valid: Reference[] = []
-        for (const item of raw) {
-          try {
-            valid.push(parseReference(item))
-          } catch (error) {
-            input.onProviderError?.({ providerId: p.id, error })
-          }
-        }
-        return valid
-      }
-      try {
-        if (options.cache && cacheKey) {
-          // best-effort: a broken/corrupt/stale cache degrades to a live search
-          const pending = options.cache.get(cacheKey)
-          // A slow cache read must not outlive the provider deadline: at expiry it
-          // degrades to a miss, and the live search below then fails fast on the
-          // same (already-expired) deadline.
-          const hit = await (timeout
-            ? Promise.race([pending, timeout.expired.catch(() => undefined)])
-            : pending
-          ).catch(() => undefined)
-          pending.catch(() => {}) // raced-past rejection must not go unhandled
-          if (hit !== undefined) {
-            try {
-              // cached refs keep their original verifiedAt — staleness is bounded
-              // by the TTL when the cache honors ttlMs. Only a whole-payload
-              // failure (not JSON, not an array) falls through to live; a single
-              // bad item within an otherwise-valid array is reported and dropped,
-              // same as the live path.
-              const raw = JSON.parse(hit) as unknown[]
-              if (!Array.isArray(raw)) throw new Error('cached payload is not an array')
-              const valid = parseItems(raw)
-              return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started, cached: true }
-            } catch { /* fall through to live */ }
-          }
-        }
-        const searching = p.search(query, ctx)
-        const raw = await raceDeadline(searching)
-        const valid = parseItems(raw)
-        if (options.cache && cacheKey) {
-          // fire-and-forget: cache write failure must never fail the search
-          void options.cache.set(cacheKey, JSON.stringify(valid), options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS).catch(() => {})
-        }
-        return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
-      } catch (error) {
-        input.onProviderError?.({ providerId: p.id, error })
-        return { ok: false, error, latencyMs: Date.now() - started }
-      } finally {
-        timeout?.cancel()
-      }
+      return runProviderSearch(p, query, {
+        fetch: sharedFetch,
+        cache: options.cache,
+        cacheTtlMs: options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
+        cacheRaw: options.cacheRaw ?? true,
+        timeoutMs: resilience?.timeoutMs,
+        signal: input.signal ?? options.signal,
+        onError: (error) => input.onProviderError?.({ providerId: p.id, error }),
+      })
     }
 
     const runs = await Promise.all(chosen.map(runProvider))
@@ -293,7 +234,16 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
     }
 
-    let refs = mergeReferences(perSource, options.merge)
+    // Collect cross-source license conflicts for meta.warnings while still
+    // forwarding them to a host-supplied observer.
+    const rightsConflicts: RightsConflict[] = []
+    let refs = mergeReferences(perSource, {
+      ...options.merge,
+      onRightsConflict: (c) => {
+        rightsConflicts.push(c)
+        options.merge?.onRightsConflict?.(c)
+      },
+    })
     // Rerank runs over the FULL merged pool, before the license gate — ordering
     // (and a reranker's batch-relative scoring, e.g. quality normalised across
     // the pool) is computed against every candidate, then the gate drops denied
@@ -309,10 +259,27 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       refs = refs.filter(r => evaluateUse(r.rights, intent).decision.startsWith('allowed'))
       gate = { intent, before: beforeGate, after: refs.length, dropped: beforeGate - refs.length }
     }
+    // Cursor pagination: drop results already returned on earlier pages (RRF
+    // pages overlap by design), AFTER rank/gate so ordering is batch-consistent
+    // but BEFORE the limit so repeats don't consume the page budget.
+    if (cursorState) {
+      const seen = new Set(cursorState.seen)
+      refs = refs.filter(r => !seen.has(cursorSeenKey(r.canonicalUrl)))
+    }
     const references = refs.slice(0, limit)
+    const nextCursor = references.length > 0
+      ? encodeCursor({
+          v: 1,
+          page: (controls?.page ?? 1) + 1,
+          seen: [...(cursorState?.seen ?? []), ...references.map(r => cursorSeenKey(r.canonicalUrl))],
+        })
+      : undefined
     const warnings: string[] = []
     const failedCount = [...statusByProvider.values()].filter(s => s.status === 'failed').length
     if (failedCount > 0) warnings.push(`${failedCount} provider(s) failed; returning partial results.`)
+    for (const c of rightsConflicts) {
+      warnings.push(`cross-source license conflict for ${c.canonicalUrl}: ${c.licenses.join(' vs ')} → resolved to ${c.resolvedLicense}.`)
+    }
     if (gate && gate.dropped > 0) warnings.push(`${gate.dropped} result(s) dropped by ${gate.intent} gate.`)
     return {
       references,
@@ -327,6 +294,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
         providers: options.providers.map(p => statusByProvider.get(p.id) ?? { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' }),
         ...(gate ? { gate } : {}),
+        ...(nextCursor ? { nextCursor } : {}),
         warnings,
       },
     }

@@ -69,7 +69,6 @@ export function met(config: MetConfig = {}) {
   return defineProvider({
     id: 'met',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const searchUrl = new URL(`${BASE}/search`)

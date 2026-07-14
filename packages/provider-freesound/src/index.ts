@@ -94,7 +94,6 @@ export function freesound(config: FreesoundConfig) {
   return defineProvider({
     id: 'freesound',
     modalities: ['audio'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as FreesoundSearchOptions | undefined

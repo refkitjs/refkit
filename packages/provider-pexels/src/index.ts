@@ -80,7 +80,6 @@ export function pexels(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels',
     modalities: ['image'],
-    queryFeatures: ['keyword', 'color', 'orientation', 'language'],
     capabilities: { controls: ['orientation', 'color', 'language', 'media.size', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/v1/search')
@@ -141,7 +140,6 @@ export function pexelsVideo(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels-video',
     modalities: ['video'],
-    queryFeatures: ['keyword', 'orientation', 'language'],
     capabilities: { controls: ['orientation', 'language', 'media.size', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/videos/search')

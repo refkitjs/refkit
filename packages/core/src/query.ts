@@ -102,13 +102,16 @@ export function normalizeQuery(
   input: { query: string; modalities: Modality[]; filters?: SearchFilters; controls?: SearchControls; providerOptions?: ProviderOptionsById; limit?: number },
   provider: ReferenceProvider,
 ): NormalizedQuery {
-  const feats = new Set(provider.queryFeatures)
-  const filters: SearchFilters = {}
-  if (input.filters?.color && feats.has('color')) filters.color = input.filters.color
-  if (input.filters?.orientation && feats.has('orientation')) filters.orientation = input.filters.orientation
-  if (input.filters?.language && feats.has('language')) filters.language = input.filters.language
-  const hasFilters = Object.keys(filters).length > 0
+  // Single-track routing: legacy `filters` are merged into `controls` (controls
+  // win on conflict) and routed by `capabilities.controls` alone. The deprecated
+  // NormalizedQuery.filters channel is then DERIVED from the routed controls, so
+  // a provider reading either channel sees the same values — no double semantics.
   const controls = normalizeControlsForProvider(input, provider)
+  const filters: SearchFilters = {}
+  if (controls?.color) filters.color = controls.color
+  if (controls?.orientation) filters.orientation = controls.orientation
+  if (controls?.language) filters.language = controls.language
+  const hasFilters = Object.keys(filters).length > 0
   return {
     text: input.query,
     modalities: input.modalities.filter(m => provider.modalities.includes(m)),

@@ -96,7 +96,6 @@ export function europeana(config: EuropeanaConfig) {
   return defineProvider({
     id: 'europeana',
     modalities: ['image'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)

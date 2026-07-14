@@ -102,14 +102,14 @@ export function pixabay(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay',
     modalities: ['image'],
-    queryFeatures: ['keyword', 'color', 'orientation', 'language'],
-    capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight'] },
+    capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
       url.searchParams.set('image_type', 'photo')
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
+      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
       if (q.controls?.language) url.searchParams.set('lang', q.controls.language)
       if (q.controls?.color) url.searchParams.set('colors', q.controls.color)
       const controlsOrientation = pixabayOrientation(q.controls?.orientation)
@@ -191,13 +191,13 @@ export function pixabayVideo(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay-video',
     modalities: ['video'],
-    queryFeatures: ['keyword', 'language'],
-    capabilities: { controls: ['language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight'] },
+    capabilities: { controls: ['language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/videos/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
       url.searchParams.set('per_page', String(Math.min(Math.max(q.limit ?? 20, 3), 200)))
+      if (q.controls?.page) url.searchParams.set('page', String(q.controls.page))
       if (q.controls?.language) url.searchParams.set('lang', q.controls.language)
       if (q.controls?.sort === 'latest' || q.controls?.sort === 'popular') url.searchParams.set('order', q.controls.sort)
       if (q.controls?.safety === 'strict') url.searchParams.set('safesearch', 'true')

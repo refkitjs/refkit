@@ -73,7 +73,6 @@ export function gutendex(config: GutendexConfig = {}) {
   return defineProvider({
     id: 'gutendex',
     modalities: ['text'],
-    queryFeatures: ['keyword'],
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://gutendex.com/books/')

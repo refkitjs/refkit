@@ -77,6 +77,56 @@ describe('createRefkit', () => {
     expect(rk.buildAttribution(r).required).toBe(true)
   })
 
+  it('cursor: pages via controls.page, dedupes across pages, and chains nextCursor', async () => {
+    // A paging provider whose page 2 overlaps page 1 — the RRF reality.
+    const pages: Record<number, Reference[]> = {
+      1: [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2')],
+      2: [ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3')],
+    }
+    const seenPages: Array<number | undefined> = []
+    const paging = defineProvider({
+      id: 'a',
+      modalities: ['image'],
+      capabilities: { controls: ['page'] },
+      search: async (q) => {
+        seenPages.push(q.controls?.page)
+        return pages[q.controls?.page ?? 1] ?? []
+      },
+    })
+    const rk = createRefkit({ providers: [paging] })
+
+    const page1 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2 })
+    expect(page1.references.map(r => r.canonicalUrl)).toEqual(['https://a/1', 'https://a/2'])
+    expect(page1.meta.nextCursor).toBeDefined()
+
+    const page2 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: page1.meta.nextCursor })
+    expect(seenPages).toEqual([undefined, 2]) // cursor routed page 2 to the provider
+    expect(page2.references.map(r => r.canonicalUrl)).toEqual(['https://a/3']) // overlap deduped
+
+    const page3 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: page2.meta.nextCursor })
+    expect(page3.references).toEqual([]) // exhausted
+    expect(page3.meta.nextCursor).toBeUndefined() // empty page ends the chain
+  })
+
+  it('cursor: rejects strings that did not come from meta.nextCursor', async () => {
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: 'not-a-cursor' })).rejects.toThrow(/invalid cursor/)
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: '{"v":9}' })).rejects.toThrow(/invalid cursor/)
+  })
+
+  it('surfaces cross-source license conflicts as meta.warnings with conservative rights', async () => {
+    const rk = createRefkit({
+      providers: [
+        provider('a', [ref('a-1', 'https://shared/1', 'CC-BY')]),
+        provider('b', [ref('b-1', 'https://shared/1', 'CC-BY-NC')]),
+      ],
+    })
+    const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    expect(references).toHaveLength(1)
+    expect(references[0].rights.license).toBe('CC-BY-NC')
+    expect(meta.warnings.some(w => w.includes('cross-source license conflict'))).toBe(true)
+  })
+
   it('queries only providers matching the modality', async () => {
     const textOnly = defineProvider({
       id: 't', modalities: ['text'], queryFeatures: [],

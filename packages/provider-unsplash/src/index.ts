@@ -63,7 +63,6 @@ export function unsplash(config: UnsplashConfig) {
   return defineProvider({
     id: 'unsplash',
     modalities: ['image'],
-    queryFeatures: ['keyword', 'color', 'orientation', 'language'],
     capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.unsplash.com/search/photos')
