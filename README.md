@@ -199,7 +199,7 @@ createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false 
 | `@refkit/provider-unsplash` | Unsplash | image | API key | Unsplash |
 | `@refkit/provider-pexels` | Pexels | image · video | API key | Pexels |
 | `@refkit/provider-pixabay` | Pixabay | image · video | API key | Pixabay |
-| `@refkit/provider-gutendex` | Project Gutenberg | text | keyless | per-item PD |
+| `@refkit/provider-gutendex` | Project Gutenberg | text | keyless¹ | per-item PD |
 | `@refkit/provider-poetrydb` | PoetryDB | text | keyless | PD |
 | `@refkit/provider-brave` | Brave web search (discovery) | image (web) | API key | unknown → needs-review |
 | `@refkit/provider-rijksmuseum` | Rijksmuseum | image | keyless | CC0 / PD |
@@ -208,6 +208,8 @@ createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false 
 | `@refkit/provider-jamendo` | Jamendo | audio | API key | per-item CC |
 | `@refkit/provider-europeana` | Europeana | image | API key | per-item CC / PD / rights-statement |
 | `@refkit/provider-internet-archive` | Internet Archive | video · text | keyless | per-item CC (dirty) → unknown |
+
+¹ gutendex's default host (`gutendex.com`) is the upstream maintainer's **test instance** — its docs say "You should run your own server", and its Cloudflare front blocks datacenter IPs. Desktop/local use works out of the box; for production or server-side traffic, [self-host Gutendex](https://github.com/garethbjohnson/gutendex) and pass `gutendex({ baseUrl: 'https://your-instance' })`. When blocked, the source degrades gracefully (a `failed` entry in `meta.providers`; other sources still return).
 
 Audio/video are extra factories on existing packages: `openverseAudio()`, `pexelsVideo()`, `pixabayVideo()`. Modality routing is automatic — an `['audio']` search only hits audio-capable providers.
 
