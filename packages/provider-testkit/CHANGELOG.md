@@ -1,5 +1,12 @@
 # @refkit/provider-testkit
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [3cce5e3]
+  - @refkit/core@0.7.0
+
 ## 0.0.2
 
 ### Patch Changes

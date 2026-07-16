@@ -1,5 +1,28 @@
 # @refkit/mcp
 
+## 0.6.0
+
+### Minor Changes
+
+- 3cce5e3: - `search_references` gains `rerank: true` (query-aware re-ranking via `lexicalReranker`, CJK-aware) and `cursor` (load-more pagination with cross-page dedup; the continuation token is returned as top-level `nextCursor` on every call, independent of `explain`).
+  - BYOK provider packages are explicitly externalized from the tsup bundle so dynamic imports resolve from node_modules at runtime — `--omit=optional` actually omits them, and provider patch releases reach `@refkit/mcp` users without a republish.
+  - BYOK provider packages moved from `dependencies` to `optionalDependencies` and are now loaded lazily, only when their key is present. Default installs (incl. `npx -y @refkit/mcp`) still get everything; installs with `--omit=optional` skip BYOK sources, and a key whose package is missing logs a stderr warning instead of crashing. `defaultProviders()` is now async.
+
+### Patch Changes
+
+- Updated dependencies [3cce5e3]
+- Updated dependencies [3cce5e3]
+  - @refkit/core@0.7.0
+  - @refkit/provider-openverse@0.3.2
+  - @refkit/provider-internet-archive@0.3.2
+  - @refkit/provider-wikimedia-commons@0.3.2
+  - @refkit/provider-artic@0.2.4
+  - @refkit/provider-met@0.2.4
+  - @refkit/provider-polyhaven@0.2.3
+  - @refkit/provider-gutendex@0.2.4
+  - @refkit/provider-poetrydb@0.2.4
+  - @refkit/provider-rijksmuseum@0.2.3
+
 ## 0.5.1
 
 ### Patch Changes

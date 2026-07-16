@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-pixabay",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Pixabay provider satellite for refkit — image search, cache-allowed.",
   "type": "module",
   "license": "Apache-2.0",
