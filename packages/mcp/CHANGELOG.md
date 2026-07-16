@@ -1,5 +1,20 @@
 # @refkit/mcp
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [d6432a1]
+  - @refkit/provider-gutendex@0.2.5
+  - @refkit/provider-artic@0.2.4
+  - @refkit/provider-internet-archive@0.3.2
+  - @refkit/provider-met@0.2.4
+  - @refkit/provider-openverse@0.3.2
+  - @refkit/provider-poetrydb@0.2.4
+  - @refkit/provider-polyhaven@0.2.3
+  - @refkit/provider-rijksmuseum@0.2.3
+  - @refkit/provider-wikimedia-commons@0.3.2
+
 ## 0.6.0
 
 ### Minor Changes
