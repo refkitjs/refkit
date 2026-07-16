@@ -6,6 +6,13 @@ import {
 } from '@refkit/core'
 
 export interface GutendexConfig {
+  /** Root of the Gutendex instance to query. Defaults to the maintainer's public
+   *  instance (https://gutendex.com), which its own docs frame as for TESTING —
+   *  "You should run your own server, but you can test queries at gutendex.com" —
+   *  and whose Cloudflare front blocks datacenter IPs regardless of headers.
+   *  For production or CI traffic, self-host Gutendex
+   *  (https://github.com/garethbjohnson/gutendex) and point this at it. */
+  baseUrl?: string
   /** Gutendex/Cloudflare 403s without a real User-Agent; override if you want your own. */
   userAgent?: string
 }
@@ -75,7 +82,8 @@ export function gutendex(config: GutendexConfig = {}) {
     modalities: ['text'],
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
-      const url = new URL('https://gutendex.com/books/')
+      const base = config.baseUrl ?? 'https://gutendex.com'
+      const url = new URL('books/', base.endsWith('/') ? base : `${base}/`)
       url.searchParams.set('search', q.text)
       if (q.controls?.language) url.searchParams.set('languages', q.controls.language)
       if (q.controls?.text?.copyright === 'public-domain') url.searchParams.set('copyright', 'false')
@@ -92,7 +100,15 @@ export function gutendex(config: GutendexConfig = {}) {
       setIfString(url, 'topic', opts?.topic)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), {
-        headers: { 'User-Agent': config.userAgent ?? 'refkit (+https://github.com/refkitjs/refkit)' },
+        // Cloudflare in front of gutendex.com intermittently 403s datacenter IPs
+        // (e.g. GitHub Actions) at the fingerprint level — verified that neither a
+        // descriptive bot UA nor a browser UA gets through (live-smoke runs 1-3),
+        // so we keep the honest UA. Residential/user traffic is unaffected; the
+        // live-smoke suite treats these 403s as inconclusive rather than as drift.
+        headers: {
+          'User-Agent': config.userAgent ?? 'refkit (+https://github.com/refkitjs/refkit)',
+          Accept: 'application/json',
+        },
         signal: ctx.signal,
       })
       if (!res.ok) throw new Error(`gutendex search failed: ${res.status}`)

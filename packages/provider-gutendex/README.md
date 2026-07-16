@@ -19,3 +19,13 @@ const refs = await refkit.search({ query: 'whale', modalities: ['text'] })
 ```
 
 Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.
+
+## Hosting note (production / server-side use)
+
+The default host, `gutendex.com`, is the upstream maintainer's **test instance** — the [Gutendex docs](https://github.com/garethbjohnson/gutendex) say "You should run your own server, but you can test queries at gutendex.com", and its Cloudflare front blocks datacenter IPs (e.g. CI runners, cloud servers) regardless of headers. Desktop/local use works out of the box. For production or server-side traffic, [self-host Gutendex](https://github.com/garethbjohnson/gutendex/wiki/Installation-Guide) and point the provider at your instance:
+
+```ts
+gutendex({ baseUrl: 'https://gutendex.your-domain.example' })
+```
+
+When the public instance blocks a request, the search degrades gracefully: this source is reported as `failed` in `meta.providers` and results from other providers still return.

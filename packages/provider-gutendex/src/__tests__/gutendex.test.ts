@@ -65,6 +65,24 @@ describe('gutendex provider', () => {
     expect(url.searchParams.get('page')).toBe('2')
   })
 
+  it('baseUrl points the provider at a self-hosted instance (docs: gutendex.com is test-only)', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await gutendex({ baseUrl: 'https://gutendex.internal.example' }).search({ text: 'x', modalities: ['text'] }, ctx)
+    expect(calledUrl.startsWith('https://gutendex.internal.example/books/?')).toBe(true)
+    // trailing-slash base joins identically
+    await gutendex({ baseUrl: 'https://gutendex.internal.example/' }).search({ text: 'x', modalities: ['text'] }, ctx)
+    expect(calledUrl.startsWith('https://gutendex.internal.example/books/?')).toBe(true)
+    // default stays the public test instance
+    await gutendex().search({ text: 'x', modalities: ['text'] }, ctx)
+    expect(calledUrl.startsWith('https://gutendex.com/books/?')).toBe(true)
+  })
+
   it('forwards documented Gutendex search options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
