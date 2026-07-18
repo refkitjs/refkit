@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-testkit",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "description": "Conformance test helpers for refkit provider satellites (internal, not published).",
   "type": "module",
