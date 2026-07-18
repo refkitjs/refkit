@@ -130,6 +130,27 @@ const isEntry = (() => {
   }
 })()
 
+/** Cursor size knob for size-clamped tool-output channels: REFKIT_MAX_CURSOR_SEEN
+ *  caps how many already-returned keys the load-more cursor remembers (see
+ *  RefkitOptions.maxCursorSeen in @refkit/core — default 500 ≈ 2.7k chars of
+ *  nextCursor). Invalid values warn on stderr and fall back to that default. */
+export function maxCursorSeenFromEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const raw = env.REFKIT_MAX_CURSOR_SEEN
+  if (raw === undefined || raw === '') return undefined
+  // Strict decimal digits only — Number()'s hex/exponent/whitespace leniency
+  // would silently accept values like '1e100' that defeat the cap entirely.
+  const n = /^\d+$/.test(raw) ? Number(raw) : Number.NaN
+  if (!Number.isSafeInteger(n) || n < 1) {
+    console.error(`[refkit-mcp] ignoring invalid REFKIT_MAX_CURSOR_SEEN=${JSON.stringify(raw)} — expected a positive integer.`)
+    return undefined
+  }
+  return n
+}
+
 if (isEntry) {
-  await serveStdio(createRefkit({ providers: await defaultProviders() }))
+  const maxCursorSeen = maxCursorSeenFromEnv()
+  await serveStdio(createRefkit({
+    providers: await defaultProviders(),
+    ...(maxCursorSeen !== undefined ? { maxCursorSeen } : {}),
+  }))
 }

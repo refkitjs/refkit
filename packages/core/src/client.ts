@@ -45,6 +45,15 @@ export interface RefkitOptions {
    *  sources at once — a provider's timeout only starts when its slot starts, so
    *  queueing never burns a queued provider's deadline. */
   concurrency?: number
+  /** Cap on already-returned keys remembered inside the load-more cursor (most
+   *  recent kept). Each key costs ~5.4 chars of cursor, so this bounds
+   *  `meta.nextCursor` length (~2.7k chars at the default 500). Lower it when
+   *  the cursor travels a size-sensitive channel (e.g. LLM tool output);
+   *  overflowing just risks re-showing results evicted long ago. `Infinity`
+   *  disables the cap. Effective floor is the batch just returned — evicting
+   *  keys the same call produced would repeat them immediately and load-more
+   *  would never converge. */
+  maxCursorSeen?: number
 }
 
 export interface ProviderError {
@@ -146,9 +155,10 @@ const DEFAULT_CACHE_TTL_MS = 300_000
 // Cursor: how many further provider pages one load-more call may try when the
 // current page's pool is fully consumed, before reporting an empty batch.
 const MAX_CURSOR_ADVANCES = 3
-// Cursor: cap on remembered already-returned keys (most recent kept). Bounds
-// cursor size (~7 bytes/key); overflowing just risks re-showing very old results.
-const MAX_CURSOR_SEEN = 500
+// Cursor: default cap on remembered already-returned keys (most recent kept;
+// see RefkitOptions.maxCursorSeen). Bounds cursor size (~5.4 chars/key packed);
+// overflowing just risks re-showing very old results.
+const DEFAULT_MAX_CURSOR_SEEN = 500
 
 function errorSummary(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -336,13 +346,16 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     }
 
     const references = pass.refs.slice(0, limit)
+    // Never below this batch's size (evicting keys just returned would repeat
+    // them on the very next call); Infinity = uncapped, NaN falls back.
+    const rawMaxSeen = options.maxCursorSeen ?? DEFAULT_MAX_CURSOR_SEEN
+    const maxCursorSeen = Math.max(Number.isNaN(rawMaxSeen) ? DEFAULT_MAX_CURSOR_SEEN : rawMaxSeen, references.length)
     const nextCursor = references.length > 0
       ? encodeCursor({
-          v: 1,
           // Same page on purpose — its overfetched pool may still hold
           // unreturned results; the next call advances internally if not.
           page: page ?? 1,
-          seen: [...(cursorState?.seen ?? []), ...references.map(r => cursorSeenKey(r.canonicalUrl))].slice(-MAX_CURSOR_SEEN),
+          seen: [...(cursorState?.seen ?? []), ...references.map(r => cursorSeenKey(r.canonicalUrl))].slice(-maxCursorSeen),
         })
       : undefined
     const warnings: string[] = []

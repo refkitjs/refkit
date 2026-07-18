@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRefkit } from '../client'
+import { cursorSeenKey, decodeCursor } from '../cursor'
 import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
 import type { Reference } from '../reference'
@@ -122,6 +123,53 @@ describe('createRefkit', () => {
     const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
     await expect(rk.search({ query: 'x', modalities: ['image'], cursor: 'not-a-cursor' })).rejects.toThrow(/invalid cursor/)
     await expect(rk.search({ query: 'x', modalities: ['image'], cursor: '{"v":9}' })).rejects.toThrow(/invalid cursor/)
+    // Legacy v1 JSON cursors are short-lived load-more state, not durable ids —
+    // they fail like any other foreign string instead of being migrated.
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: '{"v":1,"page":1,"seen":["abc"]}' })).rejects.toThrow(/invalid cursor/)
+  })
+
+  it('cursor: a bad caller-supplied controls.page fails loudly on the next call, not silently', async () => {
+    // v1's zod decode rejected out-of-range pages when the cursor came back;
+    // v2 must preserve that instead of wrapping to some other uint32 page.
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], controls: { page: -1 } })
+    expect(out.references).toHaveLength(1)
+    await expect(rk.search({ query: 'x', modalities: ['image'], cursor: out.meta.nextCursor })).rejects.toThrow(/invalid cursor/)
+  })
+
+  it('cursor: seen never evicts the batch just returned, even when maxCursorSeen is smaller', async () => {
+    // A cap below the batch size would re-show this batch on the very next
+    // call and pagination would never converge.
+    const refs = [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')]
+    const rk = createRefkit({ providers: [provider('a', refs)], maxCursorSeen: 1 })
+    const batch1 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2 })
+    expect(batch1.references.map(r => r.canonicalUrl)).toEqual(['https://a/1', 'https://a/2'])
+    const batch2 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, cursor: batch1.meta.nextCursor })
+    expect(batch2.references.map(r => r.canonicalUrl)).toEqual(['https://a/3', 'https://a/4'])
+  })
+
+  it('cursor: maxCursorSeen Infinity disables the cap instead of falling back to the default', async () => {
+    // 501 results in one batch: the default cap would trim seen to 500.
+    const many = Array.from({ length: 501 }, (_, i) => ref(`a-${i}`, `https://a/${i}`))
+    const rk = createRefkit({ providers: [provider('a', many)], maxCursorSeen: Infinity })
+    const batch = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 501 })
+    expect(batch.references).toHaveLength(501)
+    expect(decodeCursor(batch.meta.nextCursor!).seen).toHaveLength(501)
+  })
+
+  it('cursor: maxCursorSeen caps remembered keys (oldest evicted first)', async () => {
+    const refs = [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')]
+    const rk = createRefkit({ providers: [provider('a', refs)], maxCursorSeen: 2 })
+    const search = (cursor?: string) => rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 1, cursor })
+
+    const batch1 = await search()
+    const batch2 = await search(batch1.meta.nextCursor)
+    const batch3 = await search(batch2.meta.nextCursor)
+    expect(batch3.references.map(r => r.canonicalUrl)).toEqual(['https://a/3'])
+    // Only the 2 most recent keys survive; batch1's key was evicted.
+    expect(decodeCursor(batch3.meta.nextCursor!).seen).toEqual(
+      [cursorSeenKey('https://a/2'), cursorSeenKey('https://a/3')],
+    )
   })
 
   it('rejects a Promise passed as providers (un-awaited async factory)', () => {

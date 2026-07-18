@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createRefkit, defineProvider } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
-import { defaultProviders, BYOK_SOURCES } from '../cli'
+import { defaultProviders, maxCursorSeenFromEnv, BYOK_SOURCES } from '../cli'
 
 const OPENVERSE = { results: [
   { id: 'aaa', title: 'cc0 sky', creator: 'Alice', foreign_landing_url: 'https://ov/aaa', url: 'https://cdn/aaa.jpg', thumbnail: 'https://ov/aaa/thumb', width: 10, height: 10, license: 'cc0', license_version: '1.0', license_url: 'https://cc/cc0' },
@@ -393,6 +393,32 @@ describe('build_attribution tool', () => {
     // the version must never have been threaded through un-gated (it isn't a CC family).
     expect(structured.text ?? '').not.toContain('4.0')
     await client.close()
+  })
+})
+
+describe('maxCursorSeenFromEnv (cursor size knob for size-clamped tool outputs)', () => {
+  it('parses a positive integer REFKIT_MAX_CURSOR_SEEN', () => {
+    expect(maxCursorSeenFromEnv({})).toBeUndefined()
+    expect(maxCursorSeenFromEnv({ REFKIT_MAX_CURSOR_SEEN: '200' })).toBe(200)
+  })
+
+  it('warns on stderr and falls back to the core default on garbage values', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // Strict decimal digits only — Number()'s hex/exponent/whitespace/sign
+      // leniency must not slip through ('1e100' would defeat the cap entirely,
+      // and a beyond-safe-integer literal can't be represented faithfully).
+      const garbage = ['0', '-5', '2.5', 'abc', '0x10', '1e3', ' 5 ', '+7', '1e100', '9007199254740993']
+      for (const bad of garbage) {
+        expect(maxCursorSeenFromEnv({ REFKIT_MAX_CURSOR_SEEN: bad }), bad).toBeUndefined()
+      }
+      expect(spy).toHaveBeenCalledTimes(garbage.length)
+      // '' means unset: no warning.
+      expect(maxCursorSeenFromEnv({ REFKIT_MAX_CURSOR_SEEN: '' })).toBeUndefined()
+      expect(spy).toHaveBeenCalledTimes(garbage.length)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 
