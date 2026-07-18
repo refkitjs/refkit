@@ -19,6 +19,8 @@ REFKIT_UNSPLASH_KEY=… REFKIT_PEXELS_KEY=… REFKIT_PIXABAY_KEY=… REFKIT_FLIC
 UNSPLASH_KEY=… PEXELS_KEY=… PIXABAY_KEY=… FLICKR_KEY=… SI_KEY=… BRAVE_TOKEN=… npx -y @refkit/mcp
 ```
 
+If your MCP client clamps tool-output strings, `REFKIT_MAX_CURSOR_SEEN` shrinks the load-more cursor: it caps how many already-returned keys `nextCursor` remembers (default 500 ≈ 2.7k chars; `REFKIT_MAX_CURSOR_SEEN=200` ≈ 1.1k). A lower cap only risks re-showing results from that many batches ago on very deep pagination.
+
 Example MCP client config:
 
 ```json
