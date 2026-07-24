@@ -1,5 +1,13 @@
 # @refkit/provider-polyhaven
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [b5bbba8]
+- Updated dependencies [aa4b048]
+  - @refkit/core@0.8.0
+
 ## 0.2.3
 
 ### Patch Changes

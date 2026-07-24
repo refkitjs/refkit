@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-unsplash",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Unsplash provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",

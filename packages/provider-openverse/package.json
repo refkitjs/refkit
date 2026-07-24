@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-openverse",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Openverse provider satellite for refkit — CC/PD licensed image search, license-normalized.",
   "type": "module",
   "license": "Apache-2.0",

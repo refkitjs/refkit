@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-nailbook",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Nailbook (nailbook.jp) nail-design provider satellite for refkit — keyless Japanese nail-art image references.",
   "type": "module",
   "license": "Apache-2.0",
