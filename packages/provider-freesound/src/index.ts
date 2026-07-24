@@ -79,6 +79,7 @@ function toAudioReference(r: FreesoundResult): Reference | null {
   return {
     id: referenceId('freesound', canonicalUrl),
     modality: 'audio',
+    kind: 'sound-effect',
     title: r.name || undefined,
     source: { providerId: 'freesound', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -94,6 +95,8 @@ export function freesound(config: FreesoundConfig) {
   return defineProvider({
     id: 'freesound',
     modalities: ['audio'],
+    kinds: ['sound-effect'],
+    description: 'Collaborative archive of CC-licensed sounds (Freesound)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as FreesoundSearchOptions | undefined

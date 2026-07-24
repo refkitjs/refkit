@@ -109,4 +109,10 @@ describe('mapFreesoundLicense', () => {
     expect(mapFreesoundLicense('Weird Custom License')).toEqual({ license: 'unknown' })
     expect(mapFreesoundLicense('')).toEqual({ license: 'unknown' })
   })
+
+  it('declares kinds and description', () => {
+    const p = freesound({ apiKey: 'k' })
+    expect(p.kinds).toEqual(['sound-effect'])
+    expect(p.description).toBeTruthy()
+  })
 })

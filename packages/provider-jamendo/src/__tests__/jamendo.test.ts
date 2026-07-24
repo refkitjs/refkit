@@ -135,4 +135,10 @@ describe('jamendo provider', () => {
     const refs = await jamendo({ clientId: 'cid' }).search({ text: 'zzzz', modalities: ['audio'] }, ctx)
     expect(refs).toEqual([])
   })
+
+  it('declares kinds and description', () => {
+    const p = jamendo({ clientId: 'cid' })
+    expect(p.kinds).toEqual(['music'])
+    expect(p.description).toBeTruthy()
+  })
 })

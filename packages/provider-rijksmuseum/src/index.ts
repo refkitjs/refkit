@@ -118,6 +118,7 @@ function toReference(rec: EdmRecord): Reference | null {
   return {
     id: referenceId('rijksmuseum', canonicalUrl),
     modality: 'image',
+    kind: 'artwork',
     title: firstLocalized(rec.aggregatedCHO?.title, ['en', 'nl']),
     source: { providerId: 'rijksmuseum', sourceUrl },
     canonicalUrl,
@@ -138,6 +139,8 @@ export function rijksmuseum(config: RijksmuseumConfig = {}) {
   return defineProvider({
     id: 'rijksmuseum',
     modalities: ['image'],
+    kinds: ['artwork'],
+    description: 'Rijksmuseum collection artworks, incl. the Dutch Golden Age',
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as RijksmuseumSearchOptions | undefined

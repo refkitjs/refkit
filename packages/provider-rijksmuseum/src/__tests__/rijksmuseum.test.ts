@@ -349,4 +349,10 @@ describe('rijksmuseum provider', () => {
     expect(recordUrls).toHaveLength(2)
     expect(recordUrls.some(recordUrl => recordUrl.includes('/3?'))).toBe(false)
   })
+
+  it('declares kinds and description', () => {
+    const p = rijksmuseum()
+    expect(p.kinds).toEqual(['artwork'])
+    expect(p.description).toBeTruthy()
+  })
 })

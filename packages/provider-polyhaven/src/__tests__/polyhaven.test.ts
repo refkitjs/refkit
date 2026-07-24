@@ -56,4 +56,9 @@ describe('polyhaven provider', () => {
     const refs = await polyhaven().search({ text: 'zzz', modalities: ['image'] }, ctxRouting({}, {}))
     expect(refs).toEqual([])
   })
+
+  it('declares kinds per assetType', () => {
+    expect(polyhaven().kinds).toEqual(['texture'])
+    expect(polyhaven({ assetType: 'hdris' }).kinds).toEqual(['hdri'])
+  })
 })

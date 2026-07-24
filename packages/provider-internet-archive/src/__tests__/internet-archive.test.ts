@@ -197,4 +197,10 @@ describe('internetArchive search', () => {
     const q = new URL(seen).searchParams.get('q')!
     expect(q).toBe('(x\\) OR \\(mediatype\\:audio) AND mediatype:(movies OR texts)')
   })
+
+  it('declares kinds and description', () => {
+    const p = internetArchive()
+    expect(p.kinds).toEqual(['film', 'ebook'])
+    expect(p.description).toBeTruthy()
+  })
 })

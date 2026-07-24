@@ -104,4 +104,10 @@ describe('unsplash provider', () => {
     expect(url.searchParams.get('orientation')).toBe('squarish')
     expect(url.searchParams.get('lang')).toBe('zh-Hans')
   })
+
+  it('declares kinds and description', () => {
+    const p = unsplash({ accessKey: 'k' })
+    expect(p.kinds).toEqual(['photo'])
+    expect(p.description).toMatch(/photo/i)
+  })
 })

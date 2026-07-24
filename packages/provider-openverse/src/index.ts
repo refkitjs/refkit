@@ -152,6 +152,7 @@ export function openverse(config: OpenverseConfig = {}) {
   return defineProvider({
     id: 'openverse',
     modalities: ['image'],
+    description: 'Aggregated openly licensed images from many sources (Openverse)',
     capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.openverse.org/v1/images/')
@@ -223,6 +224,8 @@ export function openverseAudio(config: OpenverseConfig = {}) {
   return defineProvider({
     id: 'openverse-audio',
     modalities: ['audio'],
+    kinds: ['music', 'sound-effect'],
+    description: 'Aggregated openly licensed music and sound effects (Openverse)',
     capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.openverse.org/v1/audio/')

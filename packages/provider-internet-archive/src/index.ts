@@ -77,6 +77,7 @@ export function toReference(doc: IaDoc): Reference | null {
   return {
     id: referenceId('internet-archive', canonicalUrl),
     modality,
+    kind: modality === 'video' ? 'film' : 'ebook',
     title: title || undefined,
     source: { providerId: 'internet-archive', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -92,6 +93,8 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
   return defineProvider({
     id: 'internet-archive',
     modalities: ['video', 'text'],
+    kinds: ['film', 'ebook'],
+    description: 'Public-domain and CC films and texts from the Internet Archive',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)

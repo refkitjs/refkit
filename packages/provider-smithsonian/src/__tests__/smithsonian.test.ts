@@ -83,4 +83,10 @@ describe('smithsonian provider', () => {
     expect(url.searchParams.get('row_group')).toBe('archives')
     expect(url.searchParams.get('fq')).toBe('online_media_type:"Images" AND media_usage:"CC0" AND topic:"Cats"')
   })
+
+  it('declares kinds and description', () => {
+    const p = smithsonian({ apiKey: 'k' })
+    expect(p.kinds).toEqual(['artwork'])
+    expect(p.description).toBeTruthy()
+  })
 })

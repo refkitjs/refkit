@@ -62,6 +62,7 @@ function toReference(r: GutendexResult): Reference {
   return {
     id: referenceId('gutendex', canonicalUrl),
     modality: 'text',
+    kind: 'ebook',
     title: r.title,
     source: { providerId: 'gutendex', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -80,6 +81,8 @@ export function gutendex(config: GutendexConfig = {}) {
   return defineProvider({
     id: 'gutendex',
     modalities: ['text'],
+    kinds: ['ebook'],
+    description: 'Public-domain ebooks from Project Gutenberg (Gutendex)',
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const base = config.baseUrl ?? 'https://gutendex.com'

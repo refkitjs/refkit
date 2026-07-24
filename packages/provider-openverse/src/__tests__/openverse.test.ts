@@ -281,4 +281,14 @@ describe('openverseAudio provider', () => {
     expect(refs[0].rights.licenseVersion).toBe('3.0')
     expect(evaluateUse(refs[0].rights, 'commercial-product').decision).toBe('denied')
   })
+
+  it('declares a description but no kinds (omnibus source) for images', () => {
+    const p = openverse()
+    expect(p.kinds).toBeUndefined()
+    expect(p.description).toBeTruthy()
+  })
+
+  it('declares kinds and description for audio', () => {
+    expect(openverseAudio().kinds).toEqual(['music', 'sound-effect'])
+  })
 })

@@ -52,6 +52,7 @@ function toReference(row: SiRow): Reference | null {
   return {
     id: referenceId('smithsonian', canonicalUrl),
     modality: 'image',
+    kind: 'artwork',
     title: dnr?.title?.content || row.title || undefined,
     source: { providerId: 'smithsonian', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -68,6 +69,8 @@ export function smithsonian(config: SmithsonianConfig) {
   return defineProvider({
     id: 'smithsonian',
     modalities: ['image'],
+    kinds: ['artwork'],
+    description: 'Open Access objects from Smithsonian museums',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.si.edu/openaccess/api/v1.0/search')

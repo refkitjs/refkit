@@ -158,4 +158,10 @@ describe('wikimedia-commons provider', () => {
     expect(refs[0].title).toBe('Paul Bril 002')
     expect(refs[0].rights.license).toBe('PD')
   })
+
+  it('declares a description but no kinds (omnibus source)', () => {
+    const p = wikimediaCommons()
+    expect(p.kinds).toBeUndefined()
+    expect(p.description).toBeTruthy()
+  })
 })

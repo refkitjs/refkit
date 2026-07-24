@@ -53,4 +53,9 @@ describe('ambientcg provider', () => {
     const refs = await ambientcg().search({ text: 'x', modalities: ['image'] }, ctxJson(FOUND_NO_IMAGE))
     expect(refs).toEqual([])
   })
+
+  it('declares kinds and description', () => {
+    expect(ambientcg().kinds).toEqual(['texture'])
+    expect(ambientcg().description).toMatch(/texture|material/i)
+  })
 })

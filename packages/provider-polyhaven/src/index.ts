@@ -54,7 +54,7 @@ function firstAuthor(authors?: Record<string, string>): string | undefined {
   return names.length ? names.join(', ') : undefined
 }
 
-function toReference(id: string, asset: PolyHavenAsset, imageUrl: string): Reference {
+function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: string): Reference {
   const canonical = `https://polyhaven.com/a/${id}`
   const rights: RightsRecord = {
     license: 'CC0-1.0',
@@ -65,6 +65,7 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string): Refer
   return {
     id: referenceId('polyhaven', canonical),
     modality: 'image',
+    kind,
     title: asset.name || undefined,
     source: { providerId: 'polyhaven', sourceUrl: canonical },
     canonicalUrl: canonical,
@@ -84,6 +85,10 @@ export function polyhaven(config: PolyHavenConfig = {}) {
   return defineProvider({
     id: 'polyhaven',
     modalities: ['image'],
+    kinds: assetType === 'hdris' ? ['hdri'] : ['texture'],
+    description: assetType === 'hdris'
+      ? 'CC0 HDRI environments for 3D lighting (Poly Haven)'
+      : 'CC0 PBR textures for 3D work (Poly Haven)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const listUrl = new URL(`${PH_BASE}/assets`)
@@ -112,7 +117,7 @@ export function polyhaven(config: PolyHavenConfig = {}) {
           const files = (await fr.json()) as PolyHavenFiles
           const imageUrl = assetType === 'hdris' ? hdriImageUrl(files) : textureImageUrl(files)
           if (!imageUrl) return null // no image-format file → skip (D1)
-          return toReference(id, asset, imageUrl)
+          return toReference(id, asset, imageUrl, assetType === 'hdris' ? 'hdri' : 'texture')
         } catch {
           return null // one bad files fetch must not drop the whole batch
         }
@@ -157,6 +162,7 @@ function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
   return {
     id: referenceId('ambientcg', canonical),
     modality: 'image',
+    kind: 'texture',
     title: a.displayName || undefined,
     source: { providerId: 'ambientcg', sourceUrl: canonical },
     canonicalUrl: canonical,
@@ -173,6 +179,8 @@ export function ambientcg(config: AmbientCgConfig = {}) {
   return defineProvider({
     id: 'ambientcg',
     modalities: ['image'],
+    kinds: ['texture'],
+    description: 'CC0 PBR materials and textures (ambientCG)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(ACG_BASE)

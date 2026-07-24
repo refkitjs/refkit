@@ -44,6 +44,7 @@ function toReference(a: ArticArtwork, iiifUrl: string): Reference | null {
   return {
     id: referenceId('artic', canonicalUrl),
     modality: 'image',
+    kind: 'artwork',
     title: a.title || undefined,
     source: { providerId: 'artic', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -71,6 +72,8 @@ export function artic() {
   return defineProvider({
     id: 'artic',
     modalities: ['image'],
+    kinds: ['artwork'],
+    description: 'CC0 artworks from the Art Institute of Chicago',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.artic.edu/api/v1/artworks/search')

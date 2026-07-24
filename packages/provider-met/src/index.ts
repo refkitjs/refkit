@@ -54,6 +54,7 @@ function toReference(o: MetObject): Reference | null {
   return {
     id: referenceId('met', o.objectURL),
     modality: 'image',
+    kind: 'artwork',
     title: o.title || undefined,
     source: { providerId: 'met', sourceUrl: o.objectURL },
     canonicalUrl: o.objectURL,
@@ -70,6 +71,8 @@ export function met(config: MetConfig = {}) {
   return defineProvider({
     id: 'met',
     modalities: ['image'],
+    kinds: ['artwork'],
+    description: 'Open Access artworks from the Metropolitan Museum of Art',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const searchUrl = new URL(`${BASE}/search`)
