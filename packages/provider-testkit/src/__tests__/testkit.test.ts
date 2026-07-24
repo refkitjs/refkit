@@ -97,6 +97,31 @@ describe('searchConformant', () => {
   })
 })
 
+const kindRef = (kind?: string): Reference => ({
+  id: 'kp:1',
+  modality: 'image',
+  ...(kind ? { kind } : {}),
+  source: { providerId: 'kp', sourceUrl: 'https://kp/1' },
+  canonicalUrl: 'https://kp/1',
+  rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://kp/1' } },
+  verifiedAt: '2026-07-24T00:00:00.000Z',
+  relevance: 0,
+})
+
+describe('declared-kinds consistency', () => {
+  const neverFetch = (async () => { throw new Error('no network') }) as unknown as typeof fetch
+
+  it('rejects a result whose kind is outside the declared set', async () => {
+    const p = defineProvider({ id: 'kp', modalities: ['image'], kinds: ['texture'], search: async () => [kindRef('photo')] })
+    await expect(searchConformant(p, neverFetch)).rejects.toThrow(/kind "photo" is not in the provider's declared kinds/)
+  })
+
+  it('accepts a matching kind and a missing kind', async () => {
+    const p = defineProvider({ id: 'kp', modalities: ['image'], kinds: ['texture'], search: async () => [kindRef('texture'), kindRef()] })
+    await expect(searchConformant(p, neverFetch)).resolves.toHaveLength(2)
+  })
+})
+
 describe('expectLicenseMap', () => {
   it('passes silently on exact matches', () => {
     expect(() =>

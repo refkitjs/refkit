@@ -57,6 +57,12 @@ export async function searchConformant(
     if (ref.source.providerId !== provider.id) {
       throw new Error(`[${provider.id}] result #${i} source.providerId does not match the provider (source.providerId=${ref.source.providerId}, provider.id=${provider.id})`)
     }
+    // Declared-kinds consistency: a provider stating what it offers must not
+    // emit results outside that set. Missing kind is allowed (annotation is
+    // optional); only a contradicting value is a violation.
+    if (provider.kinds && provider.kinds.length > 0 && ref.kind !== undefined && !provider.kinds.includes(ref.kind)) {
+      throw new Error(`[${provider.id}] result #${i} kind "${ref.kind}" is not in the provider's declared kinds [${provider.kinds.join(', ')}]`)
+    }
     if (ref.rights.licenseVersion !== undefined && !VERSIONED.has(ref.rights.license)) {
       throw new Error(`[${provider.id}] result #${i} carries licenseVersion on non-CC-family license ${ref.rights.license}`)
     }
