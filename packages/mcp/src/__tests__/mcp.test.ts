@@ -459,7 +459,7 @@ describe('maxCursorSeenFromEnv (cursor size knob for size-clamped tool outputs)'
 describe('defaultProviders (zero-config CLI wiring)', () => {
   it('includes every keyless provider by default', async () => {
     const ids = (await defaultProviders({})).map(p => p.id)
-    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive']) {
+    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive', 'nailbook']) {
       expect(ids).toContain(id)
     }
   })
