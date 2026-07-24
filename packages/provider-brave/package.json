@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-brave",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Brave Search web-discovery provider satellite for refkit — open-web image breadth, license:unknown (use-gated to needs-review).",
   "type": "module",
   "license": "Apache-2.0",

@@ -1,5 +1,13 @@
 # @refkit/provider-gutendex
 
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies [b5bbba8]
+- Updated dependencies [aa4b048]
+  - @refkit/core@0.8.0
+
 ## 0.2.5
 
 ### Patch Changes

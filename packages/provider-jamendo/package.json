@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-jamendo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Jamendo provider satellite for refkit.",
   "type": "module",
   "license": "Apache-2.0",
