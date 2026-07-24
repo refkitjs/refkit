@@ -67,7 +67,7 @@ export interface ProviderSearchStatus {
   returned?: number
   accepted?: number
   rejected?: number
-  reason?: 'unsupported-modality'
+  reason?: 'unsupported-modality' | 'not-selected'
   error?: string
   latencyMs?: number
   cached?: boolean
@@ -112,6 +112,16 @@ export interface SearchResult {
 export interface SearchInput {
   query: string
   modalities: Modality[]
+  /** Restrict this search to these provider ids (intersected with modality
+   *  matching). Omit to fan out to every configured source. Lets the caller
+   *  scope search-engine operators (e.g. `site:xiaohongshu.com`) to a
+   *  web-discovery source without polluting other providers' queries.
+   *
+   *  A total miss — no requested id matches a configured provider for the
+   *  requested modalities — throws (a source typo must fail loudly, not read as
+   *  "no results"); ids that resolve to nothing while others still match are
+   *  reported in `meta.warnings`. */
+  sources?: string[]
   /** @deprecated Compatibility alias for `controls.color` / `controls.orientation`
    *  / `controls.language` (controls win on conflict). Use `controls`. */
   filters?: SearchFilters
@@ -193,10 +203,23 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     if (typeof doFetch !== 'function') {
       throw new Error('createRefkit: no fetch available — pass options.fetch')
     }
-    const chosen = options.providers.filter(p => p.modalities.some(m => input.modalities.includes(m)))
+    const matchesModality = (p: ReferenceProvider) => p.modalities.some(m => input.modalities.includes(m))
+    const inSources = (p: ReferenceProvider) => input.sources == null || input.sources.includes(p.id)
+    const chosen = options.providers.filter(p => inSources(p) && matchesModality(p))
     if (chosen.length === 0) {
+      // A source-scoped miss is a caller typo, not "no results" — fail loudly in
+      // the same spirit as the empty-providers guard, rather than silently
+      // returning an empty set that hides the mistake.
+      if (input.sources != null) {
+        throw new Error(`refkit.search: no configured provider matches source id(s) [${input.sources.join(', ')}] for modalities [${input.modalities.join(', ')}]`)
+      }
       throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`)
     }
+    // Individual unknown ids (while others still resolved) are tolerated but
+    // surfaced — routed into meta.warnings below, matching the soft-signal channel.
+    const unknownSources = input.sources
+      ? input.sources.filter(id => !options.providers.some(p => p.id === id))
+      : []
     const limit = input.limit ?? DEFAULT_LIMIT
     const poolFactor = Math.max(1, Number.isFinite(input.poolFactor) ? (input.poolFactor as number) : DEFAULT_POOL_FACTOR)
     // Overfetch a wider candidate pool per provider, then narrow to `limit` after
@@ -238,7 +261,11 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       } : undefined
       const statusByProvider = new Map<string, ProviderSearchStatus>()
       for (const p of options.providers) {
-        if (!chosen.includes(p)) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' })
+        if (chosen.includes(p)) continue
+        // Distinguish a wrong-modality skip from one caused by an explicit sources
+        // filter, so meta explains WHY a provider sat this search out.
+        const reason = matchesModality(p) ? 'not-selected' : 'unsupported-modality'
+        statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason })
       }
 
       const runProvider = (p: ReferenceProvider) => {
@@ -359,6 +386,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         })
       : undefined
     const warnings: string[] = []
+    if (unknownSources.length > 0) warnings.push(`unknown source id(s) ignored: ${unknownSources.join(', ')}.`)
     const failedCount = [...pass.statusByProvider.values()].filter(s => s.status === 'failed').length
     if (failedCount > 0) warnings.push(`${failedCount} provider(s) failed; returning partial results.`)
     for (const c of pass.rightsConflicts) {
