@@ -477,3 +477,42 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
     for (const p of table) expect(pkg.dependencies ?? {}).not.toHaveProperty(p)
   })
 })
+
+describe('dynamic declaration-derived schema', () => {
+  async function declClient() {
+    const tex = defineProvider({
+      id: 'texsrc', modalities: ['image'], kinds: ['texture', 'custom-kind'],
+      description: 'CC0 textures for tests', search: async () => [],
+    })
+    const plain = defineProvider({ id: 'plain', modalities: ['audio'], search: async () => [] })
+    const refkit = createRefkit({ providers: [tex, plain], fetch: (async () => new Response('{}')) as typeof fetch })
+    const server = createRefkitMcpServer(refkit)
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    return client
+  }
+
+  it('appends a per-provider source list to the tool description', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const tool = tools.find(t => t.name === 'search_references')!
+    expect(tool.description).toContain('Configured sources:')
+    expect(tool.description).toContain('- texsrc (image·texture,custom-kind): CC0 textures for tests')
+    expect(tool.description).toContain('- plain (audio)')
+    await client.close()
+  })
+
+  it('derives modalities / media.kind / providers enums from declarations', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const schema = tools.find(t => t.name === 'search_references')!.inputSchema as Record<string, any>
+    const modalityEnum = schema.properties.modalities.items.enum as string[]
+    expect([...modalityEnum].sort()).toEqual(['audio', 'image'])
+    const providerEnum = schema.properties.providers.items.enum as string[]
+    expect(providerEnum).toEqual(['texsrc', 'plain'])
+    const kindEnum = schema.properties.controls.properties.media.properties.kind.enum as string[]
+    expect(kindEnum).toEqual(expect.arrayContaining(['photo', 'illustration', 'vector', 'film', 'animation', 'texture', 'custom-kind']))
+    await client.close()
+  })
+})
