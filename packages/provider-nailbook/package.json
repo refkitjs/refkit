@@ -1,0 +1,58 @@
+{
+  "name": "@refkit/provider-nailbook",
+  "version": "0.0.0",
+  "description": "Nailbook (nailbook.jp) nail-design provider satellite for refkit — keyless Japanese nail-art image references.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refkitjs/refkit.git",
+    "directory": "packages/provider-nailbook"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/packages/provider-nailbook#readme",
+  "bugs": "https://github.com/refkitjs/refkit/issues",
+  "keywords": [
+    "refkit",
+    "reference-retrieval",
+    "license",
+    "attribution",
+    "refkit-provider",
+    "nailbook",
+    "nail-art",
+    "nail-design",
+    "japanese",
+    "images"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "build": "tsup",
+    "prepublishOnly": "tsup"
+  },
+  "dependencies": {
+    "@refkit/core": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "devDependencies": {
+    "@refkit/provider-testkit": "workspace:*"
+  }
+}
