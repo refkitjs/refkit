@@ -42,6 +42,8 @@ export type {
   ProviderOptions,
   ProviderOptionsById,
   KeyValueCache,
+  WellKnownKind,
+  ResourceKind,
 } from './provider'
 export {
   setIfString, setIfBoolean, setIfStringList,
