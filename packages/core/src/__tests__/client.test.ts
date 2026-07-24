@@ -704,3 +704,65 @@ describe('createRefkit', () => {
     expect(calls).toBe(1) // second search hits the same cache entry as the first
   })
 })
+
+describe('kind-aware routing', () => {
+  const kindProvider = (id: string, kinds: readonly string[], refs: Reference[]) =>
+    defineProvider({ id, modalities: ['image'], kinds, search: async () => refs })
+
+  it('skips providers whose declared kinds lack the requested value', async () => {
+    const rk = createRefkit({ providers: [
+      kindProvider('tex', ['texture'], [ref('tex-1', 'https://t/1')]),
+      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+    ] })
+    const { references, meta } = await rk.searchWithMeta({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })
+    expect(references.map(r => r.canonicalUrl)).toEqual(['https://t/1'])
+    expect(meta.providers.find(p => p.providerId === 'ph'))
+      .toMatchObject({ status: 'skipped', reason: 'unsupported-kind' })
+  })
+
+  it('conservatively includes providers that declare no kinds', async () => {
+    const rk = createRefkit({ providers: [
+      provider('legacy', [ref('legacy-1', 'https://l/1')]), // no kinds declared
+      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+    ] })
+    const out = await rk.search({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })
+    expect(out.map(r => r.canonicalUrl)).toEqual(['https://l/1'])
+  })
+
+  it('throws with the kind in the message when nothing matches', async () => {
+    const rk = createRefkit({ providers: [kindProvider('ph', ['photo'], [])] })
+    await expect(rk.search({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })).rejects.toThrow('kind "texture"')
+  })
+})
+
+describe('providers whitelist', () => {
+  it('restricts fan-out and reports not-selected in meta', async () => {
+    const rk = createRefkit({ providers: [
+      provider('a', [ref('a-1', 'https://a/1')]),
+      provider('b', [ref('b-1', 'https://b/1')]),
+    ] })
+    const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'], providers: ['a'] })
+    expect(references.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
+    expect(meta.providers.find(p => p.providerId === 'b'))
+      .toMatchObject({ status: 'skipped', reason: 'not-selected' })
+  })
+
+  it('warns on unknown ids and still runs the valid remainder', async () => {
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'], providers: ['a', 'nope'] })
+    expect(references).toHaveLength(1)
+    expect(meta.warnings.some(w => w.includes('"nope"'))).toBe(true)
+  })
+
+  it('throws when the whitelist selects nothing', async () => {
+    const rk = createRefkit({ providers: [provider('a', [])] })
+    await expect(rk.search({ query: 'x', modalities: ['image'], providers: ['nope'] }))
+      .rejects.toThrow(/no registered provider/)
+  })
+})
