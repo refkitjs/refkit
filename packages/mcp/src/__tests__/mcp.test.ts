@@ -219,6 +219,40 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('forwards sources to core, restricting which providers are searched', async () => {
+    let aCalled = false
+    let bCalled = false
+    const a = defineProvider({ id: 'a', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { aCalled = true; return [] } })
+    const b = defineProvider({ id: 'b', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { bCalled = true; return [] } })
+    const server = createRefkitMcpServer(createRefkit({ providers: [a, b] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['a'] } })
+    expect(aCalled).toBe(true)
+    expect(bCalled).toBe(false)
+    await client.close()
+  })
+
+  it('advertises the enabled source ids in the sources parameter description', async () => {
+    const client = await connectedClient() // openverse-only server
+    const { tools } = await client.listTools()
+    const tool = tools.find(t => t.name === 'search_references')!
+    const properties = (tool.inputSchema as { properties: Record<string, { description?: string }> }).properties
+    expect(properties.sources?.description).toContain('openverse')
+    await client.close()
+  })
+
+  it('surfaces a source-selection miss as an agent-friendly tool error listing valid ids', async () => {
+    const client = await connectedClient() // openverse-only server
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['nope'] } })
+    expect(res.isError).toBe(true)
+    const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
+    expect(text).toContain('nope') // the offending request is echoed back
+    expect(text).toContain('openverse') // and the valid id is surfaced
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',

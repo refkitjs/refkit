@@ -703,4 +703,91 @@ describe('createRefkit', () => {
     await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1 } } })
     expect(calls).toBe(1) // second search hits the same cache entry as the first
   })
+
+  describe('sources filter', () => {
+    it('restricts the fan-out to the requested source ids; others are skipped as not-selected', async () => {
+      let bCalled = false
+      const a = provider('a', [ref('a-1', 'https://a/1')])
+      const b = defineProvider({
+        id: 'b', modalities: ['image'], queryFeatures: ['keyword'],
+        search: async () => { bCalled = true; return [ref('b-1', 'https://b/1')] },
+      })
+      const rk = createRefkit({ providers: [a, b] })
+      const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
+      expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
+      expect(bCalled).toBe(false) // never queried — its query is untouched
+      expect(out.meta.providers.find(s => s.providerId === 'b')).toEqual({ providerId: 'b', status: 'skipped', reason: 'not-selected' })
+    })
+
+    it('a modality miss stays unsupported-modality; only a source exclusion is not-selected', async () => {
+      // b matches the modality but is filtered out by sources → not-selected.
+      // text never matches the modality → unsupported-modality, regardless of sources.
+      const a = provider('a', [ref('a-1', 'https://a/1')])
+      const b = provider('b', [ref('b-1', 'https://b/1')])
+      const textOnly = defineProvider({ id: 'text', modalities: ['text'], queryFeatures: [], search: async () => [] })
+      const rk = createRefkit({ providers: [a, b, textOnly] })
+      const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
+      const byId = Object.fromEntries(out.meta.providers.map(s => [s.providerId, s]))
+      expect(byId.b).toMatchObject({ status: 'skipped', reason: 'not-selected' })
+      expect(byId.text).toMatchObject({ status: 'skipped', reason: 'unsupported-modality' })
+    })
+
+    it('throws a clear Error (not AggregateError) when sources match no configured provider', async () => {
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+      await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.toThrow(
+        'refkit.search: no configured provider matches source id(s) [nope] for modalities [image]',
+      )
+      await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.not.toBeInstanceOf(AggregateError)
+    })
+
+    it('throws the source-miss error when the requested source exists but not for this modality', async () => {
+      const imageOnly = provider('img', [ref('img-1', 'https://img/1')])
+      const textOnly = defineProvider({ id: 'txt', modalities: ['text'], queryFeatures: [], search: async () => [] })
+      const rk = createRefkit({ providers: [imageOnly, textOnly] })
+      // txt is registered, but scoping an image search to [txt] has an empty intersection
+      await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['txt'] })).rejects.toThrow(
+        /no configured provider matches source id\(s\) \[txt\]/,
+      )
+    })
+
+    it('warns about unknown source ids while still searching the ones that resolved', async () => {
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+      const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a', 'ghost'] })
+      expect(out.references).toHaveLength(1)
+      expect(out.meta.warnings).toContain('unknown source id(s) ignored: ghost.')
+    })
+
+    it('does not warn when every requested source id resolves', async () => {
+      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), provider('b', [ref('b-1', 'https://b/1')])] })
+      const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a', 'b'] })
+      expect(out.meta.warnings.some(w => w.includes('unknown source'))).toBe(false)
+    })
+
+    it('coexists with the load-more cursor across a round-trip (page/seen stay global)', async () => {
+      const pages: Record<number, Reference[]> = {
+        1: [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')],
+        2: [ref('a-5', 'https://a/5')],
+      }
+      const paging = defineProvider({
+        id: 'a', modalities: ['image'], capabilities: { controls: ['page'] },
+        search: async (q) => pages[q.controls?.page ?? 1] ?? [],
+      })
+      let otherCalled = false
+      const other = defineProvider({
+        id: 'b', modalities: ['image'], queryFeatures: ['keyword'],
+        search: async () => { otherCalled = true; return [ref('b-1', 'https://b/1')] },
+      })
+      const rk = createRefkit({ providers: [paging, other] })
+
+      const batch1 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, sources: ['a'] })
+      expect(batch1.references.map(r => r.canonicalUrl)).toEqual(['https://a/1', 'https://a/2'])
+      expect(batch1.meta.nextCursor).toBeDefined()
+
+      // sources is re-supplied alongside the cursor (it is not encoded in the cursor)
+      const batch2 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, sources: ['a'], cursor: batch1.meta.nextCursor })
+      expect(batch2.references.map(r => r.canonicalUrl)).toEqual(['https://a/3', 'https://a/4'])
+      expect(batch2.references.every(r => !batch1.references.some(b => b.canonicalUrl === r.canonicalUrl))).toBe(true)
+      expect(otherCalled).toBe(false) // b stayed excluded across both pages
+    })
+  })
 })

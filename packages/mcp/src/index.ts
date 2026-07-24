@@ -137,7 +137,7 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
     returned: z.number().optional(),
     accepted: z.number().optional(),
     rejected: z.number().optional(),
-    reason: z.enum(['unsupported-modality']).optional(),
+    reason: z.enum(['unsupported-modality', 'not-selected']).optional(),
     error: z.string().optional(),
     latencyMs: z.number().optional(),
     cached: z.boolean().optional(),
@@ -155,6 +155,10 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
 /** Wrap a configured RefkitClient as an MCP server exposing `search_references`. */
 export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
   const server = new McpServer({ name: 'refkit', version: VERSION })
+  // Enumerated in the `sources` param description so an agent knows the valid ids
+  // up front (and reused to enrich a source-miss error). Providers are fixed for
+  // the server's lifetime, so this snapshot never drifts.
+  const enabledSourceIds = refkit.providers.map(p => p.id)
 
   server.registerTool(
     'search_references',
@@ -168,6 +172,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       inputSchema: {
         query: z.string().describe('what to search for, e.g. "cyberpunk alley at night"'),
         modalities: z.array(z.enum(MODALITIES)).optional().describe('default ["image"]'),
+        sources: z.array(z.string()).optional().describe(
+          `restrict the search to specific sources by id (omit to search every configured source).${
+            enabledSourceIds.length ? ` Enabled source ids: ${enabledSourceIds.join(', ')}.` : ''
+          } Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources' queries.`,
+        ),
         filters: filtersSchema.optional().describe('compatibility alias for controls.orientation, controls.color, and controls.language'),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
@@ -184,10 +193,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         meta: searchMetaSchema.optional(),
       },
     },
-    async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor }) => {
+    async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor, sources }) => {
       const searchInput = {
         query,
         modalities: modalities ?? ['image'],
+        sources,
         filters: filters as SearchFilters | undefined,
         controls: controls as SearchControls | undefined,
         providerOptions: providerOptions as ProviderOptionsById | undefined,
@@ -198,7 +208,24 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       }
       // Always searchWithMeta: the continuation token (meta.nextCursor) must not
       // depend on the explain diagnostics flag — only the meta DUMP is gated.
-      const result = await refkit.searchWithMeta(searchInput)
+      let result
+      try {
+        result = await refkit.searchWithMeta(searchInput)
+      } catch (err) {
+        // A source-selection miss (no requested id resolves for the modality) is a
+        // caller mistake, not an outage — turn core's throw into an agent-actionable
+        // tool error listing the valid ids. AggregateError (every chosen provider
+        // failed at fetch) is a genuine upstream fault, so let it propagate.
+        if (sources && sources.length > 0 && !(err instanceof AggregateError)) {
+          const available = enabledSourceIds.join(', ') || '(none)'
+          const detail = err instanceof Error ? err.message : String(err)
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `${detail} Enabled source ids: ${available}.` }],
+          }
+        }
+        throw err
+      }
       const refs = result.references
       const assessIntent = intent ?? gateFor
       const references = refs.map(r =>
