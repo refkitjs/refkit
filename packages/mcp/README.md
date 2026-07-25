@@ -10,7 +10,7 @@ Point any MCP client at:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute of Chicago, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB) and auto-adds any BYOK source whose key is in the environment. Each key is read as a unified `REFKIT_<PROVIDER>_KEY` name first, falling back to the provider's legacy name (both are honored indefinitely):
+It boots with the keyless sources (Met, Art Institute of Chicago, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB, Nailbook — Japanese nail-art, discovery-class `license: 'unknown'`, best queried with Japanese tag words) and auto-adds any BYOK source whose key is in the environment. Each key is read as a unified `REFKIT_<PROVIDER>_KEY` name first, falling back to the provider's legacy name (both are honored indefinitely):
 
 ```bash
 REFKIT_UNSPLASH_KEY=… REFKIT_PEXELS_KEY=… REFKIT_PIXABAY_KEY=… REFKIT_FLICKR_KEY=… REFKIT_SMITHSONIAN_KEY=… REFKIT_BRAVE_KEY=… npx -y @refkit/mcp

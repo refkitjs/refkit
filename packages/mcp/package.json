@@ -41,6 +41,7 @@
     "@refkit/provider-gutendex": "workspace:*",
     "@refkit/provider-internet-archive": "workspace:*",
     "@refkit/provider-met": "workspace:*",
+    "@refkit/provider-nailbook": "workspace:*",
     "@refkit/provider-openverse": "workspace:*",
     "@refkit/provider-poetrydb": "workspace:*",
     "@refkit/provider-polyhaven": "workspace:*",

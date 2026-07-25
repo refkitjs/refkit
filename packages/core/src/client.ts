@@ -112,6 +112,16 @@ export interface SearchResult {
 export interface SearchInput {
   query: string
   modalities: Modality[]
+  /** Restrict this search to these provider ids (intersected with modality
+   *  matching). Omit to fan out to every configured source. Lets the caller
+   *  scope search-engine operators (e.g. `site:xiaohongshu.com`) to a
+   *  web-discovery source without polluting other providers' queries.
+   *
+   *  A total miss — no requested id matches a configured provider for the
+   *  requested modalities — throws (a source typo must fail loudly, not read as
+   *  "no results"); ids that resolve to nothing while others still match are
+   *  reported in `meta.warnings`. */
+  sources?: string[]
   /** @deprecated Compatibility alias for `controls.color` / `controls.orientation`
    *  / `controls.language` (controls win on conflict). Use `controls`. */
   filters?: SearchFilters
@@ -119,10 +129,6 @@ export interface SearchInput {
   /** Provider-specific search controls keyed by provider id. Core routes only the
    * matching entry to each provider; providers whitelist what they translate. */
   providerOptions?: ProviderOptionsById
-  /** Restrict this search to these provider ids. Unknown ids append a warning
-   *  to meta.warnings and are otherwise ignored; excluded providers appear in
-   *  meta.providers as skipped with reason 'not-selected'. */
-  providers?: readonly string[]
   limit?: number
   /** Opaque cursor from a previous search's `meta.nextCursor`. Resumes the
    *  provider-local page (overriding `controls.page`), filters out results
@@ -197,19 +203,17 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     if (typeof doFetch !== 'function') {
       throw new Error('createRefkit: no fetch available — pass options.fetch')
     }
-    const idWhitelist = input.providers
-    const preWarnings: string[] = []
-    if (idWhitelist) {
-      const known = new Set(options.providers.map(p => p.id))
-      for (const id of idWhitelist) {
-        if (!known.has(id)) preWarnings.push(`unknown provider id in providers: "${id}"`)
-      }
-    }
     const kindFilter = input.controls?.media?.kind
+    const matchesModality = (p: ReferenceProvider) => p.modalities.some(m => input.modalities.includes(m))
+    const inSources = (p: ReferenceProvider) => input.sources == null || input.sources.includes(p.id)
+    // Declaration-gated kind narrowing: providers with no `kinds` declared are
+    // conservatively included on kind-filtered queries (same progressive
+    // philosophy as capabilities-based control routing).
+    const matchesKind = (p: ReferenceProvider) => kindFilter === undefined || !p.kinds || p.kinds.includes(kindFilter)
     const skipReasonFor = (p: ReferenceProvider): NonNullable<ProviderSearchStatus['reason']> | undefined => {
-      if (idWhitelist && !idWhitelist.includes(p.id)) return 'not-selected'
-      if (!p.modalities.some(m => input.modalities.includes(m))) return 'unsupported-modality'
-      if (kindFilter !== undefined && p.kinds && !p.kinds.includes(kindFilter)) return 'unsupported-kind'
+      if (!matchesModality(p)) return 'unsupported-modality'
+      if (!inSources(p)) return 'not-selected'
+      if (!matchesKind(p)) return 'unsupported-kind'
       return undefined
     }
     const skipReasons = new Map<string, NonNullable<ProviderSearchStatus['reason']>>()
@@ -219,12 +223,20 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     }
     const chosen = options.providers.filter(p => !skipReasons.has(p.id))
     if (chosen.length === 0) {
-      throw new Error(
-        `refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`
-        + (kindFilter !== undefined ? ` with kind "${kindFilter}"` : '')
-        + (idWhitelist ? ` within providers [${idWhitelist.join(', ')}]` : ''),
-      )
+      const kindSuffix = kindFilter !== undefined ? ` with kind "${kindFilter}"` : ''
+      // A source-scoped miss is a caller typo, not "no results" — fail loudly in
+      // the same spirit as the empty-providers guard, rather than silently
+      // returning an empty set that hides the mistake.
+      if (input.sources != null) {
+        throw new Error(`refkit.search: no configured provider matches source id(s) [${input.sources.join(', ')}] for modalities [${input.modalities.join(', ')}]${kindSuffix}`)
+      }
+      throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]${kindSuffix}`)
     }
+    // Individual unknown ids (while others still resolved) are tolerated but
+    // surfaced — routed into meta.warnings below, matching the soft-signal channel.
+    const unknownSources = input.sources
+      ? input.sources.filter(id => !options.providers.some(p => p.id === id))
+      : []
     const limit = input.limit ?? DEFAULT_LIMIT
     const poolFactor = Math.max(1, Number.isFinite(input.poolFactor) ? (input.poolFactor as number) : DEFAULT_POOL_FACTOR)
     // Overfetch a wider candidate pool per provider, then narrow to `limit` after
@@ -266,6 +278,8 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       } : undefined
       const statusByProvider = new Map<string, ProviderSearchStatus>()
       for (const p of options.providers) {
+        // skipReasons explains WHY a provider sat this search out (sources
+        // filter vs wrong modality vs undeclared kind).
         const reason = skipReasons.get(p.id)
         if (reason) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason })
       }
@@ -387,7 +401,8 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           seen: [...(cursorState?.seen ?? []), ...references.map(r => cursorSeenKey(r.canonicalUrl))].slice(-maxCursorSeen),
         })
       : undefined
-    const warnings: string[] = [...preWarnings]
+    const warnings: string[] = []
+    if (unknownSources.length > 0) warnings.push(`unknown source id(s) ignored: ${unknownSources.join(', ')}.`)
     const failedCount = [...pass.statusByProvider.values()].filter(s => s.status === 'failed').length
     if (failedCount > 0) warnings.push(`${failedCount} provider(s) failed; returning partial results.`)
     for (const c of pass.rightsConflicts) {

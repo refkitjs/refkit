@@ -13,6 +13,7 @@ import { poetrydb } from '@refkit/provider-poetrydb'
 import { rijksmuseum } from '@refkit/provider-rijksmuseum'
 import { polyhaven, ambientcg } from '@refkit/provider-polyhaven'
 import { internetArchive } from '@refkit/provider-internet-archive'
+import { nailbook } from '@refkit/provider-nailbook'
 import { serveStdio } from './index'
 
 /** One BYOK source: its unified + legacy env var names, and a lazy loader for its
@@ -92,7 +93,7 @@ export const BYOK_SOURCES: ByokSource[] = [
 export async function defaultProviders(env: NodeJS.ProcessEnv = process.env): Promise<ReferenceProvider[]> {
   const providers: ReferenceProvider[] = [
     openverse(), openverseAudio(), wikimediaCommons(), met(), artic(), gutendex(), poetrydb(),
-    rijksmuseum(), polyhaven(), ambientcg(), internetArchive(),
+    rijksmuseum(), polyhaven(), ambientcg(), internetArchive(), nailbook(),
   ]
   // Independent module loads — run them concurrently (startup cost = max, not sum)
   // and keep BYOK_SOURCES order in the provider list.

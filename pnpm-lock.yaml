@@ -77,6 +77,9 @@ importers:
       '@refkit/provider-met':
         specifier: workspace:*
         version: link:../provider-met
+      '@refkit/provider-nailbook':
+        specifier: workspace:*
+        version: link:../provider-nailbook
       '@refkit/provider-openverse':
         specifier: workspace:*
         version: link:../provider-openverse
@@ -211,6 +214,16 @@ importers:
         version: link:../provider-testkit
 
   packages/provider-met:
+    dependencies:
+      '@refkit/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@refkit/provider-testkit':
+        specifier: workspace:*
+        version: link:../provider-testkit
+
+  packages/provider-nailbook:
     dependencies:
       '@refkit/core':
         specifier: workspace:*

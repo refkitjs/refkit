@@ -92,6 +92,22 @@ await refkit.search({
 
 The provider package owns its native options surface, e.g. `UnsplashSearchOptions`, `FlickrSearchOptions`, `OpenverseImageSearchOptions`, `MetSearchOptions`, and `PoetryDbSearchOptions`. Response-format/debug parameters and auth-only knobs are intentionally omitted when they would break refkit's normalized `Reference` contract.
 
+### Site-scoped discovery
+
+Pass `sources` to restrict a search to specific provider ids (still intersected with modality matching; omit to fan out to every configured source). This is the clean way to point a web-discovery source at another site's index with a `site:` operator — without that operator leaking into the other providers' queries:
+
+```ts
+// Query Brave's index for Xiaohongshu nail-art notes — Brave only, so the
+// `site:` operator never pollutes the other configured sources' queries.
+const notes = await refkit.search({
+  query: 'site:xiaohongshu.com 美甲',
+  modalities: ['image'],
+  sources: ['brave'],
+})
+```
+
+A `sources` list that matches nothing for the requested modalities throws (a source typo fails loudly instead of reading as "no results"); an id that resolves to nothing while others still match is reported in `meta.warnings`, and every excluded provider appears in `meta.providers` with `reason: 'not-selected'`.
+
 When an agent or UI needs to explain what happened, use `searchWithMeta`:
 
 ```ts

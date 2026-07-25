@@ -219,6 +219,44 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('forwards sources to core, restricting which providers are searched', async () => {
+    let aCalled = false
+    let bCalled = false
+    const a = defineProvider({ id: 'a', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { aCalled = true; return [] } })
+    const b = defineProvider({ id: 'b', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { bCalled = true; return [] } })
+    const server = createRefkitMcpServer(createRefkit({ providers: [a, b] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['a'] } })
+    expect(aCalled).toBe(true)
+    expect(bCalled).toBe(false)
+    await client.close()
+  })
+
+  it('advertises the enabled source ids via the Configured sources list', async () => {
+    const client = await connectedClient() // openverse-only server
+    const { tools } = await client.listTools()
+    const tool = tools.find(t => t.name === 'search_references')!
+    // The sources param description points at the Configured sources list, which
+    // carries the ids (with modalities/kinds/description) — richer than an
+    // inline id enumeration, without duplicating it.
+    const properties = (tool.inputSchema as { properties: Record<string, { description?: string }> }).properties
+    expect(properties.sources?.description).toContain('Configured sources')
+    expect(tool.description).toContain('- openverse (')
+    await client.close()
+  })
+
+  it('surfaces a source-selection miss as an agent-friendly tool error listing valid ids', async () => {
+    const client = await connectedClient() // openverse-only server
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['nope'] } })
+    expect(res.isError).toBe(true)
+    const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
+    expect(text).toContain('nope') // the offending request is echoed back
+    expect(text).toContain('openverse') // and the valid id is surfaced
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',
@@ -425,7 +463,7 @@ describe('maxCursorSeenFromEnv (cursor size knob for size-clamped tool outputs)'
 describe('defaultProviders (zero-config CLI wiring)', () => {
   it('includes every keyless provider by default', async () => {
     const ids = (await defaultProviders({})).map(p => p.id)
-    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive']) {
+    for (const id of ['openverse', 'wikimedia-commons', 'met', 'artic', 'gutendex', 'poetrydb', 'rijksmuseum', 'polyhaven', 'ambientcg', 'internet-archive', 'nailbook']) {
       expect(ids).toContain(id)
     }
   })
@@ -503,14 +541,16 @@ describe('dynamic declaration-derived schema', () => {
     await client.close()
   })
 
-  it('derives modalities / media.kind / providers enums from declarations', async () => {
+  it('derives modalities / media.kind enums from declarations and keeps sources open', async () => {
     const client = await declClient()
     const { tools } = await client.listTools()
     const schema = tools.find(t => t.name === 'search_references')!.inputSchema as Record<string, any>
     const modalityEnum = schema.properties.modalities.items.enum as string[]
     expect([...modalityEnum].sort()).toEqual(['audio', 'image'])
-    const providerEnum = schema.properties.providers.items.enum as string[]
-    expect(providerEnum).toEqual(['texsrc', 'plain'])
+    // sources stays an open string array (a miss becomes an agent-friendly tool
+    // error at runtime); the valid ids live in the Configured sources list.
+    expect(schema.properties.sources.items.type).toBe('string')
+    expect(schema.properties.sources.items.enum).toBeUndefined()
     const kindEnum = schema.properties.controls.properties.media.properties.kind.enum as string[]
     expect(kindEnum).toEqual(expect.arrayContaining(['photo', 'illustration', 'vector', 'film', 'animation', 'texture', 'custom-kind']))
     await client.close()
