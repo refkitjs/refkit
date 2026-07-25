@@ -1,8 +1,22 @@
-# @refkit/provider-rijksmuseum
+# @refkit/provider-nailbook
 
-## 0.3.0
+## 0.1.0
 
 ### Minor Changes
+
+- 17469ad: New keyless provider `@refkit/provider-nailbook` — image references from Nailbook
+  (nailbook.jp), a large Japanese nail-design catalog. Recall is best with Japanese tag
+  words (マグネット, ニュアンス, ちゅるん…). Results are discovery-class: no per-item
+  license metadata, so each carries `license: 'unknown'` + `rehostPolicy: 'thumbnail-only'`
+  and gates to `needs-review` (never auto-allowed) — surface the CDN thumbnail only, never
+  rehost the original.
+
+  Rather than scraping the client-rendered `/design/` list HTML (whose embedded bootstrap
+  carries photo IDs but no image URLs), the provider calls the same JSON endpoint the site's
+  own frontend uses (`POST /api/web/photo/search`), returning full photo objects in one
+  request. Each `search()` makes exactly one request with no multi-page fan-out.
+
+  `@refkit/mcp` boots Nailbook in its zero-config keyless default set.
 
 - 431d834: Provider resource declarations: open `ResourceKind` vocabulary with optional
   `kinds` + `description` on providers and `kind` on references; declaration-gated
@@ -25,40 +39,3 @@
 - Updated dependencies [431d834]
 - Updated dependencies [aa4b048]
   - @refkit/core@0.8.0
-
-## 0.2.3
-
-### Patch Changes
-
-- Updated dependencies [3cce5e3]
-  - @refkit/core@0.7.0
-
-## 0.2.2
-
-### Patch Changes
-
-- 5b50432: Repo moved to the refkitjs GitHub org: add `repository` (with per-package `directory`), `homepage`, and `bugs` metadata to every public package, and point the gutendex default User-Agent at github.com/refkitjs/refkit.
-- Updated dependencies [5b50432]
-  - @refkit/core@0.6.1
-
-## 0.2.1
-
-### Patch Changes
-
-- Updated dependencies [991d467]
-- Updated dependencies [8300c18]
-- Updated dependencies [c6b6061]
-  - @refkit/core@0.6.0
-
-## 0.2.0
-
-### Minor Changes
-
-- 2b16960: Add @refkit/provider-rijksmuseum: Rijksmuseum as license-normalized image references (keyless; CC0 / Public Domain).
-
-  Register the P1 providers in the @refkit/mcp zero-config server — rijksmuseum, polyhaven, ambientCG and internet-archive (keyless); freesound, jamendo and europeana (when their API key/token is set).
-
-### Patch Changes
-
-- Updated dependencies [2b16960]
-  - @refkit/core@0.5.0
