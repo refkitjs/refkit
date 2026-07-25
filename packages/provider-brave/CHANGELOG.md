@@ -1,5 +1,31 @@
 # @refkit/provider-brave
 
+## 0.3.0
+
+### Minor Changes
+
+- 431d834: Provider resource declarations: open `ResourceKind` vocabulary with optional
+  `kinds` + `description` on providers and `kind` on references; declaration-gated
+  kind routing (a kind-filtered search skips providers whose declared `kinds`
+  lack the value, with a new `unsupported-kind` skip reason) composed with the
+  existing `sources` id filter; MCP tool schema, per-provider source list, and
+  the `modalities` / `media.kind` enums now derived from registered provider
+  declarations at startup.
+
+  Note: the MCP `modalities` input enum is now deployment-dependent (derived
+  from the registered providers). A request naming a modality no registered
+  provider supports is now rejected at the schema boundary — previously a
+  fully-unsupported request threw at search time, and a mixed request (e.g.
+  image+audio against an image-only deployment) returned the supported subset.
+  Fail-loud at the boundary is intentional.
+
+### Patch Changes
+
+- Updated dependencies [b5bbba8]
+- Updated dependencies [431d834]
+- Updated dependencies [aa4b048]
+  - @refkit/core@0.8.0
+
 ## 0.2.4
 
 ### Patch Changes
