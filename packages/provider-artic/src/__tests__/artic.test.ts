@@ -60,4 +60,10 @@ describe('artic provider', () => {
     expect(url.searchParams.get('fields')).toBe('id,title,image_id,is_public_domain,artist_display,date_display')
     expect(url.searchParams.get('query[term][is_public_domain]')).toBe('true')
   })
+
+  it('declares kinds and description', () => {
+    const p = artic()
+    expect(p.kinds).toEqual(['artwork'])
+    expect(p.description).toBeTruthy()
+  })
 })

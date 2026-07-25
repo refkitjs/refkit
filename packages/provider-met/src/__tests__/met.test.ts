@@ -88,4 +88,10 @@ describe('met provider', () => {
     expect(url.searchParams.get('dateEnd')).toBe('1800')
     expect(url.searchParams.get('hasImages')).toBe('true')
   })
+
+  it('declares kinds and description', () => {
+    const p = met()
+    expect(p.kinds).toEqual(['artwork'])
+    expect(p.description).toBeTruthy()
+  })
 })

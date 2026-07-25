@@ -54,6 +54,7 @@ function toReference(p: PexelsPhoto): Reference {
   return {
     id: referenceId('pexels', p.url),
     modality: 'image',
+    kind: 'photo',
     title: p.alt || undefined,
     source: { providerId: 'pexels', sourceUrl: p.url },
     canonicalUrl: p.url,
@@ -70,6 +71,8 @@ export function pexels(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels',
     modalities: ['image'],
+    kinds: ['photo'],
+    description: 'Free stock photos (Pexels)',
     capabilities: { controls: ['orientation', 'color', 'language', 'media.size', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/v1/search')
@@ -113,6 +116,7 @@ function toVideoReference(v: PexelsVideo): Reference {
   return {
     id: referenceId('pexels-video', v.url),
     modality: 'video',
+    kind: 'film',
     source: { providerId: 'pexels-video', sourceUrl: v.url },
     canonicalUrl: v.url,
     rights,
@@ -130,6 +134,8 @@ export function pexelsVideo(config: PexelsConfig) {
   return defineProvider({
     id: 'pexels-video',
     modalities: ['video'],
+    kinds: ['film'],
+    description: 'Free stock videos (Pexels)',
     capabilities: { controls: ['orientation', 'language', 'media.size', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.pexels.com/videos/search')

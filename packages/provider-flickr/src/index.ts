@@ -163,6 +163,7 @@ function toReference(p: FlickrPhoto): Reference {
   return {
     id: referenceId('flickr', canonicalUrl),
     modality: 'image',
+    kind: 'photo',
     title: p.title || undefined,
     source: { providerId: 'flickr', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -180,6 +181,8 @@ export function flickr(config: FlickrConfig) {
   return defineProvider({
     id: 'flickr',
     modalities: ['image'],
+    kinds: ['photo'],
+    description: 'Community photography with per-item CC licensing (Flickr)',
     capabilities: { controls: ['sort', 'safety', 'license.commercial', 'license.modification', 'license.allowUnknown', 'creator.id', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const opts = q.providerOptions as FlickrSearchOptions | undefined

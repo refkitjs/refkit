@@ -174,4 +174,10 @@ describe('poetrydb provider', () => {
     }, ctx)
     expect(calledUrl).toBe('https://poetrydb.org/title,author,poemcount/Winter;William%20Shakespeare;2:abs/author,title,lines,linecount')
   })
+
+  it('declares kinds and description', () => {
+    const p = poetrydb()
+    expect(p.kinds).toEqual(['poem'])
+    expect(p.description).toBeTruthy()
+  })
 })

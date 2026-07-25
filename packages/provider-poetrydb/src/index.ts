@@ -30,6 +30,7 @@ function toReference(p: PoetryDbPoem): Reference {
   return {
     id: referenceId('poetrydb', `${p.author}:${p.title}`),
     modality: 'text',
+    kind: 'poem',
     title: p.title,
     source: { providerId: 'poetrydb', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -107,6 +108,8 @@ export function poetrydb() {
   return defineProvider({
     id: 'poetrydb',
     modalities: ['text'],
+    kinds: ['poem'],
+    description: 'Classic public-domain poetry (PoetryDB)',
     capabilities: { controls: [] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       // /lines/<term> finds poems whose line content contains the term (closest to keyword search)

@@ -87,6 +87,7 @@ function toReference(photo: NailbookPhoto): Reference | null {
   return {
     id: referenceId('nailbook', canonicalUrl),
     modality: 'image',
+    kind: 'photo',
     title: pickTitle(photo),
     source: { providerId: 'nailbook', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -106,6 +107,8 @@ export function nailbook(config: NailbookConfig = {}) {
   return defineProvider({
     id: 'nailbook',
     modalities: ['image'],
+    kinds: ['photo'],
+    description: 'Japanese nail-art design photos (Nailbook)',
     // No search controls: the endpoint's `page` param is a no-op (verified — page 2
     // returns the same head-of-results as page 1, shifted only by newly-posted photos;
     // real pagination needs a stateful `scrolling_key` search_after cursor that doesn't

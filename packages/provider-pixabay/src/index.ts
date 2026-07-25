@@ -48,6 +48,7 @@ interface PixabayHit {
   largeImageURL: string
   imageWidth: number
   imageHeight: number
+  type?: string
 }
 interface PixabayResponse { hits: PixabayHit[] }
 
@@ -72,6 +73,13 @@ function pixabayOrientation(orientation: string | undefined): string | undefined
   return undefined
 }
 
+// Upstream image `type` values: 'photo' | 'illustration' | 'vectors/svg'.
+function pixabayKind(t: string | undefined): string | undefined {
+  if (t === 'photo' || t === 'illustration') return t
+  if (t === 'vectors/svg' || t === 'vector/svg') return 'vector'
+  return undefined
+}
+
 function toReference(h: PixabayHit): Reference {
   const rights: RightsRecord = {
     license: 'pixabay',
@@ -82,6 +90,7 @@ function toReference(h: PixabayHit): Reference {
   return {
     id: referenceId('pixabay', h.pageURL),
     modality: 'image',
+    ...(pixabayKind(h.type) ? { kind: pixabayKind(h.type) } : {}),
     title: h.tags || undefined, // no title field; tags is the only descriptive text
     source: { providerId: 'pixabay', sourceUrl: h.pageURL },
     canonicalUrl: h.pageURL,
@@ -98,6 +107,8 @@ export function pixabay(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay',
     modalities: ['image'],
+    kinds: ['photo', 'illustration', 'vector'],
+    description: 'Free stock photos, illustrations and vectors (Pixabay)',
     capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/')
@@ -181,6 +192,8 @@ export function pixabayVideo(config: PixabayConfig) {
   return defineProvider({
     id: 'pixabay-video',
     modalities: ['video'],
+    kinds: ['film', 'animation'],
+    description: 'Free stock videos and animations (Pixabay)',
     capabilities: { controls: ['language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://pixabay.com/api/videos/')

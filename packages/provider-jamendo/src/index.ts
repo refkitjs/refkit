@@ -75,6 +75,7 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null 
   return {
     id: referenceId('jamendo', canonicalUrl),
     modality: 'audio',
+    kind: 'music',
     title: t.name || undefined,
     source: { providerId: 'jamendo', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -92,6 +93,8 @@ export function jamendo(config: JamendoConfig) {
   return defineProvider({
     id: 'jamendo',
     modalities: ['audio'],
+    kinds: ['music'],
+    description: 'CC-licensed independent music (Jamendo)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)

@@ -206,4 +206,10 @@ describe('europeana search request', () => {
     }
     await expect(europeana({ apiKey: 'bad' }).search({ text: 'x', modalities: ['image'] }, ctx)).rejects.toThrow(/europeana search failed: 401/)
   })
+
+  it('declares kinds and description', () => {
+    const p = europeana({ apiKey: 'k' })
+    expect(p.kinds).toEqual(['artwork'])
+    expect(p.description).toBeTruthy()
+  })
 })

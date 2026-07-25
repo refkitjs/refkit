@@ -126,4 +126,10 @@ describe('brave provider', () => {
     const url = new URL(calledUrl)
     expect(url.searchParams.get('safesearch')).toBe('off')
   })
+
+  it('declares a description but no kinds (omnibus source)', () => {
+    const p = brave({ token: 'SECRET' })
+    expect(p.kinds).toBeUndefined()
+    expect(p.description).toBeTruthy()
+  })
 })

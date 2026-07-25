@@ -791,3 +791,39 @@ describe('createRefkit', () => {
     })
   })
 })
+
+describe('kind-aware routing', () => {
+  const kindProvider = (id: string, kinds: readonly string[], refs: Reference[]) =>
+    defineProvider({ id, modalities: ['image'], kinds, search: async () => refs })
+
+  it('skips providers whose declared kinds lack the requested value', async () => {
+    const rk = createRefkit({ providers: [
+      kindProvider('tex', ['texture'], [ref('tex-1', 'https://t/1')]),
+      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+    ] })
+    const { references, meta } = await rk.searchWithMeta({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })
+    expect(references.map(r => r.canonicalUrl)).toEqual(['https://t/1'])
+    expect(meta.providers.find(p => p.providerId === 'ph'))
+      .toMatchObject({ status: 'skipped', reason: 'unsupported-kind' })
+  })
+
+  it('conservatively includes providers that declare no kinds', async () => {
+    const rk = createRefkit({ providers: [
+      provider('legacy', [ref('legacy-1', 'https://l/1')]), // no kinds declared
+      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+    ] })
+    const out = await rk.search({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })
+    expect(out.map(r => r.canonicalUrl)).toEqual(['https://l/1'])
+  })
+
+  it('throws with the kind in the message when nothing matches', async () => {
+    const rk = createRefkit({ providers: [kindProvider('ph', ['photo'], [])] })
+    await expect(rk.search({
+      query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
+    })).rejects.toThrow('kind "texture"')
+  })
+})

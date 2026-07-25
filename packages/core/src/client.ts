@@ -67,7 +67,7 @@ export interface ProviderSearchStatus {
   returned?: number
   accepted?: number
   rejected?: number
-  reason?: 'unsupported-modality' | 'not-selected'
+  reason?: 'unsupported-modality' | 'unsupported-kind' | 'not-selected'
   error?: string
   latencyMs?: number
   cached?: boolean
@@ -203,17 +203,34 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     if (typeof doFetch !== 'function') {
       throw new Error('createRefkit: no fetch available — pass options.fetch')
     }
+    const kindFilter = input.controls?.media?.kind
     const matchesModality = (p: ReferenceProvider) => p.modalities.some(m => input.modalities.includes(m))
     const inSources = (p: ReferenceProvider) => input.sources == null || input.sources.includes(p.id)
-    const chosen = options.providers.filter(p => inSources(p) && matchesModality(p))
+    // Declaration-gated kind narrowing: providers with no `kinds` declared are
+    // conservatively included on kind-filtered queries (same progressive
+    // philosophy as capabilities-based control routing).
+    const matchesKind = (p: ReferenceProvider) => kindFilter === undefined || !p.kinds || p.kinds.includes(kindFilter)
+    const skipReasonFor = (p: ReferenceProvider): NonNullable<ProviderSearchStatus['reason']> | undefined => {
+      if (!matchesModality(p)) return 'unsupported-modality'
+      if (!inSources(p)) return 'not-selected'
+      if (!matchesKind(p)) return 'unsupported-kind'
+      return undefined
+    }
+    const skipReasons = new Map<string, NonNullable<ProviderSearchStatus['reason']>>()
+    for (const p of options.providers) {
+      const reason = skipReasonFor(p)
+      if (reason) skipReasons.set(p.id, reason)
+    }
+    const chosen = options.providers.filter(p => !skipReasons.has(p.id))
     if (chosen.length === 0) {
+      const kindSuffix = kindFilter !== undefined ? ` with kind "${kindFilter}"` : ''
       // A source-scoped miss is a caller typo, not "no results" — fail loudly in
       // the same spirit as the empty-providers guard, rather than silently
       // returning an empty set that hides the mistake.
       if (input.sources != null) {
-        throw new Error(`refkit.search: no configured provider matches source id(s) [${input.sources.join(', ')}] for modalities [${input.modalities.join(', ')}]`)
+        throw new Error(`refkit.search: no configured provider matches source id(s) [${input.sources.join(', ')}] for modalities [${input.modalities.join(', ')}]${kindSuffix}`)
       }
-      throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]`)
+      throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]${kindSuffix}`)
     }
     // Individual unknown ids (while others still resolved) are tolerated but
     // surfaced — routed into meta.warnings below, matching the soft-signal channel.
@@ -261,11 +278,10 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       } : undefined
       const statusByProvider = new Map<string, ProviderSearchStatus>()
       for (const p of options.providers) {
-        if (chosen.includes(p)) continue
-        // Distinguish a wrong-modality skip from one caused by an explicit sources
-        // filter, so meta explains WHY a provider sat this search out.
-        const reason = matchesModality(p) ? 'not-selected' : 'unsupported-modality'
-        statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason })
+        // skipReasons explains WHY a provider sat this search out (sources
+        // filter vs wrong modality vs undeclared kind).
+        const reason = skipReasons.get(p.id)
+        if (reason) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason })
       }
 
       const runProvider = (p: ReferenceProvider) => {
@@ -404,7 +420,8 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         ...(input.filters ? { appliedFilters: input.filters } : {}),
         ...(pass.controlsMeta ? { controls: pass.controlsMeta } : {}),
         ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
-        providers: options.providers.map(p => pass.statusByProvider.get(p.id) ?? { providerId: p.id, status: 'skipped', reason: 'unsupported-modality' }),
+        providers: options.providers.map(p => pass.statusByProvider.get(p.id)
+          ?? { providerId: p.id, status: 'skipped', reason: skipReasons.get(p.id) ?? 'unsupported-modality' }),
         ...(pass.gate ? { gate: pass.gate } : {}),
         ...(nextCursor ? { nextCursor } : {}),
         warnings,

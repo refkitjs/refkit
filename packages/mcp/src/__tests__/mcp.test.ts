@@ -234,12 +234,16 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
-  it('advertises the enabled source ids in the sources parameter description', async () => {
+  it('advertises the enabled source ids via the Configured sources list', async () => {
     const client = await connectedClient() // openverse-only server
     const { tools } = await client.listTools()
     const tool = tools.find(t => t.name === 'search_references')!
+    // The sources param description points at the Configured sources list, which
+    // carries the ids (with modalities/kinds/description) — richer than an
+    // inline id enumeration, without duplicating it.
     const properties = (tool.inputSchema as { properties: Record<string, { description?: string }> }).properties
-    expect(properties.sources?.description).toContain('openverse')
+    expect(properties.sources?.description).toContain('Configured sources')
+    expect(tool.description).toContain('- openverse (')
     await client.close()
   })
 
@@ -509,5 +513,46 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
     expect(table).toEqual(optional)
     // and no BYOK package may ALSO be a hard dependency
     for (const p of table) expect(pkg.dependencies ?? {}).not.toHaveProperty(p)
+  })
+})
+
+describe('dynamic declaration-derived schema', () => {
+  async function declClient() {
+    const tex = defineProvider({
+      id: 'texsrc', modalities: ['image'], kinds: ['texture', 'custom-kind'],
+      description: 'CC0 textures for tests', search: async () => [],
+    })
+    const plain = defineProvider({ id: 'plain', modalities: ['audio'], search: async () => [] })
+    const refkit = createRefkit({ providers: [tex, plain], fetch: (async () => new Response('{}')) as typeof fetch })
+    const server = createRefkitMcpServer(refkit)
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    return client
+  }
+
+  it('appends a per-provider source list to the tool description', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const tool = tools.find(t => t.name === 'search_references')!
+    expect(tool.description).toContain('Configured sources:')
+    expect(tool.description).toContain('- texsrc (image·texture,custom-kind): CC0 textures for tests')
+    expect(tool.description).toContain('- plain (audio)')
+    await client.close()
+  })
+
+  it('derives modalities / media.kind enums from declarations and keeps sources open', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const schema = tools.find(t => t.name === 'search_references')!.inputSchema as Record<string, any>
+    const modalityEnum = schema.properties.modalities.items.enum as string[]
+    expect([...modalityEnum].sort()).toEqual(['audio', 'image'])
+    // sources stays an open string array (a miss becomes an agent-friendly tool
+    // error at runtime); the valid ids live in the Configured sources list.
+    expect(schema.properties.sources.items.type).toBe('string')
+    expect(schema.properties.sources.items.enum).toBeUndefined()
+    const kindEnum = schema.properties.controls.properties.media.properties.kind.enum as string[]
+    expect(kindEnum).toEqual(expect.arrayContaining(['photo', 'illustration', 'vector', 'film', 'animation', 'texture', 'custom-kind']))
+    await client.close()
   })
 })

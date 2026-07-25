@@ -81,6 +81,7 @@ function toReference(it: EuropeanaItem): Reference | null {
   return {
     id: referenceId('europeana', canonicalUrl),
     modality: 'image',
+    kind: 'artwork',
     title: first(it.title) || undefined,
     source: { providerId: 'europeana', sourceUrl: canonicalUrl },
     canonicalUrl,
@@ -97,6 +98,8 @@ export function europeana(config: EuropeanaConfig) {
   return defineProvider({
     id: 'europeana',
     modalities: ['image'],
+    kinds: ['artwork'],
+    description: 'European cultural heritage from museums, libraries and archives (Europeana)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL(BASE)

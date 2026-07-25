@@ -3,10 +3,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord, Modality } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
 const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
+// Legacy media.kind control values — kept in the dynamic enum because they stay
+// meaningful as upstream filter translations for providers that support the
+// media.kind control without declaring kinds.
+const BASE_MEDIA_KINDS = ['photo', 'illustration', 'vector', 'film', 'animation'] as const
 const SEARCH_CONTROL_KEYS = [
   'orientation',
   'color',
@@ -34,33 +38,35 @@ const filtersSchema = z.object({
 })
 const searchControlKeySchema = z.enum(SEARCH_CONTROL_KEYS)
 
-const searchControlsSchema = z.object({
-  orientation: z.enum(ORIENTATIONS).optional(),
-  color: z.string().optional(),
-  language: z.string().optional(),
-  sort: z.enum(['relevance', 'latest', 'popular', 'interesting']).optional(),
-  safety: z.enum(['strict', 'moderate', 'off']).optional(),
-  license: z.object({
-    commercial: z.boolean().optional(),
-    modification: z.boolean().optional(),
-    allowUnknown: z.boolean().optional(),
-  }).optional(),
-  media: z.object({
-    kind: z.enum(['photo', 'illustration', 'vector', 'film', 'animation']).optional(),
-    size: z.enum(['small', 'medium', 'large']).optional(),
-    minWidth: z.number().int().nonnegative().optional(),
-    minHeight: z.number().int().nonnegative().optional(),
-    duration: z.enum(['short', 'medium', 'long']).optional(),
-  }).optional(),
-  creator: z.object({
-    id: z.string().optional(),
-    name: z.string().optional(),
-  }).optional(),
-  text: z.object({
-    copyright: z.enum(['public-domain', 'copyrighted', 'any']).optional(),
-  }).optional(),
-  page: z.number().int().positive().optional(),
-})
+function buildSearchControlsSchema(kindValues: [string, ...string[]]) {
+  return z.object({
+    orientation: z.enum(ORIENTATIONS).optional(),
+    color: z.string().optional(),
+    language: z.string().optional(),
+    sort: z.enum(['relevance', 'latest', 'popular', 'interesting']).optional(),
+    safety: z.enum(['strict', 'moderate', 'off']).optional(),
+    license: z.object({
+      commercial: z.boolean().optional(),
+      modification: z.boolean().optional(),
+      allowUnknown: z.boolean().optional(),
+    }).optional(),
+    media: z.object({
+      kind: z.enum(kindValues).optional(),
+      size: z.enum(['small', 'medium', 'large']).optional(),
+      minWidth: z.number().int().nonnegative().optional(),
+      minHeight: z.number().int().nonnegative().optional(),
+      duration: z.enum(['short', 'medium', 'long']).optional(),
+    }).optional(),
+    creator: z.object({
+      id: z.string().optional(),
+      name: z.string().optional(),
+    }).optional(),
+    text: z.object({
+      copyright: z.enum(['public-domain', 'copyrighted', 'any']).optional(),
+    }).optional(),
+    page: z.number().int().positive().optional(),
+  })
+}
 
 const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
 const providerOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
@@ -83,6 +89,7 @@ function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: 
     id: r.id,
     title: r.title,
     modality: r.modality,
+    kind: r.kind,
     provider: r.source.providerId,
     canonicalUrl: r.canonicalUrl,
     license: r.rights.license,
@@ -105,6 +112,7 @@ const agentRefSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
   modality: z.string(),
+  kind: z.string().optional().describe('fine-grained resource kind, e.g. photo / texture / ebook'),
   provider: z.string(),
   canonicalUrl: z.string(),
   license: z.string(),
@@ -137,7 +145,7 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
     returned: z.number().optional(),
     accepted: z.number().optional(),
     rejected: z.number().optional(),
-    reason: z.enum(['unsupported-modality', 'not-selected']).optional(),
+    reason: z.enum(['unsupported-modality', 'unsupported-kind', 'not-selected']).optional(),
     error: z.string().optional(),
     latencyMs: z.number().optional(),
     cached: z.boolean().optional(),
@@ -160,6 +168,16 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
   // the server's lifetime, so this snapshot never drifts.
   const enabledSourceIds = refkit.providers.map(p => p.id)
 
+  const registered = refkit.providers
+  const modalityValues = [...new Set(registered.flatMap(p => p.modalities))] as [Modality, ...Modality[]]
+  const kindValues = [...new Set<string>([...BASE_MEDIA_KINDS, ...registered.flatMap(p => p.kinds ?? [])])] as [string, ...string[]]
+  const sourceList = registered.map(p => {
+    const kinds = p.kinds?.length ? `·${p.kinds.join(',')}` : ''
+    const desc = p.description ? `: ${p.description}` : ''
+    return `- ${p.id} (${p.modalities.join('/')}${kinds})${desc}`
+  }).join('\n')
+  const searchControlsSchema = buildSearchControlsSchema(kindValues)
+
   server.registerTool(
     'search_references',
     {
@@ -168,14 +186,14 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         'Search license-normalized reference material (image / video / audio / text) across the configured sources. ' +
         'Every result carries a license id + canonical source link. Pass `intent` to annotate each result with a ' +
         'use-verdict (may I use this, is attribution required) WITHOUT filtering; pass `gateFor` to instead return ' +
-        'only results whose license allows that intent. Results are references, not rights clearance — not legal advice.',
+        'only results whose license allows that intent. Results are references, not rights clearance — not legal advice.' +
+        '\n\nConfigured sources:\n' + sourceList,
       inputSchema: {
         query: z.string().describe('what to search for, e.g. "cyberpunk alley at night"'),
-        modalities: z.array(z.enum(MODALITIES)).optional().describe('default ["image"]'),
+        modalities: z.array(z.enum(modalityValues)).optional().describe('default ["image"]'),
         sources: z.array(z.string()).optional().describe(
-          `restrict the search to specific sources by id (omit to search every configured source).${
-            enabledSourceIds.length ? ` Enabled source ids: ${enabledSourceIds.join(', ')}.` : ''
-          } Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources' queries.`,
+          'restrict the search to specific sources by id (omit to search every configured source — see "Configured sources" in this tool description). '
+          + 'Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources\' queries.',
         ),
         filters: filtersSchema.optional().describe('compatibility alias for controls.orientation, controls.color, and controls.language'),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),

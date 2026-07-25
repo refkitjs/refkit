@@ -187,4 +187,9 @@ describe('pexelsVideo provider', () => {
     expect(url.searchParams.get('page')).toBe('3')
     expect(url.searchParams.get('color')).toBeNull()
   })
+
+  it('declares kinds and description (image + video factories)', () => {
+    expect(pexels({ apiKey: 'k' }).kinds).toEqual(['photo'])
+    expect(pexelsVideo({ apiKey: 'k' }).kinds).toEqual(['film'])
+  })
 })

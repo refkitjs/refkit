@@ -15,6 +15,17 @@ export type QueryFeature =
 export type SearchSort = 'relevance' | 'latest' | 'popular' | 'interesting'
 export type SearchSafety = 'strict' | 'moderate' | 'off'
 
+/** Fine-grained resource kind. Open vocabulary: well-known values get
+ *  autocomplete; any other string is a valid custom kind. Well-known values are
+ *  hints, not validation — core never rejects unknown kinds. */
+export type WellKnownKind =
+  | 'photo' | 'illustration' | 'vector' | 'icon' | 'artwork'
+  | 'texture' | 'hdri' | '3d-model'
+  | 'film' | 'animation'
+  | 'music' | 'sound-effect'
+  | 'ebook' | 'poem'
+export type ResourceKind = WellKnownKind | (string & {})
+
 export interface SearchLicenseControls {
   commercial?: boolean
   modification?: boolean
@@ -22,7 +33,7 @@ export interface SearchLicenseControls {
 }
 
 export interface SearchMediaControls {
-  kind?: 'photo' | 'illustration' | 'vector' | 'film' | 'animation'
+  kind?: ResourceKind
   size?: 'small' | 'medium' | 'large'
   minWidth?: number
   minHeight?: number
@@ -126,6 +137,14 @@ export interface ProviderContext {
 export interface ReferenceProvider {
   id: string
   modalities: Modality[]
+  /** Fine-grained kinds this provider offers (routing: a kind-filtered search
+   *  skips providers whose declared kinds lack the requested value; undeclared
+   *  providers are conservatively included). Orthogonal to the `media.kind`
+   *  entry in capabilities.controls, which declares upstream FILTER support. */
+  kinds?: readonly ResourceKind[]
+  /** One-line content-domain summary, surfaced in the MCP tool's source list
+   *  so an agent can judge topical fit (e.g. "CC0 PBR textures for 3D work"). */
+  description?: string
   /** @deprecated Not read by core anymore — declare `capabilities.controls`. */
   queryFeatures?: QueryFeature[]
   capabilities?: ProviderCapabilities

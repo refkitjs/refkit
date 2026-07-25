@@ -166,4 +166,10 @@ describe('gutendex provider', () => {
     expect(result.rights.license).toBe('unknown')
     expect(evaluateUse(result.rights, 'commercial-product').decision).toBe('needs-review')
   })
+
+  it('declares kinds and description', () => {
+    const p = gutendex()
+    expect(p.kinds).toEqual(['ebook'])
+    expect(p.description).toBeTruthy()
+  })
 })

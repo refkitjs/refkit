@@ -143,6 +143,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
   return defineProvider({
     id: 'wikimedia-commons',
     modalities: ['image'],
+    description: 'Freely licensed media from the Wikimedia Commons archive',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://commons.wikimedia.org/w/api.php')

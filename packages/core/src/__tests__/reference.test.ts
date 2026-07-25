@@ -40,4 +40,18 @@ describe('referenceSchema / parseReference', () => {
     const out = parseReference({ ...ref, thumbnail: { url: 'https://x/thumb.jpg' } })
     expect(out.thumbnail).toEqual({ url: 'https://x/thumb.jpg' })
   })
+
+  it('accepts an optional fine-grained kind', () => {
+    const base = {
+      id: 'p:1',
+      modality: 'image',
+      source: { providerId: 'p', sourceUrl: 'https://p/1' },
+      canonicalUrl: 'https://p/1',
+      rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://p/1' } },
+      verifiedAt: '2026-07-24T00:00:00.000Z',
+      relevance: 0,
+    }
+    expect(parseReference({ ...base, kind: 'texture' }).kind).toBe('texture')
+    expect(parseReference(base).kind).toBeUndefined()
+  })
 })

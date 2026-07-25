@@ -187,4 +187,21 @@ describe('pixabayVideo provider', () => {
     expect(url.searchParams.get('page')).toBe('5')
     expect(url.searchParams.get('per_page')).toBe('44')
   })
+
+  it('declares kinds and description (image + video factories)', () => {
+    expect(pixabay({ key: 'k' }).kinds).toEqual(['photo', 'illustration', 'vector'])
+    expect(pixabayVideo({ key: 'k' }).kinds).toEqual(['film', 'animation'])
+  })
+
+  it('maps the upstream hit type to Reference.kind', async () => {
+    const hit = {
+      id: 1, tags: 'x', user: 'u', pageURL: 'https://pixabay.com/p/1',
+      previewURL: 'https://cdn/p.jpg', previewWidth: 10, previewHeight: 10,
+      webformatURL: 'https://cdn/w.jpg', largeImageURL: 'https://cdn/l.jpg',
+      imageWidth: 100, imageHeight: 100, type: 'vectors/svg',
+    }
+    const fakeFetch = (async () => new Response(JSON.stringify({ hits: [hit] }), { status: 200 })) as typeof fetch
+    const refs = await pixabay({ key: 'k' }).search({ text: 'x', modalities: ['image'] }, { fetch: fakeFetch })
+    expect(refs[0].kind).toBe('vector')
+  })
 })

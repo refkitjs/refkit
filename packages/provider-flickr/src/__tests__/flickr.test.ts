@@ -222,4 +222,10 @@ describe('flickr provider', () => {
     expect(url.searchParams.get('safe_search')).toBe('3')
     expect(url.searchParams.get('user_id')).toBe('option-user')
   })
+
+  it('declares kinds and description', () => {
+    const p = flickr({ apiKey: 'k' })
+    expect(p.kinds).toEqual(['photo'])
+    expect(p.description).toBeTruthy()
+  })
 })

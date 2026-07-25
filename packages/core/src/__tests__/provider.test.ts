@@ -46,3 +46,17 @@ describe('ReferenceProvider / defineProvider', () => {
     expect(p.capabilities?.controls).toEqual(['orientation', 'color', 'safety'])
   })
 })
+
+describe('resource declarations', () => {
+  it('defineProvider preserves kinds and description (open vocabulary)', () => {
+    const p = defineProvider({
+      id: 'x',
+      modalities: ['image'],
+      kinds: ['texture', 'my-custom-kind'], // well-known + custom must both typecheck
+      description: 'CC0 textures for tests',
+      search: async () => [],
+    })
+    expect(p.kinds).toEqual(['texture', 'my-custom-kind'])
+    expect(p.description).toBe('CC0 textures for tests')
+  })
+})

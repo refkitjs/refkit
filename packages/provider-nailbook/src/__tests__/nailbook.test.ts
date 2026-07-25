@@ -97,3 +97,9 @@ describe('nailbook provider', () => {
     expect(refs).toEqual([])
   })
 })
+
+it('declares kinds and description', () => {
+  const p = nailbook()
+  expect(p.kinds).toEqual(['photo'])
+  expect(p.description).toBeTruthy()
+})

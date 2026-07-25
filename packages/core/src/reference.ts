@@ -15,6 +15,8 @@ export interface Reference {
   // content-addressed, stable within a single result set only (core is zero-storage).
   id: string
   modality: Modality
+  /** Fine-grained kind (open vocabulary, see ResourceKind), e.g. 'photo', 'texture'. */
+  kind?: string
   title?: string
   // — provenance (required; a result missing any of these never enters the set) —
   source: { providerId: string; sourceUrl: string }
@@ -42,6 +44,7 @@ const modalitySchema: z.ZodType<Modality> = z.enum(['image', 'video', 'audio', '
 export const referenceSchema: z.ZodType<Reference> = z.object({
   id: z.string().min(1),
   modality: modalitySchema,
+  kind: z.string().optional(),
   title: z.string().optional(),
   source: z.object({ providerId: z.string().min(1), sourceUrl: z.string().min(1) }),
   canonicalUrl: z.string().min(1),

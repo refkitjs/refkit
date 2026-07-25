@@ -43,6 +43,7 @@ function toReference(r: UnsplashResult): Reference {
   return {
     id: referenceId('unsplash', r.links.html),
     modality: 'image',
+    kind: 'photo',
     title: r.description ?? r.alt_description ?? undefined,
     source: { providerId: 'unsplash', sourceUrl: r.links.html },
     canonicalUrl: r.links.html,
@@ -59,6 +60,8 @@ export function unsplash(config: UnsplashConfig) {
   return defineProvider({
     id: 'unsplash',
     modalities: ['image'],
+    kinds: ['photo'],
+    description: 'High-quality free stock photography (Unsplash)',
     capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
       const url = new URL('https://api.unsplash.com/search/photos')
