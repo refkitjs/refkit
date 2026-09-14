@@ -83,6 +83,26 @@ describe('lexicalReranker', () => {
     expect(out.map(r => r.id)).toEqual(['z', 'b', 'u'])
   })
 
+  it('a license granting nothing never outranks a real grant, and ties with its peers', async () => {
+    const rights = (license: string) => ({ license, rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: 'u' } })
+    const out = await lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, licenseWeight: 1, sourceDiversity: 0 })({
+      query: 'same',
+      refs: [
+        ref('ncnd', 'same', { rights: rights('CC-BY-NC-ND') }),
+        ref('prop', 'same', { rights: rights('proprietary') }),
+        ref('nc', 'same', { rights: rights('CC-BY-NC') }),
+      ],
+    })
+    const rank = (id: string) => out.findIndex((r) => r.id === id)
+    // CC-BY-NC-ND grants nothing, but neither does proprietary — the obligation
+    // credit is grant-scaled, so proprietary cannot buy a rank with its absent
+    // obligations, and both stay below the NC row that actually grants derivatives.
+    expect(rank('nc')).toBeLessThan(rank('ncnd'))
+    expect(rank('nc')).toBeLessThan(rank('prop'))
+    expect(rank('ncnd')).toBeLessThanOrEqual(rank('prop'))
+    expect(out[rank('ncnd')].relevance).toBe(out[rank('prop')].relevance)
+  })
+
   it('matches query tokens in the text excerpt, not just the title', async () => {
     const refs = [
       ref('title-only', 'untitled'),

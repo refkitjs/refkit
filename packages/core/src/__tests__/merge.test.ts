@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mergeReferences, type RightsConflict } from '../merge'
 import type { Reference } from '../reference'
 import { compareRestrictiveness, LICENSE_FACTS, type LicenseFacts, type LicenseId } from '../license'
+import { evaluateUse } from '../evaluate-use'
 
 const make = (id: string, url: string, hash?: string): Reference => ({
   id,
@@ -140,5 +141,30 @@ describe('cross-source rights resolution (facts)', () => {
     const out = mergeReferences([[ref('a', 'unsplash')], [ref('b', 'CC-BY')]])
     expect(out[0].rights.license).toBe('unknown')
     expect(compareRestrictiveness(LICENSE_FACTS.unsplash, LICENSE_FACTS['CC-BY'])).toBe('incomparable')
+  })
+
+  it('the same id with narrower facts is a conflict; the narrower claim wins', () => {
+    // Both sources say CC-BY, but B's terms withhold commercial use. Detection is
+    // keyed on facts, so the label agreeing must not let the looser claim stand.
+    const seen: RightsConflict[] = []
+    const narrower: LicenseFacts = { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false }
+    const out = mergeReferences(
+      [[ref('a', 'CC-BY')], [ref('b', 'CC-BY', narrower)]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(out[0].rights.facts?.commercialUse).toBe(false)
+    expect(evaluateUse(out[0].rights, 'commercial-product').decision).toBe('denied')
+    expect(seen).toHaveLength(1)
+    expect(seen[0].licenses).toEqual(['CC-BY']) // one id: only the facts disagreed
+  })
+
+  it('different ids with identical facts (CC0 vs PD) are not a conflict', () => {
+    const seen: RightsConflict[] = []
+    const out = mergeReferences(
+      [[ref('a', 'CC0-1.0')], [ref('b', 'PD')]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(seen).toHaveLength(0)
+    expect(out[0].rights.license).toBe('CC0-1.0') // first record's rights kept
   })
 })

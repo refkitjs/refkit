@@ -82,11 +82,26 @@ describe('facts API', () => {
     // unsplash forbids redistribution but needs no attribution; CC-BY is the reverse
     expect(compareRestrictiveness(LICENSE_FACTS.unsplash, LICENSE_FACTS['CC-BY'])).toBe('incomparable')
   })
-  it('permissivenessScore is 1 for CC0 and treats unknown as not granted', () => {
+  it('compareRestrictiveness never orders an indeterminate row', () => {
+    // An all-unknown row grants nothing determinable: it neither dominates nor is
+    // dominated, so it must not be reported as the stricter (or looser) side.
+    expect(compareRestrictiveness(LICENSE_FACTS.unknown, LICENSE_FACTS.proprietary)).toBe('incomparable')
+    expect(compareRestrictiveness(LICENSE_FACTS.proprietary, LICENSE_FACTS.unknown)).toBe('incomparable')
+  })
+  it('permissivenessScore scales obligation credit by the grant fraction', () => {
     expect(permissivenessScore(LICENSE_FACTS['CC0-1.0'])).toBe(1)
+    expect(permissivenessScore(LICENSE_FACTS.PD)).toBe(1)
     expect(permissivenessScore(LICENSE_FACTS['CC-BY'])).toBe(0.875)
-    expect(permissivenessScore(LICENSE_FACTS.unknown)).toBe(0.25)
-    expect(permissivenessScore(LICENSE_FACTS['CC-BY-NC-ND'])).toBe(0.125)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-SA'])).toBe(0.75)
+    expect(permissivenessScore(LICENSE_FACTS.unsplash)).toBeCloseTo(0.6667, 3)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-ND'])).toBeCloseTo(0.5833, 3)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-NC'])).toBeCloseTo(0.2917, 3)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-NC-SA'])).toBe(0.25)
+    // A row that grants nothing scores 0: "no permissions, but no obligations
+    // either" must never outrank a real CC grant.
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-NC-ND'])).toBe(0)
+    expect(permissivenessScore(LICENSE_FACTS.proprietary)).toBe(0)
+    expect(permissivenessScore(LICENSE_FACTS.unknown)).toBe(0)
   })
   it('ccVersionFor: version rides only on versioned CC families', () => {
     expect(ccVersionFor('CC-BY-NC', '2.0')).toBe('2.0')

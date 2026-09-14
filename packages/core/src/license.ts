@@ -73,7 +73,13 @@ function permissivenessVector(f: LicenseFacts): number[] {
   ]
 }
 
+/** Partial order over facts rows: `'a'`/`'b'` names the no-more-permissive side,
+ *  `'equal'` identical grants and obligations, `'incomparable'` a pair where each
+ *  grants something the other doesn't. An INDETERMINATE operand is always
+ *  `'incomparable'`: an all-unknown row grants nothing determinable, so it can be
+ *  neither dominated nor dominating — ordering it would invent a fact. */
 export function compareRestrictiveness(a: LicenseFacts, b: LicenseFacts): 'a' | 'b' | 'equal' | 'incomparable' {
+  if (isIndeterminate(a) || isIndeterminate(b)) return 'incomparable'
   const va = permissivenessVector(a)
   const vb = permissivenessVector(b)
   let aNoMorePermissive = true
@@ -88,14 +94,23 @@ export function compareRestrictiveness(a: LicenseFacts, b: LicenseFacts): 'a' | 
   return 'incomparable'
 }
 
-/** Scalar permissiveness in 0..1 for ranking boosts. Grants weigh 2, obligations 1;
- *  an 'unknown' axis counts as NOT granted, mirroring the strict-deny gate. */
+/** Scalar permissiveness in 0..1 for ranking boosts:
+ *  `(2c + 2d + 2r + g·(attr + sa)) / 8`, where each tri axis counts 1 only for
+ *  `true` (an 'unknown' axis is NOT granted, mirroring the strict-deny gate),
+ *  `attr` is 1 when attribution is not required, `sa` is 1 when share-alike is off,
+ *  and `g = (c + d + r) / 3` is the grant fraction. Scaling the obligation credit
+ *  by `g` is what keeps a row that grants nothing (proprietary, unknown) at 0, so
+ *  "no permissions, but no obligations either" can never outrank a real grant.
+ *  Order: CC0/PD 1 > CC-BY 0.875 > CC-BY-SA 0.75 > stock 0.667 > CC-BY-ND 0.583 >
+ *  CC-BY-NC 0.292 > CC-BY-NC-SA 0.25 > CC-BY-NC-ND = proprietary = unknown = 0. */
 export function permissivenessScore(f: LicenseFacts): number {
   const granted = (t: Tri): number => (t === true ? 1 : 0)
-  return (
-    2 * granted(f.commercialUse) + 2 * granted(f.derivatives) + 2 * granted(f.redistribution)
-    + (f.attributionRequired ? 0 : 1) + (f.shareAlike ? 0 : 1)
-  ) / 8
+  const c = granted(f.commercialUse)
+  const d = granted(f.derivatives)
+  const r = granted(f.redistribution)
+  const grantFraction = (c + d + r) / 3
+  const obligations = (f.attributionRequired ? 0 : 1) + (f.shareAlike ? 0 : 1)
+  return (2 * c + 2 * d + 2 * r + grantFraction * obligations) / 8
 }
 
 // — CC version metadata (attribution/audit only; never read by the gate) —
