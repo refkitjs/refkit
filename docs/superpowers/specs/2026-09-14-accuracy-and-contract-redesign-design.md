@@ -41,9 +41,21 @@ backward-compatibility obligation. Deprecated surfaces are deleted, not aliased.
   axes are all `'unknown'` is *indeterminate*; any conflict involving an indeterminate
   side resolves to `unknown` (preserves today's invariant).
 - The reranker's hand-written `LICENSE_PERMISSIVENESS` table is replaced by
-  `permissivenessScore(facts)` in 0..1: `(2·c + 2·d + 2·r + attr + sa) / 8` where a tri
-  axis counts 1 for `true` and 0 otherwise (unknown counts as not granted, mirroring the
-  gate), `attr` is 1 when attribution is not required, `sa` is 1 when share-alike is off.
+  `permissivenessScore(facts)` in 0..1: `(2·c + 2·d + 2·r + g·(attr + sa)) / 8` where a
+  tri axis counts 1 for `true` and 0 otherwise (unknown counts as not granted, mirroring
+  the gate), `g = (c + d + r) / 3` is the grant fraction, `attr` is 1 when attribution is
+  not required, `sa` is 1 when share-alike is off. Obligation credit is scaled by the
+  grant fraction so a row that grants nothing (proprietary, unknown) scores 0 and can
+  never outrank a real CC grant. Resulting order: CC0/PD 1 > CC-BY 0.875 > CC-BY-SA 0.75
+  > unsplash/pexels/pixabay 0.667 > CC-BY-ND 0.583 > CC-BY-NC 0.292 > CC-BY-NC-SA 0.25 >
+  CC-BY-NC-ND = proprietary = unknown = 0.
+- `compareRestrictiveness` returns `'incomparable'` whenever either operand is
+  indeterminate, so the public comparator never orders an all-unknown row.
+- Cross-source conflict detection is keyed on **facts**, not labels: two records for
+  the same canonical URL conflict when `compareRestrictiveness(factsOf(a), factsOf(b))
+  !== 'equal'`. Same id with narrower supplied facts is a conflict; CC0 vs PD (identical
+  facts) is not. `RightsConflict.licenses` lists the distinct source-declared ids
+  involved (possibly a single id).
 - `licenseVersion` may only be present when `license` is one of the six versioned CC
   families; enforced by a zod refine on `rightsRecordSchema`. `CC_VERSIONED_FAMILIES`
   and `ccVersionFor` move to `license.ts`.
