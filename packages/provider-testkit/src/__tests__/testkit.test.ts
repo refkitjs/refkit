@@ -93,7 +93,7 @@ describe('searchConformant', () => {
         },
       }),
     ])
-    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/carries licenseVersion on non-CC-family license/)
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/licenseVersion is only valid on a versioned CC family license/)
   })
 })
 

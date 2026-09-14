@@ -440,6 +440,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     buildAttribution: ref =>
       buildAttribution({
         license: ref.rights.license,
+        facts: ref.rights.facts,
         licenseVersion: ref.rights.licenseVersion,
         author: ref.rights.author,
         title: ref.title,

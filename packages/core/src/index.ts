@@ -1,9 +1,12 @@
 // Public API — @refkit/core P0.
 export type { Modality } from './modality'
-export { LICENSE_FACTS, factsFor, LICENSE_IDS } from './license'
-export type { LicenseId, LicenseFacts, Tri } from './license'
+export {
+  LICENSE_FACTS, LICENSE_IDS, factsFor, isKnownLicenseId, isIndeterminate,
+  compareRestrictiveness, permissivenessScore, CC_VERSIONED_FAMILIES, ccVersionFor,
+} from './license'
+export type { LicenseId, KnownLicenseId, LicenseFacts, Tri } from './license'
 export type { RehostPolicy, RightsRecord } from './rights'
-export { rightsRecordSchema } from './rights'
+export { rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
 export { buildAttribution } from './attribution'
 export type { Attribution, AttributionInput } from './attribution'
 export type {
@@ -18,7 +21,7 @@ export { fnv1a } from './hash'
 export { canonicalizeUrl, referenceId } from './dedup-key'
 export { hammingDistance, dedupeReferences } from './dedup'
 export type { DedupeOptions } from './dedup'
-export { mergeReferences, stricterLicense } from './merge'
+export { mergeReferences } from './merge'
 export type { MergeOptions, RightsConflict } from './merge'
 export { evaluateUse, evaluatePermissions, NOT_LEGAL_ADVICE, INTENTS } from './evaluate-use'
 export type { Intent, Decision, Verdict, PermissionKey, EvaluateOptions } from './evaluate-use'
@@ -48,7 +51,7 @@ export type {
 export {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber, offsetForPage,
-  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, CC_FAMILY_BY_TOKEN, CC_VERSIONED_FAMILIES,
+  first, mapCcDeedUrl, mapRightsUrl, CC_FAMILY_BY_TOKEN,
   isLikelyImageUrl, imageMediaType, IMAGE_EXT,
 } from './provider-helpers'
 export { normalizeQuery } from './query'

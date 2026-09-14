@@ -145,3 +145,19 @@ describe('evaluatePermissions — programmable strict-deny gate', () => {
     expect(v.reasons.some(r => r.includes('not enforced for archival-review use'))).toBe(true)
   })
 })
+
+describe('facts-driven gate', () => {
+  const base = { rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } } as const
+
+  it('gates a custom id by its supplied facts', () => {
+    const r = { ...base, license: 'acme-stock', facts: { commercialUse: true, derivatives: false, redistribution: false, attributionRequired: false, shareAlike: false } }
+    expect(evaluateUse(r, 'commercial-product').decision).toBe('allowed')
+    expect(evaluateUse(r, 'ai-generation-input').decision).toBe('denied')
+  })
+
+  it('a custom id without facts is needs-review with low confidence', () => {
+    const v = evaluateUse({ ...base, license: 'acme-stock' }, 'internal-moodboard')
+    expect(v.decision).toBe('needs-review')
+    expect(v.confidence).toBe('low')
+  })
+})

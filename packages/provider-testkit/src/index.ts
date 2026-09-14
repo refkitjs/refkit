@@ -1,11 +1,7 @@
 import {
-  parseReference, isLikelyImageUrl, CC_VERSIONED_FAMILIES,
+  parseReference, isLikelyImageUrl,
   type Reference, type ReferenceProvider, type NormalizedQuery, type ProviderContext, type LicenseId,
 } from '@refkit/core'
-
-/** Licenses allowed to carry rights.licenseVersion (the six versioned CC families) —
- *  core's canonical membership set, kept in sync with `ccVersionFor`. */
-const VERSIONED: ReadonlySet<LicenseId> = CC_VERSIONED_FAMILIES
 
 export interface ConformanceOptions {
   /** Text query for the search. Default 'landscape'. */
@@ -63,9 +59,8 @@ export async function searchConformant(
     if (provider.kinds && provider.kinds.length > 0 && ref.kind !== undefined && !provider.kinds.includes(ref.kind)) {
       throw new Error(`[${provider.id}] result #${i} kind "${ref.kind}" is not in the provider's declared kinds [${provider.kinds.join(', ')}]`)
     }
-    if (ref.rights.licenseVersion !== undefined && !VERSIONED.has(ref.rights.license)) {
-      throw new Error(`[${provider.id}] result #${i} carries licenseVersion on non-CC-family license ${ref.rights.license}`)
-    }
+    // (licenseVersion on a non-CC-family license is rejected by rightsRecordSchema
+    // itself, so parseReference above already fails such a result.)
     if (enforceImages) {
       // D8 thumbnail rule, calibrated for real providers: legitimate thumbnails are
       // often extensionless CDN/proxy URLs that no URL heuristic can bless

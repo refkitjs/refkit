@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rightsRecordSchema, type RightsRecord } from '../rights'
+import { factsOf, rightsRecordSchema, type RightsRecord } from '../rights'
 
 const valid: RightsRecord = {
   license: 'CC-BY',
@@ -31,5 +31,29 @@ describe('rightsRecordSchema', () => {
       raw: { sourceTerms: 't', sourceUrl: 'u' },
     })
     expect(r.license).toBe('CC-BY-NC-ND')
+  })
+})
+
+describe('RightsRecord facts', () => {
+  const base = { rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } } as const
+
+  it('accepts a custom license id when facts are supplied', () => {
+    const r = rightsRecordSchema.parse({ ...base, license: 'acme-stock', facts: { commercialUse: true, derivatives: false, redistribution: false, attributionRequired: true, shareAlike: false } })
+    expect(factsOf(r).derivatives).toBe(false)
+  })
+
+  it('a custom id without facts resolves to the unknown row', () => {
+    const r = rightsRecordSchema.parse({ ...base, license: 'acme-stock' })
+    expect(factsOf(r).commercialUse).toBe('unknown')
+  })
+
+  it('facts override the table for a known id', () => {
+    const r = rightsRecordSchema.parse({ ...base, license: 'CC-BY', facts: { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false } })
+    expect(factsOf(r).commercialUse).toBe(false)
+  })
+
+  it('rejects licenseVersion on a non-CC-family license', () => {
+    expect(() => rightsRecordSchema.parse({ ...base, license: 'unsplash', licenseVersion: '4.0' })).toThrow()
+    expect(() => rightsRecordSchema.parse({ ...base, license: 'CC-BY', licenseVersion: '4.0' })).not.toThrow()
   })
 })

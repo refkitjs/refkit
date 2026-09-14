@@ -103,19 +103,6 @@ export function mapCcDeedUrl(url: string | undefined | null): { license: License
   return { license: 'unknown' }
 }
 
-/** Canonical membership set backing `ccVersionFor`; also consumed by the testkit's
- *  licenseVersion conformance rule. */
-export const CC_VERSIONED_FAMILIES: ReadonlySet<LicenseId> = new Set([
-  'CC-BY', 'CC-BY-SA', 'CC-BY-NC', 'CC-BY-NC-SA', 'CC-BY-NC-ND', 'CC-BY-ND',
-])
-
-/** `version` when `license` is a versioned CC family, else undefined — the shared
- *  licenseVersion guard for provider mappers (replaces the hand-rolled
- *  `license === 'CC-BY' || license === 'CC-BY-SA'` checks). */
-export function ccVersionFor(license: LicenseId, version: string | undefined): string | undefined {
-  return version !== undefined && CC_VERSIONED_FAMILIES.has(license) ? version : undefined
-}
-
 // rightsstatements.org is a controlled vocabulary of rights STATUS statements (not license
 // grants). Map each token FAITHFULLY to the closest true refkit representation rather than
 // collapsing all to unknown — discarding a signal the source did give us is not "honest":

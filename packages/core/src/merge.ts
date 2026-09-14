@@ -1,6 +1,6 @@
 import type { Reference } from './reference'
-import type { RightsRecord } from './rights'
-import { factsFor, type LicenseId, type Tri } from './license'
+import { factsOf, type RightsRecord } from './rights'
+import { compareRestrictiveness, isIndeterminate, type LicenseId } from './license'
 import { canonicalizeUrl } from './dedup-key'
 import { dedupeReferences, type DedupeOptions } from './dedup'
 
@@ -27,49 +27,27 @@ export interface MergeOptions extends DedupeOptions {
 // — conservative rights resolution for cross-source URL conflicts —
 // Two sources describing the SAME canonical URL are making claims about the same
 // work; when their license ids disagree, believing the more permissive claim
-// would be fail-open. Rank every axis so smaller = stricter, then keep a license
-// only if it is no more permissive on EVERY axis; incomparable pairs collapse to
-// 'unknown' (→ needs-review), matching the strict-deny invariant.
-const triRank = (t: Tri): number => (t === true ? 2 : t === 'unknown' ? 1 : 0)
+// would be fail-open. The facts of each claim are compared under
+// compareRestrictiveness's partial order; incomparable (and indeterminate) pairs
+// collapse to 'unknown' (→ needs-review), matching the strict-deny invariant.
 
-function permissivenessVector(license: LicenseId): number[] {
-  const f = factsFor(license)
-  return [
-    triRank(f.commercialUse),
-    triRank(f.derivatives),
-    triRank(f.redistribution),
-    f.attributionRequired ? 0 : 1, // carrying the obligation is stricter
-    f.shareAlike ? 0 : 1,
-  ]
-}
-
-/** The stricter of two license ids when one dominates on every axis; undefined
- *  when they are incomparable (each grants something the other doesn't). */
-export function stricterLicense(a: LicenseId, b: LicenseId): LicenseId | undefined {
-  // 'unknown' grants nothing determinable — a conflict involving it can only
-  // resolve to it (its obligation axes are meaningless, not "no obligations").
-  if (a === 'unknown' || b === 'unknown') return 'unknown'
-  const va = permissivenessVector(a)
-  const vb = permissivenessVector(b)
-  let aNoMorePermissive = true
-  let bNoMorePermissive = true
-  for (let i = 0; i < va.length; i++) {
-    if (va[i] > vb[i]) aNoMorePermissive = false
-    if (vb[i] > va[i]) bNoMorePermissive = false
-  }
-  if (aNoMorePermissive) return a
-  if (bNoMorePermissive) return b
-  return undefined
+function unknownRecord(anchor: RightsRecord): RightsRecord {
+  // No honest single license exists for the conflict: strict-deny to 'unknown'.
+  // Keep the anchor's per-item data as the audit trail; drop facts/version that
+  // only made sense for the original id.
+  return { ...anchor, license: 'unknown', licenseVersion: undefined, facts: undefined }
 }
 
 function resolveRightsConflict(current: RightsRecord, incoming: RightsRecord): RightsRecord {
-  const winner = stricterLicense(current.license, incoming.license)
-  if (winner === current.license) return current
-  if (winner === incoming.license) return incoming
-  // Incomparable claims about the same work: no honest single license id exists,
-  // so strict-deny to 'unknown' (needs-review). Keep the current record's per-item
-  // data as the audit anchor; drop licenseVersion (meaningless off a CC family).
-  return { ...current, license: 'unknown', licenseVersion: undefined }
+  const fa = factsOf(current)
+  const fb = factsOf(incoming)
+  // An indeterminate side grants nothing determinable — the conflict can only
+  // resolve to unknown.
+  if (isIndeterminate(fa) || isIndeterminate(fb)) return unknownRecord(current)
+  const cmp = compareRestrictiveness(fa, fb)
+  if (cmp === 'a' || cmp === 'equal') return current
+  if (cmp === 'b') return incoming
+  return unknownRecord(current)
 }
 
 // Reciprocal Rank Fusion across per-source ranked lists. Each list is assumed already

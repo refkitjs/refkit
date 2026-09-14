@@ -1,4 +1,5 @@
-import { factsFor, type LicenseId } from './license'
+import { type LicenseFacts, type LicenseId } from './license'
+import { factsOf } from './rights'
 
 export interface Attribution {
   required: boolean
@@ -8,6 +9,9 @@ export interface Attribution {
 
 export interface AttributionInput {
   license: LicenseId
+  /** Facts for this record; needed for ids outside LICENSE_FACTS, which would
+   *  otherwise resolve to `unknown` (no attribution required). */
+  facts?: LicenseFacts
   /** Precise CC version for family ids; appended to the license name in the credit line. */
   licenseVersion?: string
   canonicalUrl: string
@@ -22,7 +26,7 @@ function escapeHtml(s: string): string {
 // Mechanically derive attribution from license + author + title + canonicalUrl, so
 // satellites pass fields (not hand-written strings) and credit lines stay consistent.
 export function buildAttribution(input: AttributionInput): Attribution {
-  const facts = factsFor(input.license)
+  const facts = factsOf(input)
   if (!facts.attributionRequired) return { required: false }
 
   const author = input.author ?? 'Unknown author'

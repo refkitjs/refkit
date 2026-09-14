@@ -74,6 +74,15 @@ describe('lexicalReranker', () => {
     expect(out[0].id).toBe('cc0')
   })
 
+  it('license boost is derived from facts: CC0 outranks CC-BY outranks unknown', () => {
+    const mk = (id: string, license: string): Reference => ({
+      id, modality: 'image', title: 'same', source: { providerId: 'p', sourceUrl: `https://x.test/${id}` }, canonicalUrl: `https://x.test/${id}`,
+      rights: { license, rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } }, verifiedAt: new Date().toISOString(), relevance: 0,
+    })
+    const out = lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, licenseWeight: 1, sourceDiversity: 0 })({ query: 'same', refs: [mk('u', 'unknown'), mk('b', 'CC-BY'), mk('z', 'CC0-1.0')] }) as Reference[]
+    expect(out.map(r => r.id)).toEqual(['z', 'b', 'u'])
+  })
+
   it('matches query tokens in the text excerpt, not just the title', async () => {
     const refs = [
       ref('title-only', 'untitled'),

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { LICENSE_FACTS, factsFor, type LicenseId } from '../license'
+import {
+  LICENSE_FACTS, ccVersionFor, compareRestrictiveness, factsFor, isIndeterminate, isKnownLicenseId,
+  permissivenessScore,
+} from '../license'
 
 describe('LICENSE_FACTS', () => {
   it('CC0 allows commercial use, derivatives, redistribution, no attribution, no share-alike', () => {
@@ -34,7 +37,7 @@ describe('LICENSE_FACTS', () => {
   })
 
   it('factsFor falls back to unknown for an unrecognized id', () => {
-    expect(factsFor('not-a-real-license' as LicenseId)).toBe(LICENSE_FACTS.unknown)
+    expect(factsFor('not-a-real-license')).toBe(LICENSE_FACTS.unknown)
   })
 
   it('CC-BY-ND allows verbatim commercial use but no derivatives', () => {
@@ -59,5 +62,38 @@ describe('LICENSE_FACTS', () => {
     expect(LICENSE_FACTS['CC-BY-NC-ND'].derivatives).toBe(false)
     expect(LICENSE_FACTS['CC-BY-NC'].shareAlike).toBe(false)
     expect(LICENSE_FACTS['CC-BY-NC-ND'].shareAlike).toBe(false)
+  })
+})
+
+describe('facts API', () => {
+  it('factsFor falls back to unknown for an id outside the table', () => {
+    expect(factsFor('acme-stock')).toEqual(LICENSE_FACTS.unknown)
+    expect(isKnownLicenseId('acme-stock')).toBe(false)
+    expect(isKnownLicenseId('CC-BY')).toBe(true)
+  })
+  it('isIndeterminate is true only when all three tri axes are unknown', () => {
+    expect(isIndeterminate(LICENSE_FACTS.unknown)).toBe(true)
+    expect(isIndeterminate(LICENSE_FACTS['CC-BY-NC'])).toBe(false)
+  })
+  it('compareRestrictiveness orders by dominance and reports incomparable pairs', () => {
+    expect(compareRestrictiveness(LICENSE_FACTS['CC-BY'], LICENSE_FACTS['CC0-1.0'])).toBe('a')
+    expect(compareRestrictiveness(LICENSE_FACTS['CC0-1.0'], LICENSE_FACTS['CC-BY'])).toBe('b')
+    expect(compareRestrictiveness(LICENSE_FACTS['CC0-1.0'], LICENSE_FACTS.PD)).toBe('equal')
+    // unsplash forbids redistribution but needs no attribution; CC-BY is the reverse
+    expect(compareRestrictiveness(LICENSE_FACTS.unsplash, LICENSE_FACTS['CC-BY'])).toBe('incomparable')
+  })
+  it('permissivenessScore is 1 for CC0 and treats unknown as not granted', () => {
+    expect(permissivenessScore(LICENSE_FACTS['CC0-1.0'])).toBe(1)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY'])).toBe(0.875)
+    expect(permissivenessScore(LICENSE_FACTS.unknown)).toBe(0.25)
+    expect(permissivenessScore(LICENSE_FACTS['CC-BY-NC-ND'])).toBe(0.125)
+  })
+  it('ccVersionFor: version rides only on versioned CC families', () => {
+    expect(ccVersionFor('CC-BY-NC', '2.0')).toBe('2.0')
+    expect(ccVersionFor('CC-BY-ND', '4.0')).toBe('4.0')
+    expect(ccVersionFor('CC-BY', '4.0')).toBe('4.0')
+    expect(ccVersionFor('CC0-1.0', '1.0')).toBeUndefined()
+    expect(ccVersionFor('proprietary', '2.0')).toBeUndefined()
+    expect(ccVersionFor('CC-BY-NC', undefined)).toBeUndefined()
   })
 })

@@ -3,7 +3,7 @@ import {
   offsetForPage,
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, isLikelyImageUrl, imageMediaType,
+  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType,
 } from '../provider-helpers'
 
 const params = (fn: (u: URL) => void) => { const u = new URL('https://x.test/'); fn(u); return u.searchParams }
@@ -107,14 +107,6 @@ describe('mapCcDeedUrl', () => {
   })
   it('never throws on a non-string input (array/number) → unknown', () => {
     expect(mapCcDeedUrl(['x'] as any)).toEqual({ license: 'unknown' })
-  })
-  it('ccVersionFor: version rides only on versioned CC families', () => {
-    expect(ccVersionFor('CC-BY-NC', '2.0')).toBe('2.0')
-    expect(ccVersionFor('CC-BY-ND', '4.0')).toBe('4.0')
-    expect(ccVersionFor('CC-BY', '4.0')).toBe('4.0')
-    expect(ccVersionFor('CC0-1.0', '1.0')).toBeUndefined()
-    expect(ccVersionFor('proprietary', '2.0')).toBeUndefined()
-    expect(ccVersionFor('CC-BY-NC', undefined)).toBeUndefined()
   })
 })
 

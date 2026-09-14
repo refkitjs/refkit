@@ -1,5 +1,6 @@
 import type { Reference } from './reference'
-import type { LicenseId } from './license'
+import { permissivenessScore } from './license'
+import { factsOf } from './rights'
 
 /** The arguments a {@link Reranker} receives: the user query, the merged
  *  candidate refs (read-only — copy before reordering), and the search's
@@ -70,14 +71,6 @@ function lexicalScore(queryTokens: string[], ref: Reference): number {
   return hit / queryTokens.length
 }
 
-const LICENSE_PERMISSIVENESS: Record<LicenseId, number> = {
-  'CC0-1.0': 1, PD: 1,
-  unsplash: 0.85, pexels: 0.85, pixabay: 0.85,
-  'CC-BY': 0.75, 'CC-BY-SA': 0.65,
-  'CC-BY-ND': 0.55, 'CC-BY-NC': 0.45, 'CC-BY-NC-SA': 0.4, 'CC-BY-NC-ND': 0.35,
-  unknown: 0.3, proprietary: 0.2,
-}
-
 /** Resolution (w×h) as a quality proxy, normalised to the batch max → 0..1; 0.5 when
  *  unknown. Max-normalised, so one very large image compresses the rest — acceptable
  *  at the default qualityWeight of 0.15. */
@@ -120,7 +113,7 @@ export function lexicalReranker(opts: LexicalRerankOptions = {}): Reranker {
       base:
         lexW * lexicalScore(qTokens, ref) +
         qualW * qual[i] +
-        licW * LICENSE_PERMISSIVENESS[ref.rights.license],
+        licW * permissivenessScore(factsOf(ref.rights)),
     }))
 
     // Greedy MMR-lite: repeatedly take the best (base − diversity penalty for an

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { mergeReferences, stricterLicense, type RightsConflict } from '../merge'
+import { mergeReferences, type RightsConflict } from '../merge'
 import type { Reference } from '../reference'
-import type { LicenseId } from '../license'
+import { compareRestrictiveness, LICENSE_FACTS, type LicenseFacts, type LicenseId } from '../license'
 
 const make = (id: string, url: string, hash?: string): Reference => ({
   id,
@@ -107,14 +107,6 @@ describe('mergeReferences (RRF)', () => {
     expect(out[0].rights.license).toBe('unknown')
   })
 
-  it('stricterLicense: dominance picks the stricter; incomparable pairs return undefined', () => {
-    expect(stricterLicense('CC-BY', 'CC-BY-NC')).toBe('CC-BY-NC')
-    expect(stricterLicense('CC0-1.0', 'proprietary')).toBe('proprietary')
-    expect(stricterLicense('CC0-1.0', 'PD')).toBeDefined() // equal permissiveness — either
-    expect(stricterLicense('unsplash', 'CC-BY-ND')).toBeUndefined()
-    expect(stricterLicense('CC-BY-SA', 'unknown')).toBe('unknown') // unknown grants nothing determinable
-  })
-
   it('handles a large pool without a Math.max(...spread) stack overflow', () => {
     // The fused-score max must not be computed via `Math.max(...scores)`: spreading
     // ~10^5 args overflows the call stack (RangeError). Pool size here is well past
@@ -123,5 +115,30 @@ describe('mergeReferences (RRF)', () => {
     const out = mergeReferences([big])
     expect(out).toHaveLength(200_000)
     expect(out[0].relevance).toBe(1) // top still normalised to exactly 1.0
+  })
+})
+
+describe('cross-source rights resolution (facts)', () => {
+  const ref = (providerId: string, license: string, facts?: LicenseFacts): Reference => ({
+    id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+    rights: { license, ...(facts ? { facts } : {}), rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
+    verifiedAt: new Date().toISOString(), relevance: 0,
+  })
+
+  it('the stricter facts win regardless of id spelling', () => {
+    const custom: LicenseFacts = { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: true }
+    const out = mergeReferences([[ref('a', 'CC0-1.0')], [ref('b', 'acme-sa', custom)]])
+    expect(out[0].rights.license).toBe('acme-sa')
+  })
+
+  it('an indeterminate side collapses the conflict to unknown', () => {
+    const out = mergeReferences([[ref('a', 'proprietary')], [ref('b', 'unknown')]])
+    expect(out[0].rights.license).toBe('unknown')
+  })
+
+  it('incomparable facts collapse to unknown', () => {
+    const out = mergeReferences([[ref('a', 'unsplash')], [ref('b', 'CC-BY')]])
+    expect(out[0].rights.license).toBe('unknown')
+    expect(compareRestrictiveness(LICENSE_FACTS.unsplash, LICENSE_FACTS['CC-BY'])).toBe('incomparable')
   })
 })
