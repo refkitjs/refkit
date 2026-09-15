@@ -48,6 +48,36 @@ describe('mergeReferences (RRF)', () => {
     expect(out).toHaveLength(1)
   })
 
+  it("weights scale a source's RRF contribution", () => {
+    const a = make('a-1', 'https://x.test/a')
+    const b = make('b-1', 'https://x.test/b')
+    const unweighted = mergeReferences([[a], [b]])
+    expect(unweighted[0].relevance).toBe(1)
+    expect(unweighted[1].relevance).toBe(1)
+    const weighted = mergeReferences([[a], [b]], { weights: [1, 0.1] })
+    expect(weighted[0].canonicalUrl).toBe('https://x.test/a')
+    expect(weighted[1].relevance).toBeCloseTo(0.1, 5)
+  })
+
+  it('treats a missing or invalid weight as 1 instead of erasing the list', () => {
+    const lists = [
+      [make('a-1', 'https://x.test/a')],
+      [make('b-1', 'https://x.test/b')],
+      [make('c-1', 'https://x.test/c')], // no weight supplied at all
+    ]
+    const out = mergeReferences(lists, { weights: [NaN, -1] })
+    expect(out).toHaveLength(3)
+    for (const r of out) expect(r.relevance).toBe(1)
+  })
+
+  it('an all-zero weighting yields 0 relevance, never NaN', () => {
+    // Possible only with an explicit confidence floor of 0: every contribution is
+    // zeroed, so there is no max to normalise against.
+    const out = mergeReferences([[make('a-1', 'https://x.test/a')]], { weights: [0] })
+    expect(out).toHaveLength(1)
+    expect(out[0].relevance).toBe(0)
+  })
+
   it('returns [] for empty / all-empty input without throwing', () => {
     expect(mergeReferences([])).toEqual([])
     expect(mergeReferences([[], []])).toEqual([])

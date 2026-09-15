@@ -20,6 +20,11 @@ export interface RightsConflict {
 export interface MergeOptions extends DedupeOptions {
   /** RRF dampening constant. Standard default 60. */
   k?: number
+  /** Per-list multiplier on RRF contributions (parallel to `perSource`);
+   *  missing/invalid entries count as 1. The client feeds per-source lexical
+   *  confidence here, so a source whose batch ignores the query contributes a
+   *  fraction of its rank positions instead of its full share. */
+  weights?: readonly number[]
   /** Observe cross-source license conflicts (the client surfaces them as
    *  meta.warnings). Resolution itself is built in and always conservative. */
   onRightsConflict?: (conflict: RightsConflict) => void
@@ -75,10 +80,14 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
   const conflictFacts = new Map<string, Set<string>>()
   const conflictLabels = new Map<string, Set<LicenseId>>()
 
-  for (const list of perSource) {
+  perSource.forEach((list, listIndex) => {
+    // A weight that isn't a non-negative finite number is not a trust signal —
+    // count it as 1 (full contribution) rather than erasing or inverting a list.
+    const w = opts.weights?.[listIndex]
+    const weight = typeof w === 'number' && Number.isFinite(w) && w >= 0 ? w : 1
     list.forEach((ref, rank) => {
       const key = canonicalizeUrl(ref.canonicalUrl)
-      score.set(key, (score.get(key) ?? 0) + 1 / (k + rank))
+      score.set(key, (score.get(key) ?? 0) + weight / (k + rank))
       const cur = rep.get(key)
       if (!cur || ref.relevance > cur.relevance) rep.set(key, ref)
       // Cross-source rights conflict: same canonical URL, disagreeing FACTS (the
@@ -109,7 +118,7 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
         rights.set(key, resolveRightsConflict(known, ref.rights))
       }
     })
-  }
+  })
 
   // Report each conflicted URL once, with every source-declared id involved.
   if (opts.onRightsConflict) {
@@ -125,11 +134,12 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
   // Normalize by the actual max so the top result's relevance is exactly 1.0.
   // Reduce, not Math.max(...score.values()) — the merged pool can be large and a
   // spread of that many args overflows the call stack. RRF scores are fractional
-  // (1/(k+rank) sums), so we keep the true max (no floor) to hit exactly 1.0. For
-  // empty input score has no entries, so the .map body never runs and the seed
-  // maxScore (-Infinity) is never used in the division.
+  // (1/(k+rank) sums), so we keep the true max (no floor) to hit exactly 1.0 —
+  // except when nothing scored above 0 (empty input, or every list weighted 0),
+  // where 1 keeps relevance an honest 0 instead of NaN.
   let maxScore = -Infinity
   for (const s of score.values()) if (s > maxScore) maxScore = s
+  if (!(maxScore > 0)) maxScore = 1
   const fused: Reference[] = [...score.entries()]
     .map(([key, s]) => ({
       ...rep.get(key)!,

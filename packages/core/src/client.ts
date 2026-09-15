@@ -1,5 +1,5 @@
 import type { Reference } from './reference'
-import type { Reranker } from './rerank'
+import { lexicalReranker, type Reranker } from './rerank'
 import type { Modality } from './modality'
 import type { Intent, Verdict } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
@@ -8,7 +8,8 @@ import { buildAttribution } from './attribution'
 import type { ReferenceProvider, KeyValueCache, ProviderOptionsById } from './provider'
 import type { SearchControlKey, SearchControls } from './controls'
 import type { MergeOptions, RightsConflict } from './merge'
-import { retryingFetch, withDefaultUserAgent, withTimeout } from './resilience'
+import { DEFAULT_CONFIDENCE_FLOOR } from './confidence'
+import { retryingFetch, withDefaultUserAgent, withTimeout, type TimeoutHandle } from './resilience'
 import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
 import { selectProviders, type ProviderSkipReason } from './select'
 import { runPass, type PassDeps, type PassOutcome } from './pipeline'
@@ -26,6 +27,17 @@ export interface RefkitOptions {
   cache?: KeyValueCache
   signal?: AbortSignal
   merge?: MergeOptions
+  /** Post-merge reordering for every search. Defaults to {@link lexicalReranker}
+   *  with its stock weights; pass your own {@link Reranker} (e.g. a model-backed
+   *  one) to replace it, or `false` to return raw cross-source rank fusion.
+   *  `SearchInput.rerank` overrides this per call. */
+  rerank?: Reranker | false
+  /** Weight each source's contribution to the fusion by how well the batch it
+   *  returned matches the query — a source that answered something else stops
+   *  out-ranking the ones that answered. Defaults ON with a 0.1 floor (a source
+   *  is dampened, never erased, so non-English titles keep a foothold); pass a
+   *  floor to tune it, or `false` for unweighted fusion. */
+  sourceConfidence?: boolean | { floor?: number }
   /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
   resilience?: ResilienceOptions | false
   /** TTL for per-provider cached results; used only when `cache` is set. Default 300_000. */
@@ -70,12 +82,21 @@ export interface ProviderSearchStatus {
   error?: string
   latencyMs?: number
   cached?: boolean
+  /** How well this source's batch matched the query (0..1), the multiplier its
+   *  rank positions carried into the fusion. Present on fulfilled providers while
+   *  `sourceConfidence` is on. */
+  confidence?: number
 }
 
 export interface SearchGateMeta {
   intent: Intent
   before: number
   after: number
+  dropped: number
+}
+
+export interface SearchThresholdMeta {
+  minRelevance: number
   dropped: number
 }
 
@@ -97,6 +118,8 @@ export interface SearchMeta {
   providerOptions?: string[]
   providers: ProviderSearchStatus[]
   gate?: SearchGateMeta
+  /** Present when `minRelevance` was set: the bar and how many results it cut. */
+  threshold?: SearchThresholdMeta
   /** Opaque "load more" cursor: pass as `SearchInput.cursor` to fetch the next
    *  batch with cross-page dedup handled internally. Present when this call
    *  returned at least one result; absent = the stream is exhausted. */
@@ -141,15 +164,24 @@ export interface SearchInput {
   poolFactor?: number
   signal?: AbortSignal
   /** Whole-search deadline in ms, composed with `signal`. Providers still in
-   *  flight when it fires are reported as failed; the search returns everyone
-   *  else. Bounds the WHOLE call, cursor page advances included — unlike
+   *  flight when it fires are reported as failed and the search returns everyone
+   *  else — or fails with an AggregateError if every provider was still in
+   *  flight. Bounds the WHOLE call, cursor page advances included — unlike
    *  `resilience.timeoutMs`, which bounds one provider search. */
   deadlineMs?: number
   gateFor?: Intent
   /** Context for the search-time gate (`gateFor`), matching evaluateUse's ctx. */
   gateContext?: { userJurisdiction?: string }
   onProviderError?: (e: ProviderError) => void
-  rerank?: Reranker
+  /** Override the client's reranker for this call: a {@link Reranker} to use
+   *  instead, or `false` for raw cross-source rank fusion. Omit to keep the
+   *  client's default (the lexical reranker unless `RefkitOptions.rerank` says
+   *  otherwise). */
+  rerank?: Reranker | false
+  /** Drop results the ranker scored below this (0..1, post-rerank relevance) and
+   *  report the cut in `meta.threshold`. Off by default — a threshold can empty
+   *  the batch, which only the caller can decide is better than weak results. */
+  minRelevance?: number
 }
 
 export interface RefkitClient {
@@ -179,10 +211,11 @@ const DEFAULT_MAX_CURSOR_SEEN = 500
  *  means the sources agreed on the label and only their FACTS disagreed — saying
  *  "CC-BY vs CC-BY" there would read as a no-op. */
 function rightsConflictWarning(c: RightsConflict): string {
+  const head = `cross-source rights conflict for ${c.canonicalUrl}:`
   const tail = `resolved to ${c.resolvedLicense}.`
   return c.licenses.length === 1
-    ? `cross-source rights conflict for ${c.canonicalUrl}: ${c.licenses[0]} declared with differing facts → ${tail}`
-    : `cross-source license conflict for ${c.canonicalUrl}: ${c.licenses.join(' vs ')} → ${tail}`
+    ? `${head} ${c.licenses[0]} declared with differing facts → ${tail}`
+    : `${head} ${c.licenses.join(' vs ')} → ${tail}`
 }
 
 export function createRefkit(options: RefkitOptions): RefkitClient {
@@ -191,6 +224,12 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
   // construction and crash cryptically on the first search.
   if (!Array.isArray(options.providers) || options.providers.length === 0) {
     throw new Error('createRefkit: providers must be a non-empty array (did you forget to await an async provider factory?)')
+  }
+  // Built once, not per search: the default reranker is stateless and its weight
+  // resolution is fixed for the life of the client.
+  const defaultReranker = options.rerank === undefined ? lexicalReranker() : (options.rerank || undefined)
+  const confidence = options.sourceConfidence === false ? undefined : {
+    floor: typeof options.sourceConfidence === 'object' ? options.sourceConfidence.floor ?? DEFAULT_CONFIDENCE_FLOOR : DEFAULT_CONFIDENCE_FLOOR,
   }
 
   async function searchInternal(input: SearchInput): Promise<SearchResult> {
@@ -223,40 +262,51 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       ? withRetry
       : withDefaultUserAgent(withRetry, options.userAgent ?? DEFAULT_USER_AGENT)
     const parentSignal = input.signal ?? options.signal
-    // The whole-search deadline is composed with the caller's signal once and
-    // handed to every pass, so cursor page advances share one budget.
-    const deadline = input.deadlineMs !== undefined ? withTimeout(parentSignal, input.deadlineMs) : undefined
-    const signal = deadline?.signal ?? parentSignal
     const concurrency = options.concurrency !== undefined && options.concurrency >= 1
       ? Math.floor(options.concurrency)
       : undefined
-    const deps: PassDeps = {
-      providers: options.providers,
-      chosen: selection.chosen,
-      skipReasons: selection.skipReasons,
-      query: input.query,
-      modalities: input.modalities,
-      controls: input.controls,
-      providerOptions: input.providerOptions,
-      fetchLimit,
-      run: {
-        fetch: sharedFetch,
-        cache: options.cache,
-        cacheTtlMs: options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
-        cacheRaw: options.cacheRaw ?? true,
-        timeoutMs: resilience?.timeoutMs,
-        signal,
-      },
-      concurrency,
-      merge: options.merge,
-      rerank: input.rerank,
-      gateFor: input.gateFor,
-      gateContext: input.gateContext,
-      seen,
-      signal,
-      onProviderError: (providerId, error) => input.onProviderError?.({ providerId, error }),
-    }
+    // A per-call `rerank` wins over the client's default; `false` on either level
+    // means raw cross-source rank fusion.
+    const reranker = input.rerank === undefined ? defaultReranker : (input.rerank || undefined)
+    // A non-finite bar would silently drop every result (`r.relevance >= NaN` is
+    // never true), so it reads as "no threshold asked for".
+    const minRelevance = Number.isFinite(input.minRelevance) ? input.minRelevance : undefined
+    // The deadline handle is acquired inside the try whose finally cancels it —
+    // nothing between acquisition and the try can leak the timer/listener.
+    let deadline: TimeoutHandle | undefined
     try {
+      // The whole-search deadline is composed with the caller's signal once and
+      // handed to every pass, so cursor page advances share one budget.
+      deadline = input.deadlineMs !== undefined ? withTimeout(parentSignal, input.deadlineMs) : undefined
+      const signal = deadline?.signal ?? parentSignal
+      const deps: PassDeps = {
+        providers: options.providers,
+        chosen: selection.chosen,
+        skipReasons: selection.skipReasons,
+        query: input.query,
+        modalities: input.modalities,
+        controls: input.controls,
+        providerOptions: input.providerOptions,
+        fetchLimit,
+        run: {
+          fetch: sharedFetch,
+          cache: options.cache,
+          cacheTtlMs: options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
+          cacheRaw: options.cacheRaw ?? true,
+          timeoutMs: resilience?.timeoutMs,
+          signal,
+        },
+        concurrency,
+        merge: options.merge,
+        rerank: reranker,
+        confidence,
+        minRelevance,
+        gateFor: input.gateFor,
+        gateContext: input.gateContext,
+        seen,
+        signal,
+        onProviderError: (providerId, error) => input.onProviderError?.({ providerId, error }),
+      }
       // Providers fetch fetchLimit (≥ limit) candidates per page, but each call
       // returns only `limit` — so the cursor must NOT advance the provider page
       // per call, or the unreturned overfetch remainder would be skipped forever.
@@ -312,6 +362,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           warnings.push(rightsConflictWarning(c))
         }
       }
+      if (last.threshold && last.threshold.dropped > 0) warnings.push(`${last.threshold.dropped} result(s) below minRelevance ${last.threshold.minRelevance}.`)
       if (last.gate && last.gate.dropped > 0) warnings.push(`${last.gate.dropped} result(s) dropped by ${last.gate.intent} gate.`)
       // Status: the last pass wins (it produced the results), but latency sums
       // over every pass — a multi-pass call really did spend that long.
@@ -334,6 +385,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
           providers,
           ...(last.gate ? { gate: last.gate } : {}),
+          ...(last.threshold ? { threshold: last.threshold } : {}),
           ...(nextCursor ? { nextCursor } : {}),
           warnings,
         },

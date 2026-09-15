@@ -1,10 +1,11 @@
-// One search pass, as named stages: fan-out → status collection → merge →
-// rerank → gate → seen-filter. The client owns option resolution, the cursor
-// loop and meta assembly; everything a pass needs arrives as PassDeps, so a
-// stage is testable on its own and the cursor path can run several passes
-// against the same deps.
+// One search pass, as named stages: fan-out → status collection → confidence →
+// merge → rerank → threshold → gate → seen-filter. The client owns option
+// resolution, the cursor loop and meta assembly; everything a pass needs arrives
+// as PassDeps, so a stage is testable on its own and the cursor path can run
+// several passes against the same deps.
 import type { Reference } from './reference'
-import type { Reranker } from './rerank'
+import { tokenize, type Reranker } from './rerank'
+import { sourceConfidence } from './confidence'
 import type { Modality } from './modality'
 import type { Intent } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
@@ -16,7 +17,7 @@ import { runProviderSearch, type ProviderRun, type ProviderRunDeps } from './pro
 import { cursorSeenKey } from './cursor'
 import type { ProviderSkipReason } from './select'
 // Types only — the client imports this module, never the other way round.
-import type { ProviderSearchStatus, SearchControlsMeta, SearchGateMeta } from './client'
+import type { ProviderSearchStatus, SearchControlsMeta, SearchGateMeta, SearchThresholdMeta } from './client'
 
 export interface PassDeps {
   /** Every configured provider — statuses are reported for all of them. */
@@ -35,6 +36,13 @@ export interface PassDeps {
   concurrency?: number
   merge?: MergeOptions
   rerank?: Reranker
+  /** Weight each source's RRF contribution by how well its batch matches the
+   *  query, with this trust floor. Undefined → unweighted fusion. */
+  confidence?: { floor: number }
+  /** Drop results whose post-rank relevance is below this. Undefined → no
+   *  threshold (the default: a caller asking for results wants the best
+   *  available, not an empty list). */
+  minRelevance?: number
   gateFor?: Intent
   gateContext?: { userJurisdiction?: string }
   /** Already-returned cursor keys to filter out (load-more). */
@@ -44,10 +52,11 @@ export interface PassDeps {
 }
 
 export interface PassOutcome {
-  refs: Reference[] // post merge/rerank/gate/seen-filter, best-first
+  refs: Reference[] // post merge/rerank/threshold/gate/seen-filter, best-first
   controlsMeta?: SearchControlsMeta
   statusByProvider: Map<string, ProviderSearchStatus>
   gate?: SearchGateMeta
+  threshold?: SearchThresholdMeta
   rightsConflicts: RightsConflict[]
   totalReturned: number // raw items across fulfilled providers (pre-parse)
 }
@@ -143,6 +152,59 @@ export function collectStatuses(deps: PassDeps, runs: readonly ProviderRun[]): {
   return { statusByProvider, perSource, perSourceIds, totalReturned }
 }
 
+/** Per-source merge weights from lexical confidence, stamped onto each fulfilled
+ *  status so a caller can see which source actually answered the query.
+ *  `perSourceIds` is parallel to `perSource` (see collectStatuses). Returns
+ *  undefined when confidence weighting is off. */
+export function confidenceStage(
+  deps: PassDeps,
+  perSource: readonly Reference[][],
+  perSourceIds: readonly string[],
+  statusByProvider: Map<string, ProviderSearchStatus>,
+): number[] | undefined {
+  if (!deps.confidence) return undefined
+  const { floor } = deps.confidence
+  const qTokens = [...new Set(tokenize(deps.query))]
+  const weights = perSource.map(list => sourceConfidence(qTokens, list, floor))
+  perSourceIds.forEach((id, i) => {
+    const status = statusByProvider.get(id)
+    if (status) statusByProvider.set(id, { ...status, confidence: weights[i] })
+  })
+  return weights
+}
+
+/** Rank fusion across the per-source lists, optionally confidence-weighted.
+ *  Cross-source rights conflicts are collected for `meta.warnings` while still
+ *  reaching a host-supplied observer. */
+export function mergeStage(deps: PassDeps, perSource: Reference[][], weights: number[] | undefined, conflicts: RightsConflict[]): Reference[] {
+  return mergeReferences(perSource, {
+    ...deps.merge,
+    ...(weights ? { weights } : {}),
+    onRightsConflict: (c) => {
+      conflicts.push(c)
+      deps.merge?.onRightsConflict?.(c)
+    },
+  })
+}
+
+/** Rerank over the FULL merged pool, before the license gate — ordering (and a
+ *  reranker's batch-relative scoring, e.g. quality normalised across the pool) is
+ *  computed against every candidate, then the gate drops denied ones while
+ *  preserving order. Core does not re-validate the returned refs; a reranker is
+ *  trusted to honour the Reranker contract. */
+export async function rerankStage(deps: PassDeps, refs: Reference[]): Promise<Reference[]> {
+  return deps.rerank ? deps.rerank({ query: deps.query, refs, signal: deps.signal }) : refs
+}
+
+/** Opt-in relevance threshold: drop results the ranker scored below the caller's
+ *  bar. Runs after rerank (it is the ranker's score that is being thresholded)
+ *  and before the gate, so gate counts describe what the caller could have seen. */
+export function applyThreshold(refs: Reference[], minRelevance: number | undefined): { refs: Reference[]; threshold?: SearchThresholdMeta } {
+  if (minRelevance === undefined) return { refs }
+  const kept = refs.filter(r => r.relevance >= minRelevance)
+  return { refs: kept, threshold: { minRelevance, dropped: refs.length - kept.length } }
+}
+
 /** Search-time license gate: drop everything the intent does not allow. */
 export function applyGate(refs: Reference[], intent: Intent | undefined, ctx?: { userJurisdiction?: string }): { refs: Reference[]; gate?: SearchGateMeta } {
   if (!intent) return { refs }
@@ -158,33 +220,23 @@ export function filterSeen(refs: Reference[], seen: Set<number> | undefined): Re
   return seen ? refs.filter(r => !seen.has(cursorSeenKey(r.canonicalUrl))) : refs
 }
 
-/** One full fan-out → merge → rerank → gate → seen-filter pass at the given
- *  provider-local page. The cursor path may run several passes per call. */
+/** One full fan-out → confidence → merge → rerank → threshold → gate →
+ *  seen-filter pass at the given provider-local page. The cursor path may run
+ *  several passes per call. */
 export async function runPass(deps: PassDeps, page: number | undefined): Promise<PassOutcome> {
   const controls = page !== undefined ? { ...deps.controls, page } : deps.controls
   const controlsMeta = controlsMetaFor(deps.providers, controls)
   const runs = await fanOut(deps, controls)
-  const { statusByProvider, perSource, totalReturned } = collectStatuses(deps, runs)
+  const { statusByProvider, perSource, perSourceIds, totalReturned } = collectStatuses(deps, runs)
   if (deps.chosen.length > 0 && !runs.some(r => r.ok)) {
     throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
   }
-  // Collect cross-source rights conflicts for meta.warnings while still
-  // forwarding them to a host-supplied observer.
   const rightsConflicts: RightsConflict[] = []
-  let refs = mergeReferences(perSource, {
-    ...deps.merge,
-    onRightsConflict: (c) => {
-      rightsConflicts.push(c)
-      deps.merge?.onRightsConflict?.(c)
-    },
-  })
-  // Rerank runs over the FULL merged pool, before the license gate — ordering
-  // (and a reranker's batch-relative scoring, e.g. quality normalised across the
-  // pool) is computed against every candidate, then the gate drops denied ones
-  // while preserving order. Core does not re-validate the returned refs; a
-  // reranker is trusted to honour the Reranker contract.
-  if (deps.rerank) refs = await deps.rerank({ query: deps.query, refs, signal: deps.signal })
-  const gated = applyGate(refs, deps.gateFor, deps.gateContext)
-  refs = filterSeen(gated.refs, deps.seen)
-  return { refs, controlsMeta, statusByProvider, gate: gated.gate, rightsConflicts, totalReturned }
+  const weights = confidenceStage(deps, perSource, perSourceIds, statusByProvider)
+  const merged = mergeStage(deps, perSource, weights, rightsConflicts)
+  const ranked = await rerankStage(deps, merged)
+  const thresholded = applyThreshold(ranked, deps.minRelevance)
+  const gated = applyGate(thresholded.refs, deps.gateFor, deps.gateContext)
+  const refs = filterSeen(gated.refs, deps.seen)
+  return { refs, controlsMeta, statusByProvider, gate: gated.gate, threshold: thresholded.threshold, rightsConflicts, totalReturned }
 }

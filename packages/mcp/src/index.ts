@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
 import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
 
 // Legacy media.kind control values — kept in the dynamic enum because they stay
@@ -108,7 +108,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
         cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
-        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK, resolution, source diversity) instead of raw cross-source rank fusion'),
+        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
@@ -127,7 +127,8 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         providerOptions: providerOptions as ProviderOptionsById | undefined,
         limit,
         cursor,
-        ...(rerank ? { rerank: lexicalReranker() } : {}),
+        // Core reranks by default; only an explicit false turns it off.
+        ...(rerank === false ? { rerank: false as const } : {}),
         gateFor,
       }
       // Always searchWithMeta: the continuation token (meta.nextCursor) must not

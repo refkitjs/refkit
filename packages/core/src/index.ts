@@ -81,10 +81,12 @@ export type {
   SearchMeta,
   SearchControlsMeta,
   SearchGateMeta,
+  SearchThresholdMeta,
   ProviderSearchStatus,
   ProviderError,
 } from './client'
-export { lexicalReranker, tokenize } from './rerank'
+export { lexicalReranker, tokenize, refText } from './rerank'
 export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'
+export { sourceConfidence, lexicalHit } from './confidence'
 export { withTimeout, retryingFetch, withDefaultUserAgent } from './resilience'
 export type { TimeoutHandle, RetryOptions } from './resilience'

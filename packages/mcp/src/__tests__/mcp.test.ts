@@ -249,6 +249,31 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('reranks by default and passes rerank:false through as raw fusion order', async () => {
+    const titles = ['Something else', 'A lion']
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image'],
+      search: async () => titles.map((title, i) => ({
+        modality: 'image' as const,
+        title,
+        sourceUrl: `https://p/${i}`,
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: `https://p/${i}` } },
+      })),
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const titleOf = async (args: Record<string, unknown>) => {
+      const res = await client.callTool({ name: 'search_references', arguments: { query: 'lion', modalities: ['image'], ...args } })
+      return (res.structuredContent as { references: Array<{ title?: string }> }).references[0].title
+    }
+    expect(await titleOf({})).toBe('A lion') // reranked: the query match leads
+    expect(await titleOf({ rerank: false })).toBe('Something else') // provider order
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',
@@ -276,11 +301,12 @@ describe('@refkit/mcp', () => {
     })
     const structured = res.structuredContent as {
       references: Array<{ useExplanation?: string }>
-      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number }>; warnings: string[] }
+      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number; confidence?: number }>; warnings: string[] }
     }
     expect(structured.references[0].useExplanation).toContain('allowed-with-attribution')
     expect(structured.meta?.providers).toEqual([
-      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number) },
+      // 'credit me' matches the query, so the source is fully trusted in the fusion
+      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
       { providerId: 'bad', status: 'failed', error: 'offline', latencyMs: expect.any(Number) },
     ])
     expect(structured.meta?.warnings).toContain('1 provider(s) failed; returning partial results.')

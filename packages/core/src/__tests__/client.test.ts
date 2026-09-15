@@ -185,7 +185,7 @@ describe('createRefkit', () => {
     const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
     expect(references).toHaveLength(1)
     expect(references[0].rights.license).toBe('CC-BY-NC')
-    expect(meta.warnings.some(w => w.includes('cross-source license conflict'))).toBe(true)
+    expect(meta.warnings.some(w => w.includes('cross-source rights conflict'))).toBe(true)
   })
 
   it('concurrency bounds in-flight provider searches without changing results', async () => {
@@ -381,7 +381,7 @@ describe('createRefkit', () => {
 
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://ok/1'])
     expect(out.meta.providers).toEqual([
-      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0, latencyMs: expect.any(Number) },
+      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
       { providerId: 'bad', status: 'failed', error: 'boom', latencyMs: expect.any(Number) },
       { providerId: 'text', status: 'skipped', reason: 'unsupported-modality' },
     ])
@@ -403,7 +403,7 @@ describe('createRefkit', () => {
     // point — isolating "dropped by limit" from "dropped by overfetch pooling".
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, poolFactor: 1 })
     expect(out.meta.providers).toEqual([
-      { providerId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number) },
+      { providerId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
     ])
   })
 
@@ -890,6 +890,10 @@ describe('kind-aware routing', () => {
 const narrowCcBy = { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false } as const
 type NarrowFacts = typeof narrowCcBy
 
+// Per-pass provider sleep, long enough that two passes' summed latency is
+// unmistakably above one pass's (see the cursor-advance test).
+const STEADY_SLEEP_MS = 30
+
 describe('multi-pass fidelity, deadline and gate context', () => {
   it('cursor advance accumulates pass diagnostics instead of overwriting them', async () => {
     // provider `flaky` fails on page 1 and succeeds on page 2; `steady` returns the same
@@ -905,7 +909,10 @@ describe('multi-pass fidelity, deadline and gate context', () => {
     })
     const steady = defineProvider({
       id: 'steady', modalities: ['image'], capabilities: { controls: ['page'] },
-      search: async () => [ref('https://s.test/1')],
+      search: async () => {
+        await new Promise(r => setTimeout(r, STEADY_SLEEP_MS))
+        return [ref('https://s.test/1')]
+      },
     })
     const rk = createRefkit({ providers: [flaky, steady], resilience: false })
     const first = await rk.searchWithMeta({ query: 'q', modalities: ['image'], limit: 5 })
@@ -915,8 +922,11 @@ describe('multi-pass fidelity, deadline and gate context', () => {
     expect(second.meta.warnings.some(w => /pass 1: 1 provider\(s\) failed/.test(w))).toBe(true)
     expect(second.references.map(r => r.canonicalUrl)).toEqual(['https://f.test/2'])
     expect(calls).toBeGreaterThan(1)
-    // latency is summed over every pass, so a multi-pass call never under-reports it
-    expect(second.meta.providers.find(p => p.providerId === 'steady')?.latencyMs).toEqual(expect.any(Number))
+    // Latency is SUMMED over every pass, so a multi-pass call never under-reports
+    // it: `steady` slept STEADY_SLEEP_MS on each of the two passes, a total one
+    // pass alone could not reach.
+    expect(second.meta.providers.find(p => p.providerId === 'steady')?.latencyMs)
+      .toBeGreaterThan(STEADY_SLEEP_MS * 1.5)
   })
 
   it('concatenates rights conflicts across passes, deduped by URL', async () => {
@@ -988,5 +998,106 @@ describe('multi-pass fidelity, deadline and gate context', () => {
     const gated = await rk.search({ query: 'q', modalities: ['image'], gateFor: 'commercial-product', gateContext: { userJurisdiction: 'DE' } })
     expect(open).toHaveLength(1)
     expect(gated).toHaveLength(0)
+  })
+})
+
+describe('accuracy defaults', () => {
+  const titled = (url: string, title: string) => ({ ...ref(url), title })
+
+  it('a source whose batch never mentions the query sinks below a source that does', async () => {
+    const noise = defineProvider({
+      id: 'noise', modalities: ['image'],
+      search: async () => ['お客様ネイル', '親指', 'ネイル'].map((t, i) => titled(`https://n.test/${i}`, t)),
+    })
+    const signal = defineProvider({
+      id: 'signal', modalities: ['image'],
+      search: async () => [titled('https://s.test/1', 'A lion')],
+    })
+    const rk = createRefkit({ providers: [noise, signal], resilience: false, rerank: false })
+    const { references, meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
+    // Raw RRF would put noise's rank-0 item first; the confidence weight sinks
+    // the whole batch to a tenth of its contribution instead.
+    expect(references[0].source.providerId).toBe('signal')
+    expect(meta.providers.find(p => p.providerId === 'noise')?.confidence).toBeCloseTo(0.1, 5)
+    expect(meta.providers.find(p => p.providerId === 'signal')?.confidence).toBe(1)
+  })
+
+  it('sourceConfidence: false leaves the fusion unweighted', async () => {
+    const noise = defineProvider({
+      id: 'noise', modalities: ['image'],
+      search: async () => [titled('https://n.test/1', 'ネイル')],
+    })
+    const signal = defineProvider({
+      id: 'signal', modalities: ['image'],
+      search: async () => [titled('https://s.test/1', 'A lion')],
+    })
+    const rk = createRefkit({ providers: [noise, signal], resilience: false, rerank: false, sourceConfidence: false })
+    const { references, meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
+    expect(references[0].source.providerId).toBe('noise') // rank-0 tie, input order
+    expect(meta.providers.every(p => p.confidence === undefined)).toBe(true)
+  })
+
+  it('a custom confidence floor deepens the dampening', async () => {
+    const noise = defineProvider({
+      id: 'noise', modalities: ['image'],
+      search: async () => [titled('https://n.test/1', 'ネイル')],
+    })
+    const rk = createRefkit({ providers: [noise], resilience: false, sourceConfidence: { floor: 0.5 } })
+    const { meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
+    expect(meta.providers[0].confidence).toBeCloseTo(0.5, 5)
+  })
+
+  it('the lexical reranker runs by default and rerank:false restores raw fusion order', async () => {
+    const p = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => [titled('https://x.test/1', 'Something else'), titled('https://x.test/2', 'A lion')],
+    })
+    const dflt = await createRefkit({ providers: [p], resilience: false })
+      .search({ query: 'lion', modalities: ['image'] })
+    expect(dflt[0].canonicalUrl).toBe('https://x.test/2')
+    const raw = await createRefkit({ providers: [p], resilience: false })
+      .search({ query: 'lion', modalities: ['image'], rerank: false })
+    expect(raw[0].canonicalUrl).toBe('https://x.test/1')
+  })
+
+  it('options.rerank replaces the default reranker; a per-call reranker overrides it', async () => {
+    const p = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => [titled('https://x.test/1', 'Something else'), titled('https://x.test/2', 'A lion')],
+    })
+    const reverse = createRefkit({ providers: [p], resilience: false, rerank: ({ refs }) => [...refs].reverse() })
+    expect((await reverse.search({ query: 'lion', modalities: ['image'] }))[0].canonicalUrl).toBe('https://x.test/2')
+    const perCall = await reverse.search({
+      query: 'lion', modalities: ['image'], rerank: ({ refs }) => [...refs],
+    })
+    expect(perCall[0].canonicalUrl).toBe('https://x.test/1')
+    // options.rerank: false is the client-wide off switch
+    const off = createRefkit({ providers: [p], resilience: false, rerank: false })
+    expect((await off.search({ query: 'lion', modalities: ['image'] }))[0].canonicalUrl).toBe('https://x.test/1')
+  })
+
+  it('minRelevance drops low-scoring results and reports the count', async () => {
+    const p = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => [titled('https://x.test/1', 'A lion'), titled('https://x.test/2', 'Unrelated')],
+    })
+    const { references, meta } = await createRefkit({ providers: [p], resilience: false })
+      .searchWithMeta({ query: 'lion', modalities: ['image'], minRelevance: 0.2 })
+    expect(references.map(r => r.canonicalUrl)).toEqual(['https://x.test/1'])
+    expect(meta.threshold).toEqual({ minRelevance: 0.2, dropped: 1 })
+    expect(meta.warnings).toContain('1 result(s) below minRelevance 0.2.')
+    const parsed = searchMetaSchema.safeParse(meta)
+    expect(parsed.error?.issues ?? []).toEqual([])
+  })
+
+  it('a non-finite minRelevance is ignored instead of dropping everything', async () => {
+    const p = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => [titled('https://x.test/1', 'A lion')],
+    })
+    const { references, meta } = await createRefkit({ providers: [p], resilience: false })
+      .searchWithMeta({ query: 'lion', modalities: ['image'], minRelevance: NaN })
+    expect(references).toHaveLength(1)
+    expect(meta.threshold).toBeUndefined()
   })
 })

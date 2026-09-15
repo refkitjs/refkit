@@ -20,6 +20,7 @@ export const providerSearchStatusSchema: z.ZodType<ProviderSearchStatus> = z.obj
   error: z.string().optional(),
   latencyMs: z.number().optional(),
   cached: z.boolean().optional(),
+  confidence: z.number().optional(),
 })
 
 export const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
@@ -37,6 +38,7 @@ export const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
   providerOptions: z.array(z.string()).optional(),
   providers: z.array(providerSearchStatusSchema),
   gate: z.object({ intent: z.enum(INTENTS), before: z.number(), after: z.number(), dropped: z.number() }).optional(),
+  threshold: z.object({ minRelevance: z.number(), dropped: z.number() }).optional(),
   nextCursor: z.string().optional().describe('opaque load-more cursor; pass back as `cursor` to fetch the next page with cross-page dedup'),
   warnings: z.array(z.string()),
 })

@@ -112,6 +112,80 @@ describe('lexicalReranker', () => {
     expect(out[0].id).toBe('excerpt')
   })
 
+  it('scores description and tags, not just the title', () => {
+    const plain = ref('a', 'Untitled')
+    const tagged = ref('b', 'Untitled', { tags: ['forest', 'path'] })
+    const described = ref('c', 'Untitled', { description: 'A path through a forest' })
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0 })({
+      query: 'forest path',
+      refs: [plain, tagged, described],
+    }) as Reference[]
+    expect(out.map(r => r.id).slice(0, 2).sort()).toEqual(['b', 'c'])
+    expect(out[2].id).toBe('a')
+  })
+
+  it('penalises same-source near-duplicate titles so they do not cluster', () => {
+    // A Commons upload batch: three near-identical titles from one source, all
+    // matching the query as well as the genuinely different fourth result.
+    const wiki = (id: string, title: string) =>
+      ref(id, title, { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` } })
+    const dupes = [
+      'Forest path near Graigddu-isaf 1',
+      'Forest path near Graigddu-isaf 2',
+      'Forest path near Graigddu-isaf 3',
+    ].map((t, i) => wiki(`d${i}`, t))
+    const other = wiki('o', 'Forest path in Finland')
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0 })({
+      query: 'forest path',
+      refs: [...dupes, other],
+    }) as Reference[]
+    expect(out[1].id).toBe('o')
+    // The penalty steers the pick order only; relevance stays the honest blend
+    // (all four cover the query completely, lexical-only → 1).
+    expect(out.every(r => r.relevance === 1)).toBe(true)
+  })
+
+  it("breaks a tie on the source's own score when sourceScoreWeight > 0", () => {
+    const lo = ref('lo', 'red lion', { sourceScore: 1 })
+    const hi = ref('hi', 'red lion', { sourceScore: 9 })
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0, sourceScoreWeight: 0.5 })({
+      query: 'red lion',
+      refs: [lo, hi],
+    }) as Reference[]
+    expect(out.map(r => r.id)).toEqual(['hi', 'lo'])
+    // per-source min-max: hi → 1, lo → 0; total = lexW + ssW = 1.5
+    expect(out[0].relevance).toBeCloseTo(1, 5)
+    expect(out[1].relevance).toBeCloseTo(1 / 1.5, 5)
+  })
+
+  it('ignores sourceScore by default (upstream scales are not comparable)', () => {
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0 })({
+      query: 'red lion',
+      refs: [ref('lo', 'red lion', { sourceScore: 1 }), ref('hi', 'red lion', { sourceScore: 9 })],
+    }) as Reference[]
+    expect(out.map(r => r.id)).toEqual(['lo', 'hi'])
+  })
+
+  it('gives a source with a single scored ref the neutral 0.5, not 0', () => {
+    const solo = ref('solo', 'red lion', { sourceScore: 3 })
+    const out = lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, sourceScoreWeight: 1 })({
+      query: 'red lion',
+      refs: [solo],
+    }) as Reference[]
+    expect(out[0].relevance).toBeCloseTo(0.5, 5)
+  })
+
+  it('stays tractable on a large single-source pool of near-duplicates', () => {
+    // The near-duplicate flag must be computed once per pick (sticky), not
+    // re-derived against every already-picked title on every round: the latter is
+    // O(n³) and would blow the test timeout on a realistic overfetched pool.
+    const refs = Array.from({ length: 1200 }, (_, i) =>
+      ref(`r${i}`, `Forest path near Graigddu-isaf ${i}`, { source: { providerId: 'wiki', sourceUrl: `https://x/r${i}` } }))
+    const out = lexicalReranker()({ query: 'forest path', refs }) as Reference[]
+    expect(out).toHaveLength(1200)
+    expect(new Set(out.map(r => r.id)).size).toBe(1200) // a reorder, not a resample
+  })
+
   it('clamps negative weights to 0 (keeps relevance in 0..1, ordering sane)', async () => {
     const refs = [ref('a', 'red lion'), ref('b', 'blue whale')]
     const out = await lexicalReranker({ lexicalWeight: -1, qualityWeight: 0, sourceDiversity: 0 })({ query: 'red lion', refs })
@@ -158,5 +232,6 @@ describe('public surface', () => {
   it('exports lexicalReranker and tokenize from the package root', () => {
     expect(typeof refkit.lexicalReranker).toBe('function')
     expect(typeof refkit.tokenize).toBe('function')
+    expect(typeof refkit.refText).toBe('function')
   })
 })
