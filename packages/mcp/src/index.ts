@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
 
 // Legacy media.kind control values — kept in the dynamic enum because they stay
 // meaningful as upstream filter translations for providers that support the
@@ -109,6 +109,15 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         limit: z.number().int().positive().optional(),
         cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
         rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, fused cross-source relevance, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion. true cannot re-enable reranking when the host built the client with rerank: false'),
+        minRelevance: z.number().min(0).max(1).optional().describe(
+          'drop results the ranker scored below this, after reranking. Graded against the reranker\'s blended score, where a result matching no query term lands around 0.3 under the stock weights — so 0.5 keeps only real matches. Off by default (a bar can empty the batch). Does NOT transfer to rerank: false, where raw fusion is max-normalised and the top result is always 1',
+        ),
+        deadlineMs: z.number().int().positive().optional().describe(
+          'whole-search deadline in ms, cursor page advances included (unlike the host\'s per-source timeout, which bounds one source search). Sources still in flight when it fires are reported as failed and the rest are returned; a hard bound while the host leaves per-source resilience on (the default), and otherwise only binding on sources that honour the abort signal',
+        ),
+        gateContext: z.object({
+          userJurisdiction: z.string().optional().describe('caller\'s jurisdiction; a mismatch with a source-declared one defaults to needs-review'),
+        }).optional().describe('context for the `gateFor` gate, matching the evaluate_use tool\'s jurisdiction inputs'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
@@ -118,8 +127,10 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         meta: searchMetaSchema.optional(),
       },
     },
-    async ({ query, modalities, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor, sources }) => {
-      const searchInput = {
+    async ({ query, modalities, controls, providerOptions, explain, limit, cursor, rerank, minRelevance, deadlineMs, gateContext, intent, gateFor, sources }) => {
+      // Typed as core's SearchInput so every parameter above is checked against
+      // the contract it is forwarded into, not just against zod.
+      const searchInput: SearchInput = {
         query,
         modalities: modalities ?? ['image'],
         sources,
@@ -129,7 +140,10 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         cursor,
         // Core reranks by default; only an explicit false turns it off.
         ...(rerank === false ? { rerank: false as const } : {}),
+        minRelevance,
+        deadlineMs,
         gateFor,
+        gateContext,
       }
       // Always searchWithMeta: the continuation token (meta.nextCursor) must not
       // depend on the explain diagnostics flag — only the meta DUMP is gated.

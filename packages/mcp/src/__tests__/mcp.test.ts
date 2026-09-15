@@ -274,6 +274,102 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('minRelevance cuts weak results after the rerank and reports the bar in meta', async () => {
+    const titles = ['Unrelated', 'A lion']
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image'],
+      search: async () => titles.map((title, i) => ({
+        modality: 'image' as const,
+        title,
+        sourceUrl: `https://p/${i}`,
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: `https://p/${i}` } },
+      })),
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    type Out = { references: Array<{ title?: string }>; meta?: { threshold?: unknown; warnings: string[] } }
+    const call = (args: Record<string, unknown>) =>
+      client.callTool({ name: 'search_references', arguments: { query: 'lion', modalities: ['image'], explain: true, ...args } })
+        .then(r => r.structuredContent as Out)
+
+    // The bar is graded against the reranker's blend: the match scores ~0.95,
+    // the miss ~0.35 (fusion + quality only), so 0.5 keeps exactly one.
+    const cut = await call({ minRelevance: 0.5 })
+    expect(cut.references.map(r => r.title)).toEqual(['A lion'])
+    expect(cut.meta?.threshold).toEqual({ minRelevance: 0.5, dropped: 1 })
+    expect(cut.meta?.warnings).toContain('1 result(s) below minRelevance 0.5.')
+    // Same bar, raw fusion order: RRF max-normalises, so both items sit at ~1
+    // and the threshold cuts nothing — the two scales are not interchangeable.
+    const raw = await call({ minRelevance: 0.5, rerank: false })
+    expect(raw.references).toHaveLength(2)
+    expect(raw.meta?.threshold).toEqual({ minRelevance: 0.5, dropped: 0 })
+    await client.close()
+  })
+
+  it('deadlineMs bounds the whole search; a hung source is reported as failed', async () => {
+    const hung = defineProvider({
+      id: 'hung',
+      modalities: ['image'],
+      search: (_q, ctx) => new Promise((_resolve, reject) => {
+        ctx.signal?.addEventListener('abort', () => reject(ctx.signal?.reason))
+      }),
+    })
+    const fast = defineProvider({
+      id: 'fast',
+      modalities: ['image'],
+      search: async () => [{
+        modality: 'image' as const,
+        title: 'A lion',
+        sourceUrl: 'https://fast/1',
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://fast/1' } },
+      }],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [hung, fast], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({
+      name: 'search_references',
+      arguments: { query: 'lion', modalities: ['image'], deadlineMs: 100, explain: true },
+    })
+    const structured = res.structuredContent as {
+      references: Array<{ title?: string }>
+      meta?: { providers: Array<{ providerId: string; status: string }> }
+    }
+    expect(structured.references.map(r => r.title)).toEqual(['A lion'])
+    expect(structured.meta?.providers.find(p => p.providerId === 'hung')?.status).toBe('failed')
+    await client.close()
+  })
+
+  it('gateContext.userJurisdiction reaches the search-time gate', async () => {
+    const us = defineProvider({
+      id: 'us',
+      modalities: ['image'],
+      search: async () => [{
+        modality: 'image' as const,
+        title: 'public domain print',
+        sourceUrl: 'https://us/1',
+        rights: { license: 'PD' as const, jurisdiction: 'US', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://us/1' } },
+      }],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [us], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const count = async (args: Record<string, unknown>) => {
+      const res = await client.callTool({ name: 'search_references', arguments: { query: 'print', modalities: ['image'], gateFor: 'commercial-product', ...args } })
+      return (res.structuredContent as { references: unknown[] }).references.length
+    }
+    // A US-declared PD record is 'allowed' with no caller jurisdiction, but a
+    // mismatched one downgrades it to needs-review, which the gate drops.
+    expect(await count({})).toBe(1)
+    expect(await count({ gateContext: { userJurisdiction: 'DE' } })).toBe(0)
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',
