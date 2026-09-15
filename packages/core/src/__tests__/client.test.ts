@@ -389,6 +389,24 @@ describe('createRefkit', () => {
     expect(out.meta.warnings).toContain('1 provider(s) failed; returning partial results.')
   })
 
+  it('does not count limit-truncated items as rejected — only schema-invalid items are rejected', async () => {
+    const five = defineProvider({
+      id: 'many',
+      modalities: ['image'],
+      search: async () => [
+        ref('https://many/1'), ref('https://many/2'), ref('https://many/3'),
+        ref('https://many/4'), ref('https://many/5'),
+      ],
+    })
+    const rk = createRefkit({ providers: [five] })
+    // poolFactor: 1 so fetchLimit === limit === 2 — the per-provider truncation
+    // point — isolating "dropped by limit" from "dropped by overfetch pooling".
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, poolFactor: 1 })
+    expect(out.meta.providers).toEqual([
+      { providerId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number) },
+    ])
+  })
+
   it('uses merge.isDuplicate to dedupe host-supplied fingerprints during search', async () => {
     // b is emitted first, so RRF ranks it above a; the survivor must be b.
     const a = { ...ref('https://a/1'), raw: { fingerprint: 'same' } }

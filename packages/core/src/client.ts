@@ -67,6 +67,8 @@ export interface ProviderSearchStatus {
   status: 'fulfilled' | 'failed' | 'skipped'
   returned?: number
   accepted?: number
+  /** Items the provider returned that failed schema validation; items dropped
+   *  by the `limit` truncation are neither accepted nor rejected. */
   rejected?: number
   reason?: ProviderSkipReason
   error?: string
@@ -320,7 +322,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
             status: 'fulfilled',
             returned: run.returned,
             accepted: run.valid.length,
-            rejected: run.returned - run.valid.length,
+            rejected: run.rejected,
             latencyMs: run.latencyMs,
             ...(run.cached ? { cached: true } : {}),
           })

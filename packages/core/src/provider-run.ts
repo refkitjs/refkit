@@ -56,7 +56,7 @@ export interface ProviderRunDeps {
 }
 
 export type ProviderRun =
-  | { ok: true; valid: Reference[]; returned: number; latencyMs: number; cached?: boolean }
+  | { ok: true; valid: Reference[]; returned: number; rejected: number; latencyMs: number; cached?: boolean }
   | { ok: false; error: unknown; latencyMs: number }
 
 export async function runProviderSearch(
@@ -82,28 +82,35 @@ export async function runProviderSearch(
   // Parse items one at a time — a single bad item must not discard the rest.
   // Cached entries are already completed references; live items are emitted by
   // the provider and completed here (id, provenance, verifiedAt, relevance).
-  const parseCached = (raw: unknown[]): Reference[] => {
+  // `rejected` is counted right here, where a parse failure actually happens —
+  // NOT derived later from returned/valid counts, since `valid` is post-`truncate`
+  // and a limit-truncated (but well-formed) item must never read as a reject.
+  const parseCached = (raw: unknown[]): { valid: Reference[]; rejected: number } => {
     const valid: Reference[] = []
+    let rejected = 0
     for (const item of raw) {
       try {
         valid.push(parseReference(item))
       } catch (error) {
+        rejected++
         deps.onError?.(error)
       }
     }
-    return valid
+    return { valid, rejected }
   }
-  const completeEmitted = (raw: unknown[]): Reference[] => {
+  const completeEmitted = (raw: unknown[]): { valid: Reference[]; rejected: number } => {
     const now = new Date().toISOString()
     const valid: Reference[] = []
+    let rejected = 0
     for (const item of raw) {
       try {
         valid.push(completeReference(provider.id, parseEmitted(item), now))
       } catch (error) {
+        rejected++
         deps.onError?.(error)
       }
     }
-    return valid
+    return { valid, rejected }
   }
   // The per-provider limit is core's to enforce: providers emit everything the
   // upstream page gave them and never post-truncate.
@@ -132,21 +139,23 @@ export async function runProviderSearch(
           if (!payload || payload.q !== fingerprint || !Array.isArray(payload.refs)) {
             throw new Error('cached payload mismatch') // hash collision or format drift → miss
           }
-          const valid = truncate(parseCached(payload.refs))
-          return { ok: true, valid, returned: payload.refs.length, latencyMs: Date.now() - started, cached: true }
+          const { valid: parsed, rejected } = parseCached(payload.refs)
+          const valid = truncate(parsed)
+          return { ok: true, valid, returned: payload.refs.length, rejected, latencyMs: Date.now() - started, cached: true }
         } catch { /* fall through to live */ }
       }
     }
     const searching = provider.search(query, ctx)
     const raw = await raceDeadline(searching)
-    const valid = truncate(completeEmitted(raw))
+    const { valid: completed, rejected } = completeEmitted(raw)
+    const valid = truncate(completed)
     if (deps.cache && cacheKey && fingerprint !== undefined) {
       const refsPayload = deps.cacheRaw ? valid : valid.map(({ raw: _raw, ...rest }) => rest)
       const payload: CachePayload = { q: fingerprint, refs: refsPayload }
       // fire-and-forget: cache write failure must never fail the search
       void deps.cache.set(cacheKey, JSON.stringify(payload), deps.cacheTtlMs).catch(() => {})
     }
-    return { ok: true, valid, returned: raw.length, latencyMs: Date.now() - started }
+    return { ok: true, valid, returned: raw.length, rejected, latencyMs: Date.now() - started }
   } catch (error) {
     deps.onError?.(error)
     return { ok: false, error, latencyMs: Date.now() - started }
