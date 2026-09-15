@@ -24,6 +24,23 @@ Recall is best with **Japanese** tag words — `マグネット` (magnetic), `�
 poorly; translating the user's intent into Japanese tag vocabulary is the caller's
 (host skill's) job.
 
+## Query acceptance (this source declines off-topic searches)
+
+Nailbook indexes nothing but nail designs, so it declares core's `accepts` predicate and
+**declines** any query that does not name nails — in English (`nail`, `manicure`, `gel`),
+Japanese (`ネイル`, `ジェル`, `マニキュア`) or Chinese (`美甲`, `指甲`, `甲油`). `nail` inside
+`snail` does not count. A declined search never issues a request: the source is reported in
+`meta.providers` as `skipped` with `reason: 'declined'`, and the other configured sources
+answer alone (a decline is routing, not a failure — no warning, no error).
+
+Naming the source explicitly bypasses acceptance, which is how a motif-only query still
+reaches it:
+
+```ts
+await refkit.search({ query: 'lion', modalities: ['image'] })                        // declined
+await refkit.search({ query: '桜', modalities: ['image'], sources: ['nailbook'] })   // runs
+```
+
 ## Rights: discovery-class, not license-cleared
 
 Nailbook photos are user-posted nail-art shots with **no per-item license metadata**, so

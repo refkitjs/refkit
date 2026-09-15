@@ -12,7 +12,7 @@ expanding refkit's provider coverage; execute against it, not against memory.
 > poly-haven/ambientcg). One open caveat: §1 item 7 lives in the **Slate** repo
 > (not this worktree) and is not verified here.
 
-## Current inventory (12 provider packages, ~15 provider ids)
+## Current inventory (19 provider packages, 23 provider ids)
 
 | Modality | Providers | Status |
 |---|---|---|
