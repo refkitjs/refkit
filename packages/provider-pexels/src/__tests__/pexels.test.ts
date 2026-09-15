@@ -167,7 +167,9 @@ describe('pexelsVideo provider', () => {
   })
 
   it('declares kinds and description (image + video factories)', () => {
+    expect(pexels({ apiKey: 'k' }).id).toBe('pexels')
     expect(pexels({ apiKey: 'k' }).kinds).toEqual(['photo'])
+    expect(pexelsVideo({ apiKey: 'k' }).id).toBe('pexels-video')
     expect(pexelsVideo({ apiKey: 'k' }).kinds).toEqual(['film'])
   })
 })

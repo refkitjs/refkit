@@ -1,5 +1,5 @@
 import {
-  defineProvider, okJson, setIfBoolean, setIfInt, setIfString,
+  defineProvider, okJson, plainText, setIfBoolean, setIfInt, setIfString,
   type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
@@ -36,6 +36,10 @@ interface MetObject {
   objectURL: string
   objectName: string
   medium: string
+  culture?: string
+  period?: string
+  classification?: string
+  tags?: Array<{ term: string }> | null
 }
 
 function toReference(o: MetObject): EmittedReference | null {
@@ -50,10 +54,17 @@ function toReference(o: MetObject): EmittedReference | null {
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://www.metmuseum.org/information/terms-and-conditions', sourceUrl: o.objectURL },
   }
+  // The Met has no caption field; objectName/medium/culture/period are the descriptive
+  // facets it does return, and reading as one line is what the reranker scores. Some
+  // `medium` values run long and carry line breaks, so normalize through plainText.
+  const description = plainText([o.objectName, o.medium, o.culture, o.period].filter(Boolean).join('. '))
+  const tags = [o.classification, ...(o.tags ?? []).map(t => t.term)].filter((t): t is string => !!t)
   return {
     modality: 'image',
     kind: 'artwork',
     title: o.title || undefined,
+    ...(description ? { description } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
     sourceUrl: o.objectURL,
     rights,
     ...(o.primaryImageSmall ? { thumbnail: { url: o.primaryImageSmall } } : {}),

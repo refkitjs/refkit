@@ -61,7 +61,7 @@ export type {
 export {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber, offsetForPage,
-  first, mapCcDeedUrl, mapRightsUrl, CC_FAMILY_BY_TOKEN,
+  first, plainText, mapCcDeedUrl, mapRightsUrl, CC_FAMILY_BY_TOKEN,
   isLikelyImageUrl, imageMediaType, IMAGE_EXT, okJson,
 } from './provider-helpers'
 export { normalizeQuery } from './query'

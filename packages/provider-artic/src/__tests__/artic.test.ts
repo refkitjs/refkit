@@ -6,7 +6,12 @@ const ctxWith = (body: unknown): ProviderContext => ({ fetch: (async () => new R
 
 const FIXTURE = {
   data: [
-    { id: 656, title: 'Lion (One of a Pair, South Pedestal)', image_id: '6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360', is_public_domain: true, artist_display: 'Edward Kemeys\nAmerican, 1843–1907' },
+    {
+      id: 656, title: 'Lion (One of a Pair, South Pedestal)', image_id: '6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360',
+      is_public_domain: true, artist_display: 'Edward Kemeys\nAmerican, 1843–1907',
+      _score: 87.05, short_description: '<p>A <em>lion</em> at rest.</p>', medium_display: 'Bronze',
+      classification_titles: ['sculpture'], subject_titles: ['animals', 'lions'], term_titles: ['bronze', 'animals'],
+    },
     { id: 777, title: 'Copyrighted Piece', image_id: 'abc', is_public_domain: false, artist_display: 'Living Artist' },
     { id: 888, title: 'PD but no image', image_id: null, is_public_domain: true, artist_display: 'Anonymous' },
   ],
@@ -25,7 +30,17 @@ describe('artic provider', () => {
     expect(r.sourceUrl).toBe('https://www.artic.edu/artworks/656')
     expect(r.preview?.url).toBe('https://www.artic.edu/iiif/2/6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360/full/843,/0/default.jpg')
     expect(r.thumbnail?.url).toBe('https://www.artic.edu/iiif/2/6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360/full/200,/0/default.jpg')
+    expect(r.description).toBe('A lion at rest.') // short_description arrives as HTML
+    expect(r.tags).toEqual(['sculpture', 'animals', 'lions', 'bronze']) // union, de-duplicated
+    expect(r.sourceScore).toBe(87.05)
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
+  })
+
+  it('falls back to medium_display for the description and omits sourceScore when _score is absent', async () => {
+    const hit = { ...FIXTURE.data[0], _score: undefined, short_description: null }
+    const refs = await artic().search({ text: 'lion', modalities: ['image'] }, ctxWith({ data: [hit] }))
+    expect(refs[0].description).toBe('Bronze')
+    expect(refs[0].sourceScore).toBeUndefined()
   })
 
   it('falls back to the default IIIF base when config is absent', async () => {
@@ -57,7 +72,13 @@ describe('artic provider', () => {
     expect(url.searchParams.get('from')).toBe('20')
     expect(url.searchParams.get('size')).toBe('8')
     expect(url.searchParams.get('facets')).toBe('artist_title,style_titles')
-    expect(url.searchParams.get('fields')).toBe('id,title,image_id,is_public_domain,artist_display,date_display')
+    const fields = (url.searchParams.get('fields') ?? '').split(',')
+    // the descriptive/score fields are requested by default, alongside the caller's extras
+    expect(fields).toEqual([
+      'id', 'title', 'image_id', 'is_public_domain', 'artist_display',
+      'short_description', 'medium_display', 'classification_titles', 'subject_titles', 'term_titles',
+      'date_display',
+    ])
     expect(url.searchParams.get('query[term][is_public_domain]')).toBe('true')
   })
 

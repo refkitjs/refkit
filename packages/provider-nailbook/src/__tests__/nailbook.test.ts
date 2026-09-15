@@ -50,6 +50,7 @@ describe('nailbook provider', () => {
     expect(r.preview).toEqual({ url: 'https://cnv.nailbook.jp/photo/35052322/1280_lc', mediaType: 'image/jpeg' })
     expect(r.visual).toEqual({ width: 2727, height: 2727 })
     expect(r.title).toContain('マグネット')
+    expect(r.tags).toEqual(['オールシーズン', 'オフィス', 'ハンド'])
     expect(r.rights.license).toBe('unknown')
     expect(r.rights.rehostPolicy).toBe('thumbnail-only')
     expect(r.rights.author).toBe('china')

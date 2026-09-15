@@ -77,6 +77,20 @@ export function first<T>(arr: T[] | undefined | null): T | undefined {
   return Array.isArray(arr) && arr.length > 0 ? arr[0] : undefined
 }
 
+// — text helper (shared by sources whose captions arrive as HTML) —
+
+/** Upstream titles, captions and descriptions routinely arrive as HTML (anchors,
+ *  `<p>`, `<em>`) or with ragged whitespace. Strip the markup, collapse runs of
+ *  whitespace, and cap the length — these fields feed the lexical reranker, so
+ *  plain words matter and unbounded prose does not. Empty result → undefined,
+ *  so callers can spread the field away instead of emitting ''. */
+export function plainText(value: string | null | undefined, maxLength = 500): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  if (!text) return undefined
+  return text.length > maxLength ? text.slice(0, maxLength) : text
+}
+
 // — license: CC deed URL → LicenseId (the moat; shared by URL-based sources) —
 
 /** CC deed path token → family LicenseId. Shared by the URL mapper here and by

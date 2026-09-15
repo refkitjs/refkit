@@ -1,5 +1,5 @@
 import {
-  defineProvider, okJson, setIfString, setIfNonNegativeInt, setIfStringList,
+  defineProvider, okJson, plainText, setIfString, setIfNonNegativeInt, setIfStringList,
   type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   setIfPositiveInt,
 } from '@refkit/core'
@@ -10,6 +10,13 @@ interface ArticArtwork {
   image_id: string | null
   is_public_domain: boolean
   artist_display: string | null
+  /** Elasticsearch relevance from the /search endpoint — AIC's own scale. */
+  _score?: number
+  short_description?: string | null
+  medium_display?: string | null
+  classification_titles?: string[]
+  subject_titles?: string[]
+  term_titles?: string[]
 }
 interface ArticResponse {
   data: ArticArtwork[]
@@ -40,10 +47,22 @@ function toReference(a: ArticArtwork, iiifUrl: string): EmittedReference | null 
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://www.artic.edu/terms', sourceUrl },
   }
+  // short_description is editorial HTML; medium_display ("Bronze") is the fallback caption.
+  const description = plainText(a.short_description) ?? plainText(a.medium_display)
+  // three parallel controlled vocabularies that overlap (a bronze sculpture of animals
+  // appears in term_titles and subject_titles) — union, first occurrence wins.
+  const tags = [...new Set([
+    ...(a.classification_titles ?? []),
+    ...(a.subject_titles ?? []),
+    ...(a.term_titles ?? []),
+  ])]
   return {
     modality: 'image',
     kind: 'artwork',
     title: a.title || undefined,
+    ...(description ? { description } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
+    ...(typeof a._score === 'number' && Number.isFinite(a._score) ? { sourceScore: a._score } : {}),
     sourceUrl,
     rights,
     thumbnail: { url: `${iiifUrl}/${a.image_id}/full/200,/0/default.jpg` },
@@ -53,7 +72,11 @@ function toReference(a: ArticArtwork, iiifUrl: string): EmittedReference | null 
 }
 
 function articFields(value: unknown): string {
-  const fields = new Set(['id', 'title', 'image_id', 'is_public_domain', 'artist_display'])
+  const fields = new Set([
+    'id', 'title', 'image_id', 'is_public_domain', 'artist_display',
+    // descriptive + score fields: EmittedReference.description / .tags / .sourceScore
+    'short_description', 'medium_display', 'classification_titles', 'subject_titles', 'term_titles',
+  ])
   if (typeof value === 'string') {
     for (const item of value.split(',')) if (item.trim()) fields.add(item.trim())
   }

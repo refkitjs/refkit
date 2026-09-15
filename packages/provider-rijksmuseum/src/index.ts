@@ -1,5 +1,5 @@
 import {
-  defineProvider, okJson, setIfString, setIfBoolean, mapRightsUrl, ccVersionFor,
+  defineProvider, okJson, plainText, setIfString, setIfBoolean, mapRightsUrl, ccVersionFor,
   type EmittedReference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
@@ -45,6 +45,8 @@ interface EdmCreator {
 interface EdmAggregatedCho {
   id?: string
   title?: Record<string, unknown>
+  /** Localized like `title` (language → string | string[]), but absent on many records. */
+  description?: unknown
   creator?: EdmCreator[]
 }
 
@@ -114,10 +116,12 @@ function toReference(rec: EdmRecord): EmittedReference | null {
     raw: { sourceTerms: RIJKS_TERMS, sourceUrl },
   }
 
+  const description = plainText(firstLocalized(rec.aggregatedCHO?.description, ['en', 'nl']))
   return {
     modality: 'image',
     kind: 'artwork',
     title: firstLocalized(rec.aggregatedCHO?.title, ['en', 'nl']),
+    ...(description ? { description } : {}),
     // the landing page differs from the CHO identifier here, so both are emitted
     sourceUrl,
     canonicalUrl,

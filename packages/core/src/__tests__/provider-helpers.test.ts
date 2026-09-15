@@ -3,7 +3,7 @@ import {
   offsetForPage,
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType,
+  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType, plainText,
 } from '../provider-helpers'
 
 const params = (fn: (u: URL) => void) => { const u = new URL('https://x.test/'); fn(u); return u.searchParams }
@@ -147,5 +147,22 @@ describe('image helpers', () => {
     expect(imageMediaType(undefined, 'https://x/y.png')).toBe('image/png')
     expect(imageMediaType(undefined, 'https://x/y.jpg')).toBe('image/jpeg')
     expect(imageMediaType('application/octet-stream', 'https://x/y')).toBe('image/jpeg')
+  })
+})
+
+describe('plainText', () => {
+  it('strips markup, collapses whitespace, and drops empties', () => {
+    expect(plainText('<p>A <em>lion</em> at rest.</p>')).toBe('A lion at rest.')
+    expect(plainText('<a href="x">Forest</a> path in <b>spring</b>')).toBe('Forest path in spring')
+    expect(plainText('  two \n  lines ')).toBe('two lines')
+    expect(plainText('<p></p>')).toBeUndefined()
+    expect(plainText('')).toBeUndefined()
+    expect(plainText(null)).toBeUndefined()
+    expect(plainText(undefined)).toBeUndefined()
+  })
+  it('caps length at 500 chars by default; honors an explicit cap', () => {
+    expect(plainText('x'.repeat(600))).toHaveLength(500)
+    expect(plainText('x'.repeat(600), 10)).toBe('xxxxxxxxxx')
+    expect(plainText('short', 10)).toBe('short')
   })
 })

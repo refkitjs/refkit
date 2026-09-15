@@ -27,6 +27,7 @@ describe('pixabay provider', () => {
     expect(r.rights.rehostPolicy).toBe('cache-allowed')
     expect(r.sourceUrl).toBe('https://pixabay.com/en/blossom-bloom-flower-195893/')
     expect(r.title).toBe('blossom, bloom, flower')
+    expect(r.tags).toEqual(['blossom', 'bloom', 'flower']) // the comma-separated string, split
     expect(r.rights.author).toBe('Josch13')
     expect(r.thumbnail).toEqual({ url: 'https://cdn.pixabay.com/photo/flower-195893_150.jpg', width: 150, height: 84 })
     expect(r.visual).toEqual({ width: 4000, height: 2250 })
@@ -127,6 +128,7 @@ describe('pixabayVideo provider', () => {
     expect(r.modality).toBe('video')
     expect(r.rights.license).toBe('pixabay')
     expect(r.title).toBe('flowers, meadow')
+    expect(r.tags).toEqual(['flowers', 'meadow'])
     expect(r.preview?.url).toBe('https://cdn.pixabay.com/vimeo/125/large.mp4')
     expect(r.thumbnail?.url).toBe('https://cdn.pixabay.com/vimeo/125/large.jpg')
     expect(r.visual).toEqual({ width: 1920, height: 1080 })
@@ -171,7 +173,9 @@ describe('pixabayVideo provider', () => {
   })
 
   it('declares kinds and description (image + video factories)', () => {
+    expect(pixabay({ key: 'k' }).id).toBe('pixabay')
     expect(pixabay({ key: 'k' }).kinds).toEqual(['photo', 'illustration', 'vector'])
+    expect(pixabayVideo({ key: 'k' }).id).toBe('pixabay-video')
     expect(pixabayVideo({ key: 'k' }).kinds).toEqual(['film', 'animation'])
   })
 

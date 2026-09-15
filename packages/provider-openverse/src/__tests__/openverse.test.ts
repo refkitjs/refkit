@@ -287,6 +287,7 @@ describe('openverseAudio provider', () => {
   })
 
   it('declares kinds and description for audio', () => {
+    expect(openverseAudio().id).toBe('openverse-audio')
     expect(openverseAudio().kinds).toEqual(['music', 'sound-effect'])
   })
 })

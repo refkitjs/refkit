@@ -49,6 +49,7 @@ const EDM = {
   aggregatedCHO: {
     id: 'https://id.rijksmuseum.nl/1',
     title: { en: ['Landscape'], nl: ['Landschap'] },
+    description: { en: 'A sunken road through a pine forest', nl: 'Een holle weg door een pijnbos' },
     creator: [{
       'http://www.w3.org/2004/02/skos/core#prefLabel': [
         { '@language': 'en', '@value': 'Example Maker' },
@@ -103,6 +104,7 @@ describe('rijksmuseum provider', () => {
     const landscape = refs[0]
     expect(landscape.modality).toBe('image')
     expect(landscape.title).toBe('Landscape')
+    expect(landscape.description).toBe('A sunken road through a pine forest')
     expect(landscape.rights.author).toBe('Example Maker')
     expect(landscape.rights.license).toBe('PD')
     expect(landscape.rights.licenseVersion).toBeUndefined()
@@ -126,6 +128,7 @@ describe('rijksmuseum provider', () => {
     expect(cc0).toBeDefined()
     expect(cc0?.rights.license).toBe('CC0-1.0')
     expect(cc0?.rights.author).toBe('Jan Toorop')
+    expect(cc0?.description).toBeUndefined() // the record carries no description
     expect(cc0?.rights.licenseVersion).toBeUndefined()
     expect(evaluateUse(cc0!.rights, 'commercial-product').decision).toBe('allowed')
   })
@@ -150,6 +153,7 @@ describe('rijksmuseum provider', () => {
         aggregatedCHO: {
           id: 'https://id.rijksmuseum.nl/4',
           title: { fr: ['Paysage'], nl: ['Landschap'] },
+          description: { fr: ['Un paysage'], nl: ['Een landschap'] },
           creator: [{
             'http://www.w3.org/2004/02/skos/core#prefLabel': [
               { '@language': 'fr', '@value': 'Créateur français' },
@@ -190,6 +194,8 @@ describe('rijksmuseum provider', () => {
       ['Landschap', 'Nederlandse maker'],
       ['Landschaft', 'Deutscher Künstler'],
     ])
+    // `description` also arrives array-valued on some records — same preference order
+    expect(refs[0].description).toBe('Een landschap')
   })
 
   it('returns [] when the search finds nothing', async () => {

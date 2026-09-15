@@ -40,9 +40,11 @@ describe('freesound provider', () => {
     expect(cc.rights.author).toBe('alice')
     expect(cc.preview?.url).toBe('https://cdn.freesound.org/previews/1/1_hq.mp3')
     expect(cc.preview?.mediaType).toBe('audio/mpeg')
+    expect(cc.tags).toEqual(['door', 'creak'])
 
     const nc = byId['https://freesound.org/people/bob/sounds/2/']
     expect(nc.rights.license).toBe('CC-BY-NC')
+    expect(nc.tags).toBeUndefined() // empty upstream tag list → field omitted
     expect(evaluateUse(nc.rights, 'commercial-product').decision).toBe('denied')
 
     const cc0 = byId['https://freesound.org/people/carol/sounds/3/']

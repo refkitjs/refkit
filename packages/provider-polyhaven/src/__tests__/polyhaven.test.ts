@@ -41,6 +41,7 @@ describe('polyhaven provider', () => {
     const r = refs[0]
     expect(r.modality).toBe('image')
     expect(r.title).toBe('Aerial Asphalt 01')
+    expect(r.tags).toEqual(['asphalt', 'road', 'flat']) // categories then tags
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.author).toBe('Rob Tuytel')
     expect(r.rights.rehostPolicy).toBe('cache-allowed')
