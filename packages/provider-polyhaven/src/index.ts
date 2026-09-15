@@ -94,14 +94,20 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       const res = await ctx.fetch(listUrl.toString(), { signal: ctx.signal })
       const list = await okJson<PolyHavenList>(res, 'polyhaven list')
       let entries = Object.entries(list)
-      // Client-side keyword filter — the list endpoint has no query param.
-      const text = q.text?.trim().toLowerCase()
-      if (text) {
-        entries = entries.filter(([id, a]) =>
-          id.includes(text) ||
-          a.name?.toLowerCase().includes(text) ||
-          a.categories?.some((c) => c.toLowerCase().includes(text)) ||
-          a.tags?.some((t) => t.toLowerCase().includes(text)))
+      // Client-side keyword filter — the list endpoint has no query param. Match
+      // PER TOKEN, not on the whole phrase: asset metadata is single-word (id,
+      // name, categories, tags), so "forest rock" as one substring matches
+      // nothing while both of its words describe real assets. Assets covering
+      // more of the query rank first.
+      const tokens = (q.text ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+      const fields = (id: string, a: PolyHavenAsset) => [id, a.name ?? '', ...(a.categories ?? []), ...(a.tags ?? [])].map(s => s.toLowerCase())
+      if (tokens.length > 0) {
+        entries = entries
+          .map(([id, a]) => ({ id, a, hits: tokens.filter(t => fields(id, a).some(f => f.includes(t))).length }))
+          .filter(e => e.hits > 0)
+          // stable sort — assets with equally many hits keep the list's own order
+          .sort((x, y) => y.hits - x.hits)
+          .map(e => [e.id, e.a] as [string, PolyHavenAsset])
       }
       const n = Math.min(config.maxAssets ?? q.limit ?? 12, 30)
       // the list endpoint returns everything — page = a window over the filtered list

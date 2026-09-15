@@ -53,6 +53,10 @@ export interface ReferenceProvider {
    *  so an agent can judge topical fit (e.g. "CC0 PBR textures for 3D work"). */
   description?: string
   capabilities?: ProviderCapabilities
+  /** Decline queries this source cannot answer (e.g. a nail-art site for "lion").
+   *  Skipped with reason 'declined'; an explicit `sources` whitelist bypasses it.
+   *  MUST be a pure, dependency-free predicate — it runs before any fetch. */
+  accepts?(query: { text: string; modalities: Modality[] }): boolean
   search(query: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]>
 }
 

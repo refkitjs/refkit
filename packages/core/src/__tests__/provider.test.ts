@@ -44,6 +44,18 @@ describe('ReferenceProvider / defineProvider', () => {
     })
     expect(p.capabilities?.controls).toEqual(['orientation', 'color', 'safety'])
   })
+
+  it('carries an optional accepts predicate; omitting it leaves the provider open', () => {
+    const picky = defineProvider({
+      id: 'x',
+      modalities: ['image'],
+      accepts: ({ text, modalities }) => /nail/i.test(text) && modalities.includes('image'),
+      search: async () => [],
+    })
+    expect(picky.accepts?.({ text: 'nail art', modalities: ['image'] })).toBe(true)
+    expect(picky.accepts?.({ text: 'lion', modalities: ['image'] })).toBe(false)
+    expect(defineProvider({ id: 'y', modalities: ['image'], search: async () => [] }).accepts).toBeUndefined()
+  })
 })
 
 describe('resource declarations', () => {

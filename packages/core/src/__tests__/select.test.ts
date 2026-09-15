@@ -34,4 +34,22 @@ describe('selectProviders', () => {
     expect(() => selectProviders(providers, { modalities: ['video'], text: 'x' }))
       .toThrow(/no registered provider supports/)
   })
+
+  it('accepts=false skips with reason declined; an explicit sources entry bypasses it', () => {
+    const picky = defineProvider({ id: 'picky', modalities: ['image'], accepts: ({ text }) => /nail/i.test(text), search: async () => [] })
+    const open = defineProvider({ id: 'open', modalities: ['image'], search: async () => [] })
+    const s = selectProviders([picky, open], { modalities: ['image'], text: 'lion' })
+    expect(s.chosen.map(x => x.id)).toEqual(['open'])
+    expect(s.skipReasons.get('picky')).toBe('declined')
+    const forced = selectProviders([picky, open], { modalities: ['image'], text: 'lion', sources: ['picky'] })
+    expect(forced.chosen.map(x => x.id)).toEqual(['picky'])
+  })
+
+  it('when every candidate declines the selection is empty, not an error', () => {
+    const picky = defineProvider({ id: 'picky', modalities: ['image'], accepts: () => false, search: async () => [] })
+    const s = selectProviders([picky], { modalities: ['image'], text: 'lion' })
+    expect(s.chosen).toEqual([])
+    expect(s.skipReasons.get('picky')).toBe('declined')
+    expect(s.unknownSources).toEqual([])
+  })
 })

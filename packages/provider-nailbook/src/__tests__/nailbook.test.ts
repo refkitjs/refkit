@@ -102,3 +102,11 @@ it('declares kinds and description', () => {
   expect(p.kinds).toEqual(['photo'])
   expect(p.description).toBeTruthy()
 })
+
+it('accepts only nail-art queries', () => {
+  const p = nailbook()
+  expect(p.accepts?.({ text: 'lion', modalities: ['image'] })).toBe(false)
+  expect(p.accepts?.({ text: 'spring nail art', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: '桜 ネイル', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: '法式美甲', modalities: ['image'] })).toBe(true)
+})

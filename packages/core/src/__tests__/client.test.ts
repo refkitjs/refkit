@@ -885,6 +885,43 @@ describe('kind-aware routing', () => {
   })
 })
 
+describe('query acceptance (accepts)', () => {
+  it('an all-declined search returns an empty result with declined statuses', async () => {
+    const picky = defineProvider({ id: 'picky', modalities: ['image'], accepts: () => false, search: async () => [ref('https://x.test/1')] })
+    const { references, meta } = await createRefkit({ providers: [picky], resilience: false }).searchWithMeta({ query: 'lion', modalities: ['image'] })
+    expect(references).toEqual([])
+    expect(meta.providers[0]).toMatchObject({ providerId: 'picky', status: 'skipped', reason: 'declined' })
+    expect(meta.nextCursor).toBeUndefined()
+    // A decline is routing, not a failure: nothing to warn about.
+    expect(meta.warnings).toEqual([])
+  })
+
+  it('a decliner never runs while its accepting siblings still answer', async () => {
+    let pickyCalled = false
+    const picky = defineProvider({
+      id: 'picky', modalities: ['image'],
+      accepts: ({ text }) => /nail/i.test(text),
+      search: async () => { pickyCalled = true; return [ref('https://x.test/1')] },
+    })
+    const rk = createRefkit({ providers: [picky, provider('a', [ref('https://a/1')])] })
+    const out = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
+    expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
+    expect(pickyCalled).toBe(false)
+    expect(out.meta.providers.find(p => p.providerId === 'picky')).toEqual({ providerId: 'picky', status: 'skipped', reason: 'declined' })
+  })
+
+  it('an explicit sources whitelist bypasses acceptance', async () => {
+    const picky = defineProvider({
+      id: 'picky', modalities: ['image'],
+      accepts: ({ text }) => /nail/i.test(text),
+      search: async () => [ref('https://x.test/1')],
+    })
+    const rk = createRefkit({ providers: [picky, provider('a', [ref('https://a/1')])] })
+    const out = await rk.search({ query: 'lion', modalities: ['image'], sources: ['picky'] })
+    expect(out.map(r => r.canonicalUrl)).toEqual(['https://x.test/1'])
+  })
+})
+
 // A CC-BY record whose source terms are narrower than the label implies: same
 // license id, different facts — the cross-source conflict the merge reports.
 const narrowCcBy = { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false } as const

@@ -24,6 +24,13 @@ const SEARCH_ENDPOINT = 'https://nailbook.jp/api/web/photo/search'
 const THUMB_VARIANT = '320_lc'
 const PREVIEW_VARIANT = '1280_lc'
 
+// Topical gate (D7): nailbook indexes nothing but nail designs, so a generic
+// query ("lion", "forest") can only come back as noise. A query naming nails —
+// in English, Japanese or Chinese — is in scope; a motif-only search (e.g. 桜,
+// "marble") stays reachable by asking for this source explicitly via
+// `sources: ['nailbook']`, which bypasses acceptance.
+const NAIL_TERMS = /nail|manicure|ネイル|ジェル|美甲|指甲|甲油/i
+
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 
@@ -112,6 +119,7 @@ export function nailbook(config: NailbookConfig = {}) {
     // real pagination needs a stateful `scrolling_key` search_after cursor that doesn't
     // map onto the stateless `controls.page` model). One request per search, by design.
     capabilities: { controls: [] },
+    accepts: ({ text }) => NAIL_TERMS.test(text),
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const res = await ctx.fetch(SEARCH_ENDPOINT, {
         method: 'POST',

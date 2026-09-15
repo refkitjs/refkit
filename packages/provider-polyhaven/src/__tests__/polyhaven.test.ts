@@ -19,6 +19,11 @@ const LIST = {
     authors: { 'Rob Tuytel': 'All' },
     thumbnail_url: 'https://cdn.polyhaven.com/asset_img/thumbs/aerial_asphalt_01.png?width=256&height=256',
   },
+  // Three more assets so a multi-word query can match per token and rank by how
+  // many of them a single asset covers.
+  forest_floor: { type: 1, name: 'Forest Floor', tags: ['forest', 'ground'] },
+  brick_wall: { type: 1, name: 'Brick Wall', tags: ['brick'] },
+  mossy_forest_rock: { type: 1, name: 'Mossy Forest Rock', tags: ['forest', 'rock', 'moss'] },
 }
 const FILES_TEX = {
   aerial_asphalt_01: {
@@ -29,6 +34,9 @@ const FILES_TEX = {
     blend: { '1k': { blend: { url: 'https://dl.polyhaven.org/x.blend' } } },
     gltf: { '1k': { gltf: { url: 'https://dl.polyhaven.org/x.gltf' } } },
   },
+  forest_floor: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/forest_floor_diff_1k.jpg' } } } },
+  brick_wall: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/brick_wall_diff_1k.jpg' } } } },
+  mossy_forest_rock: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/mossy_forest_rock_diff_1k.jpg' } } } },
 }
 
 describe('polyhaven provider', () => {
@@ -56,6 +64,11 @@ describe('polyhaven provider', () => {
   it('returns [] when the list is empty', async () => {
     const refs = await polyhaven().search({ text: 'zzz', modalities: ['image'] }, ctxRouting({}, {}))
     expect(refs).toEqual([])
+  })
+
+  it('matches each query token independently and ranks by matched tokens', async () => {
+    const refs = await polyhaven().search({ text: 'forest rock', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX))
+    expect(refs.map(r => r.sourceUrl)).toEqual(['https://polyhaven.com/a/mossy_forest_rock', 'https://polyhaven.com/a/forest_floor'])
   })
 
   it('declares kinds per assetType', () => {
