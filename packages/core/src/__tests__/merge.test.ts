@@ -167,4 +167,22 @@ describe('cross-source rights resolution (facts)', () => {
     expect(seen).toHaveLength(0)
     expect(out[0].rights.license).toBe('CC0-1.0') // first record's rights kept
   })
+
+  it('two sources agreeing on an identical indeterminate claim are not a conflict', () => {
+    // Both declare 'unknown' — compareRestrictiveness('incomparable' for any
+    // indeterminate side) must not be what opens the conflict, or agreeing
+    // sources would spuriously report one.
+    const seen: RightsConflict[] = []
+    const make = (providerId: string): Reference => ({
+      id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+      rights: { license: 'unknown', rehostPolicy: 'no-store', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
+      verifiedAt: new Date().toISOString(), relevance: 0,
+    })
+    const out = mergeReferences(
+      [[make('a')], [make('b')]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(seen).toHaveLength(0)
+    expect(out[0].rights.license).toBe('unknown')
+  })
 })

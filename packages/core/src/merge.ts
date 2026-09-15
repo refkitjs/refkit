@@ -30,7 +30,8 @@ export interface MergeOptions extends DedupeOptions {
 // work; when their claims disagree, believing the more permissive one would be
 // fail-open. Disagreement is measured over FACTS, never over the license label:
 // the same id carrying narrower supplied facts IS a conflict, and two different
-// ids with identical facts (CC0-1.0 vs PD) are NOT. Claims are compared under
+// ids with identical facts (CC0-1.0 vs PD) are NOT — conflict iff facts
+// fingerprints differ. Once a conflict is open it resolves under
 // compareRestrictiveness's partial order; incomparable pairs — which include
 // every pair with an indeterminate side — collapse to 'unknown' (→ needs-review),
 // matching the strict-deny invariant.
@@ -99,7 +100,10 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
           conflictLabels.get(key)!.add(ref.rights.license)
           rights.set(key, resolveRightsConflict(known, ref.rights))
         }
-      } else if (compareRestrictiveness(factsOf(known), factsOf(ref.rights)) !== 'equal') {
+      } else if (factsKey(factsOf(known)) !== incoming) {
+        // conflict iff facts fingerprints differ — not compareRestrictiveness,
+        // which reports 'incomparable' (never 'equal') for any indeterminate
+        // side and would spuriously conflict two sources agreeing on 'unknown'.
         conflictFacts.set(key, new Set([factsKey(factsOf(known)), incoming]))
         conflictLabels.set(key, new Set([known.license, ref.rights.license]))
         rights.set(key, resolveRightsConflict(known, ref.rights))
