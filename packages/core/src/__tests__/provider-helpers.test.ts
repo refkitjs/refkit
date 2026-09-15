@@ -165,4 +165,20 @@ describe('plainText', () => {
     expect(plainText('x'.repeat(600), 10)).toBe('xxxxxxxxxx')
     expect(plainText('short', 10)).toBe('short')
   })
+  it('inserts a boundary space for block/br tags instead of fusing adjacent words', () => {
+    expect(plainText('<p>One.</p><p>Two.</p>')).toBe('One. Two.')
+    expect(plainText('Line one<br />Line two')).toBe('Line one Line two')
+    expect(plainText('a <b>bold</b> word')).toBe('a bold word') // inline tags with surrounding spaces still collapse to one
+  })
+  it('decodes common HTML entities after stripping tags', () => {
+    expect(plainText("Cats &amp; dogs&nbsp;play &#39;now&#x27;")).toBe("Cats & dogs play 'now'")
+    expect(plainText('&lt;b&gt;')).toBe('<b>') // decoded after tag-stripping, so this never becomes a tag
+  })
+  it('caps by code point, never splitting a surrogate pair', () => {
+    const prefix = 'x'.repeat(500)
+    const withAstral = prefix + '😀' // 😀 is a surrogate pair (2 UTF-16 code units, 1 code point)
+    const out = plainText(withAstral, 500)
+    expect(out).toBe(prefix)
+    expect(/[\uD800-\uDFFF]/.test(out ?? '')).toBe(false)
+  })
 })

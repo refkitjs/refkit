@@ -28,6 +28,8 @@ export interface ArticSearchOptions {
   from?: number
   size?: number
   facets?: string | readonly string[]
+  /** Caller-requested fields are ADDED to the provider's own defaults (id, title,
+   *  image_id, …), never replacing them. */
   fields?: string | readonly string[]
 }
 

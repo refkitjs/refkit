@@ -79,16 +79,48 @@ export function first<T>(arr: T[] | undefined | null): T | undefined {
 
 // — text helper (shared by sources whose captions arrive as HTML) —
 
+/** Named HTML entities decoded by `plainText` (nbsp collapses to a plain space so it
+ *  merges into the surrounding whitespace run rather than gluing two words together). */
+const HTML_NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+}
+
+/** Decode the handful of HTML entities upstream prose commonly uses, without a
+ *  dependency: the named entities above, plus numeric `&#NNN;` / `&#xHHH;` via
+ *  `String.fromCodePoint`. An entity with an out-of-range or non-finite code point
+ *  is left exactly as written rather than guessed at. */
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (match, body: string) => {
+    if (body[0] === '#') {
+      const isHex = body[1] === 'x' || body[1] === 'X'
+      const codePoint = parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10)
+      if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match
+      try {
+        return String.fromCodePoint(codePoint)
+      } catch {
+        return match
+      }
+    }
+    const named = HTML_NAMED_ENTITIES[body.toLowerCase()]
+    return named ?? match
+  })
+}
+
 /** Upstream titles, captions and descriptions routinely arrive as HTML (anchors,
- *  `<p>`, `<em>`) or with ragged whitespace. Strip the markup, collapse runs of
- *  whitespace, and cap the length — these fields feed the lexical reranker, so
- *  plain words matter and unbounded prose does not. Empty result → undefined,
- *  so callers can spread the field away instead of emitting ''. */
+ *  `<p>`, `<em>`) or with ragged whitespace. Replace each tag with a boundary space
+ *  (never fusing adjacent words across a stripped `<p>`/`<br>`), decode common HTML
+ *  entities, collapse runs of whitespace, and cap the length by code point (never
+ *  splitting a surrogate pair) — these fields feed the lexical reranker, so plain
+ *  words matter and unbounded prose does not. Empty result → undefined, so callers
+ *  can spread the field away instead of emitting ''. */
 export function plainText(value: string | null | undefined, maxLength = 500): string | undefined {
   if (typeof value !== 'string') return undefined
-  const text = value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  const stripped = value.replace(/<[^>]*>/g, ' ')
+  const decoded = decodeHtmlEntities(stripped)
+  const text = decoded.replace(/\s+/g, ' ').trim()
   if (!text) return undefined
-  return text.length > maxLength ? text.slice(0, maxLength) : text
+  const codePoints = Array.from(text)
+  return codePoints.length > maxLength ? codePoints.slice(0, maxLength).join('') : text
 }
 
 // — license: CC deed URL → LicenseId (the moat; shared by URL-based sources) —
