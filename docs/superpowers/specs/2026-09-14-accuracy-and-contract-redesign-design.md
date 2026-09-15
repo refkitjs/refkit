@@ -122,6 +122,14 @@ legacy feature→control routing, and the MCP `filters` parameter.
 - **Default reranker.** `RefkitOptions.rerank?: Reranker | false` defaults to
   `lexicalReranker()`; `SearchInput.rerank?: Reranker | false` overrides per call.
   MCP `rerank` defaults to true.
+- **Fusion survives reranking.** The lexical reranker's base score includes the
+  incoming fused `relevance` (max-normalised RRF, which already carries cross-source
+  agreement and source-confidence weights) via `fusionWeight`, default 0.5. Under the
+  shipped defaults an equal lexical hit from a mostly-relevant source therefore outranks
+  the same hit from a mostly-irrelevant source; `fusionWeight: 0` restores pure lexical
+  ordering. Near-duplicate detection treats two empty title-token sets as *not*
+  duplicates (jaccard over two empty sets is 0). A fulfilled provider that returned no
+  refs reports no `confidence` (the field is omitted), since there is nothing to rate.
 - **Lexical reranker** scores over title + description + tags + excerpt, adds a
   same-source near-duplicate penalty (`nearDuplicatePenalty` 0.25 when title-token
   Jaccard with an already-picked ref from the same source ≥ 0.7) and an optional
