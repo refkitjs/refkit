@@ -134,7 +134,7 @@ legacy feature→control routing, and the MCP `filters` parameter.
   same-source near-duplicate penalty (`nearDuplicatePenalty` 0.25 when title-token
   Jaccard with an already-picked ref from the same source ≥ 0.7) and an optional
   `sourceScoreWeight` (default 0) over per-source min-max normalised `sourceScore`.
-- **Threshold.** `SearchInput.minRelevance?` drops refs below it after rerank and gate,
+- **Threshold.** `SearchInput.minRelevance?` drops refs below it after rerank, before the gate,
   before the seen-filter and limit; `SearchMeta.threshold = { minRelevance, dropped }`.
 
 ### D7 — Provider acceptance
