@@ -87,14 +87,17 @@ const HTML_NAMED_ENTITIES: Record<string, string> = {
 
 /** Decode the handful of HTML entities upstream prose commonly uses, without a
  *  dependency: the named entities above, plus numeric `&#NNN;` / `&#xHHH;` via
- *  `String.fromCodePoint`. An entity with an out-of-range or non-finite code point
- *  is left exactly as written rather than guessed at. */
+ *  `String.fromCodePoint`. An entity with an out-of-range, non-finite, or lone
+ *  surrogate (`0xD800`-`0xDFFF`) code point is left exactly as written rather
+ *  than guessed at — `String.fromCodePoint` would otherwise mint an unpaired
+ *  surrogate that corrupts the UTF-16 string it's spliced into. */
 function decodeHtmlEntities(text: string): string {
   return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (match, body: string) => {
     if (body[0] === '#') {
       const isHex = body[1] === 'x' || body[1] === 'X'
       const codePoint = parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10)
       if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) return match
       try {
         return String.fromCodePoint(codePoint)
       } catch {

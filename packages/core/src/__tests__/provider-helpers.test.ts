@@ -181,4 +181,9 @@ describe('plainText', () => {
     expect(out).toBe(prefix)
     expect(/[\uD800-\uDFFF]/.test(out ?? '')).toBe(false)
   })
+  it('leaves a numeric entity in the surrogate range (D800-DFFF) untouched rather than emitting a lone surrogate', () => {
+    const out = plainText('a &#xD800; b')
+    expect(out).toBe('a &#xD800; b')
+    expect(/[\uD800-\uDFFF]/.test(out ?? '')).toBe(false)
+  })
 })

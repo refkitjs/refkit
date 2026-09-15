@@ -33,7 +33,7 @@ export function providerCacheKey(providerId: string, query: NormalizedQuery): st
 }
 
 function keyForFingerprint(providerId: string, fingerprint: string): string {
-  return `refkit:v2:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
+  return `refkit:v3:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
 }
 
 /** Shape of a cached entry: the query fingerprint (verified on read so a key

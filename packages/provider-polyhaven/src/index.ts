@@ -98,8 +98,10 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       // PER TOKEN, not on the whole phrase: asset metadata is single-word (id,
       // name, categories, tags), so "forest rock" as one substring matches
       // nothing while both of its words describe real assets. Assets covering
-      // more of the query rank first.
-      const tokens = (q.text ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+      // more of the query rank first. Split on anything that isn't alphanumeric
+      // (not just whitespace) so punctuation from a natural-language query
+      // ("forest, rock.") doesn't glue onto a token and prevent it matching.
+      const tokens = (q.text ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
       const fields = (id: string, a: PolyHavenAsset) => [id, a.name ?? '', ...(a.categories ?? []), ...(a.tags ?? [])].map(s => s.toLowerCase())
       if (tokens.length > 0) {
         entries = entries

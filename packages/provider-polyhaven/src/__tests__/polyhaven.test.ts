@@ -71,6 +71,14 @@ describe('polyhaven provider', () => {
     expect(refs.map(r => r.sourceUrl)).toEqual(['https://polyhaven.com/a/mossy_forest_rock', 'https://polyhaven.com/a/forest_floor'])
   })
 
+  it('tokenises on punctuation, not just whitespace — "forest, rock." matches the same assets as "forest rock"', async () => {
+    const [withPunctuation, withSpace] = await Promise.all([
+      polyhaven().search({ text: 'forest, rock.', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX)),
+      polyhaven().search({ text: 'forest rock', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX)),
+    ])
+    expect(withPunctuation.map(r => r.sourceUrl)).toEqual(withSpace.map(r => r.sourceUrl))
+  })
+
   it('declares kinds per assetType', () => {
     expect(polyhaven().kinds).toEqual(['texture'])
     expect(polyhaven({ assetType: 'hdris' }).kinds).toEqual(['hdri'])

@@ -30,7 +30,7 @@ describe('providerCacheKey', () => {
     const a = providerCacheKey('p', { text: 'lion cub  "quoted" \n spaced', modalities: ['image'] })
     const b = providerCacheKey('p', { text: 'tiger', modalities: ['image'] })
     expect(a).not.toBe(b)
-    expect(a).toMatch(/^refkit:v2:p:[a-z0-9]+$/) // no spaces/quotes → safe for strict KV backends
+    expect(a).toMatch(/^refkit:v3:p:[a-z0-9]+$/) // no spaces/quotes → safe for strict KV backends
     expect(a.length).toBeLessThan(64)
   })
 
