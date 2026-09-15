@@ -103,7 +103,12 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       const fields = (id: string, a: PolyHavenAsset) => [id, a.name ?? '', ...(a.categories ?? []), ...(a.tags ?? [])].map(s => s.toLowerCase())
       if (tokens.length > 0) {
         entries = entries
-          .map(([id, a]) => ({ id, a, hits: tokens.filter(t => fields(id, a).some(f => f.includes(t))).length }))
+          // `fields` is built once per asset, not once per (asset, token) pair —
+          // the full list is thousands of assets wide.
+          .map(([id, a]) => {
+            const haystack = fields(id, a)
+            return { id, a, hits: tokens.filter(t => haystack.some(f => f.includes(t))).length }
+          })
           .filter(e => e.hits > 0)
           // stable sort — assets with equally many hits keep the list's own order
           .sort((x, y) => y.hits - x.hits)

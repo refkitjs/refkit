@@ -29,7 +29,9 @@ const PREVIEW_VARIANT = '1280_lc'
 // in English, Japanese or Chinese — is in scope; a motif-only search (e.g. 桜,
 // "marble") stays reachable by asking for this source explicitly via
 // `sources: ['nailbook']`, which bypasses acceptance.
-const NAIL_TERMS = /nail|manicure|ネイル|ジェル|美甲|指甲|甲油/i
+// `(?<!s)nail` so "snail" is not a nail query, and `\bgel\b` so "gel" matches the
+// word but not "angel"/"gelatin"; マニキュア is the katakana spelling of manicure.
+const NAIL_TERMS = /(?<!s)nail|manicure|マニキュア|ネイル|ジェル|美甲|指甲|甲油|\bgel\b/i
 
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'

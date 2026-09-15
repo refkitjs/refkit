@@ -109,4 +109,11 @@ it('accepts only nail-art queries', () => {
   expect(p.accepts?.({ text: 'spring nail art', modalities: ['image'] })).toBe(true)
   expect(p.accepts?.({ text: '桜 ネイル', modalities: ['image'] })).toBe(true)
   expect(p.accepts?.({ text: '法式美甲', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: 'マニキュア', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: 'gel polish', modalities: ['image'] })).toBe(true)
+  // 'nail' must not match inside 'snail' — a macro shot of a snail shell is
+  // exactly the generic image query this source has nothing for.
+  expect(p.accepts?.({ text: 'snail shell macro', modalities: ['image'] })).toBe(false)
+  // …while a real nail query next to one still lands.
+  expect(p.accepts?.({ text: 'snail slime nail art', modalities: ['image'] })).toBe(true)
 })
