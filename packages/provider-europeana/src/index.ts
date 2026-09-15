@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  first, isLikelyImageUrl, imageMediaType, mapRightsUrl, ccVersionFor,
-  type Reference, type RightsRecord,
+  defineProvider, okJson, first, isLikelyImageUrl, imageMediaType, mapRightsUrl, ccVersionFor,
+  type EmittedReference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
   offsetForPage, setIfNonNegativeInt,
 } from '@refkit/core'
@@ -40,14 +39,14 @@ interface EuropeanaResponse { success?: boolean; items?: EuropeanaItem[] }
 // `isLikelyImageUrl`, no network — `core` never fetches bytes, and a probe would add a
 // request per item).
 
-function toReference(it: EuropeanaItem): Reference | null {
+function toReference(it: EuropeanaItem): EmittedReference | null {
   // v1 image-only scope (D1): defensively re-check type even though the search is
   // server-filtered with qf=TYPE:IMAGE.
   if (it.type && it.type !== 'IMAGE') return null
   if (!it.id) return null
 
   // id is "/datasetId/recordId" (leading slash) → canonical Europeana item page.
-  const canonicalUrl = `https://www.europeana.eu/item${it.id}`
+  const sourceUrl = `https://www.europeana.eu/item${it.id}`
 
   // preview = the actual IMAGE media (edmIsShownBy) ONLY — NEVER edmIsShownAt, which is
   // a landing web page. Trust edmIsShownBy when the record's MIME says image/*, or the
@@ -76,20 +75,16 @@ function toReference(it: EuropeanaItem): Reference | null {
     author: first(it.dataProvider) ?? first(it.provider) ?? undefined,
     // D6: media is hotlinked from data providers — caching/rehosting not permitted.
     rehostPolicy: 'hotlink-required',
-    raw: { sourceTerms: rightsUri || 'https://www.europeana.eu/rights', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: rightsUri || 'https://www.europeana.eu/rights', sourceUrl },
   }
   return {
-    id: referenceId('europeana', canonicalUrl),
     modality: 'image',
     kind: 'artwork',
     title: first(it.title) || undefined,
-    source: { providerId: 'europeana', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(thumbUrl ? { thumbnail: { url: thumbUrl } } : {}),
     ...(previewUrl ? { preview: { url: previewUrl, mediaType: imageMediaType(mime, previewUrl) } } : {}),
-    relevance: 0,
     raw: it,
   }
 }
@@ -101,7 +96,7 @@ export function europeana(config: EuropeanaConfig) {
     kinds: ['artwork'],
     description: 'European cultural heritage from museums, libraries and archives (Europeana)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL(BASE)
       url.searchParams.set('wskey', config.apiKey)
       url.searchParams.set('query', q.text)
@@ -111,12 +106,11 @@ export function europeana(config: EuropeanaConfig) {
       url.searchParams.set('media', 'true')   // only items that actually carry media
       url.searchParams.set('qf', 'TYPE:IMAGE') // v1 image-only scope (D1)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`europeana search failed: ${res.status}`)
-      const json = (await res.json()) as EuropeanaResponse
+      const json = await okJson<EuropeanaResponse>(res, 'europeana search')
       if (!json.items || json.items.length === 0) return []
       return json.items
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

@@ -22,7 +22,7 @@ describe('unsplash provider', () => {
     expect(r.rights.license).toBe('unsplash')
     expect(r.rights.rehostPolicy).toBe('hotlink-required')
     expect(r.rights.author).toBe('Jeff Sheldon')
-    expect(r.canonicalUrl).toBe('http://unsplash.com/photos/eOLpJytrbsQ')
+    expect(r.sourceUrl).toBe('http://unsplash.com/photos/eOLpJytrbsQ')
     expect(r.title).toBe('A man drinking a coffee.')
     expect(r.thumbnail?.url).toBe('https://images.unsplash.com/photo-1?w=200')
     expect(r.visual).toEqual({ width: 4000, height: 3000, dominantColors: ['#A7A2A1'] })

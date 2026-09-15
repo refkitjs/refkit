@@ -126,7 +126,7 @@ describe('gutendex provider', () => {
     expect(pd.rights.license).toBe('PD')
     expect(pd.title).toBe('Great Expectations')
     expect(pd.rights.author).toBe('Dickens, Charles')
-    expect(pd.canonicalUrl).toBe('https://www.gutenberg.org/ebooks/1400')
+    expect(pd.sourceUrl).toBe('https://www.gutenberg.org/ebooks/1400')
     expect(pd.thumbnail?.url).toBe('https://www.gutenberg.org/cache/epub/1400/pg1400.cover.medium.jpg')
     expect(pd.text?.excerpt).toContain('Great Expectations')
     expect(pd.text?.excerptKind).toBe('structure') // summaries[0] is a synopsis, not a verbatim passage

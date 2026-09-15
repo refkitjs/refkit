@@ -48,7 +48,7 @@ describe('polyhaven provider', () => {
     expect(r.preview?.url).toContain('aerial_asphalt_01_diff_1k.jpg')
     expect(r.preview?.mediaType).toBe('image/jpeg')
     expect(r.thumbnail?.url).toContain('thumbs/aerial_asphalt_01.png')
-    expect(r.canonicalUrl).toBe('https://polyhaven.com/a/aerial_asphalt_01')
+    expect(r.sourceUrl).toBe('https://polyhaven.com/a/aerial_asphalt_01')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
   })
 

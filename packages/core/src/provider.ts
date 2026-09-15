@@ -1,5 +1,5 @@
 import type { Modality } from './modality'
-import type { Reference } from './reference'
+import type { EmittedReference } from './reference'
 // The control vocabulary (SearchControls and friends) lives in controls.ts —
 // one registry, one definition; provider.ts only consumes it.
 import type { ResourceKind, SearchControlKey, SearchControls } from './controls'
@@ -53,7 +53,7 @@ export interface ReferenceProvider {
    *  so an agent can judge topical fit (e.g. "CC0 PBR textures for 3D work"). */
   description?: string
   capabilities?: ProviderCapabilities
-  search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]>
+  search(query: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]>
 }
 
 /** Identity helper for type inference when authoring a provider factory. */

@@ -1,6 +1,6 @@
 import {
-  defineProvider, referenceId,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 interface PoetryDbPoem { title: string; author: string; lines: string[]; linecount: string }
@@ -16,32 +16,28 @@ export interface PoetryDbSearchOptions {
 
 const EXCERPT_LINES = 8
 
-function toReference(p: PoetryDbPoem): Reference {
+function toReference(p: PoetryDbPoem): EmittedReference {
   // PoetryDB has no human-facing HTML page or per-item id; this constructed API URL (returns JSON) is the best stable provenance anchor it offers.
-  const canonicalUrl = `https://poetrydb.org/author,title/${encodeURIComponent(p.author)};${encodeURIComponent(p.title)}`
+  const sourceUrl = `https://poetrydb.org/author,title/${encodeURIComponent(p.author)};${encodeURIComponent(p.title)}`
   const rights: RightsRecord = {
     // Project-level inference: PoetryDB curates classic (out-of-copyright) poets; it asserts
     // no per-item license. PD is inferred from editorial scope, not guaranteed per item.
     license: 'PD',
     author: p.author,
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://poetrydb.org', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://poetrydb.org', sourceUrl },
   }
   return {
-    id: referenceId('poetrydb', `${p.author}:${p.title}`),
     modality: 'text',
     kind: 'poem',
     title: p.title,
-    source: { providerId: 'poetrydb', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     text: {
       excerpt: p.lines.slice(0, EXCERPT_LINES).join('\n'), // representative excerpt, not the whole poem
       excerptKind: 'passage',
-      locator: canonicalUrl,
+      locator: sourceUrl,
     },
-    relevance: 0,
     raw: p,
   }
 }
@@ -111,12 +107,11 @@ export function poetrydb() {
     kinds: ['poem'],
     description: 'Classic public-domain poetry (PoetryDB)',
     capabilities: { controls: [] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       // /lines/<term> finds poems whose line content contains the term (closest to keyword search)
       const url = poetrydbUrl(q.text, q.providerOptions as PoetryDbSearchOptions | undefined, q.limit)
       const res = await ctx.fetch(url, { signal: ctx.signal })
-      if (!res.ok) throw new Error(`poetrydb search failed: ${res.status}`)
-      const json = (await res.json()) as PoetryDbPoem[] | { status: number }
+      const json = await okJson<PoetryDbPoem[] | { status: number }>(res, 'poetrydb search')
       if (!Array.isArray(json)) return [] // no-match returns { status: 404, reason: 'Not found' }
       return json.map(toReference)
     },

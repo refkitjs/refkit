@@ -11,13 +11,17 @@ export { rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
 export { buildAttribution } from './attribution'
 export type { Attribution, AttributionInput } from './attribution'
 export type {
+  EmittedReference,
   Reference,
   ReferenceMedia,
   MediaPreview,
   VisualMeta,
   TextMeta,
 } from './reference'
-export { referenceSchema, parseReference } from './reference'
+export {
+  emittedReferenceSchema, referenceSchema,
+  parseEmitted, parseReference, completeReference,
+} from './reference'
 export { fnv1a } from './hash'
 export { canonicalizeUrl, referenceId } from './dedup-key'
 export { hammingDistance, dedupeReferences } from './dedup'
@@ -58,7 +62,7 @@ export {
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber, offsetForPage,
   first, mapCcDeedUrl, mapRightsUrl, CC_FAMILY_BY_TOKEN,
-  isLikelyImageUrl, imageMediaType, IMAGE_EXT,
+  isLikelyImageUrl, imageMediaType, IMAGE_EXT, okJson,
 } from './provider-helpers'
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
@@ -79,5 +83,5 @@ export type {
 } from './client'
 export { lexicalReranker, tokenize } from './rerank'
 export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'
-export { withTimeout, retryingFetch } from './resilience'
+export { withTimeout, retryingFetch, withDefaultUserAgent } from './resilience'
 export type { TimeoutHandle, RetryOptions } from './resilience'

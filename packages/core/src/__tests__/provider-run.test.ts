@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { providerCacheKey, runProviderSearch } from '../provider-run'
-import type { KeyValueCache, ReferenceProvider } from '../provider'
-import type { Reference } from '../reference'
+import { defineProvider, type KeyValueCache, type ReferenceProvider } from '../provider'
+import type { EmittedReference } from '../reference'
 
-const ref = (url: string): Reference => ({
-  id: `p:${url}`,
+const ref = (url: string): EmittedReference => ({
   modality: 'image',
-  source: { providerId: 'p', sourceUrl: url },
-  canonicalUrl: url,
+  sourceUrl: url,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
-  verifiedAt: '2026-06-22T00:00:00.000Z',
-  relevance: 0,
   raw: { upstream: 'payload' },
 })
 
-const provider = (results: Reference[]): ReferenceProvider => ({
+const provider = (results: EmittedReference[]): ReferenceProvider => ({
   id: 'p',
   modalities: ['image'],
   search: async () => results,
@@ -63,5 +59,22 @@ describe('runProviderSearch cacheRaw', () => {
     await new Promise(r => setTimeout(r))
     const [payload] = [...cache.store.values()]
     expect(JSON.parse(payload).refs[0].raw).toBeUndefined()
+  })
+})
+
+describe('runProviderSearch completion', () => {
+  it('completes emitted items and truncates to query.limit', async () => {
+    const provider = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => Array.from({ length: 5 }, (_, i) => ({
+        modality: 'image' as const, sourceUrl: `https://x.test/${i}`,
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: 'u' } },
+      })),
+    })
+    const run = await runProviderSearch(provider, { text: 'q', modalities: ['image'], limit: 3 }, { fetch: (async () => new Response('')) as typeof fetch, cacheTtlMs: 0, cacheRaw: true })
+    expect(run.ok && run.valid.length).toBe(3)
+    expect(run.ok && run.returned).toBe(5)
+    expect(run.ok && run.valid[0].source.providerId).toBe('p')
+    expect(run.ok && run.valid[0].id.startsWith('p:')).toBe(true)
   })
 })

@@ -87,13 +87,9 @@ describe('@refkit/mcp', () => {
 
   it('returns nextCursor at the top level WITHOUT explain, and the cursor round-trips', async () => {
     const item = (i: number) => ({
-      id: `pg:${i}`,
       modality: 'image' as const,
-      source: { providerId: 'pg', sourceUrl: `https://pg/${i}` },
-      canonicalUrl: `https://pg/${i}`,
+      sourceUrl: `https://pg/${i}`,
       rights: { license: 'CC0-1.0' as const, rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: `https://pg/${i}` } },
-      verifiedAt: '2026-06-22T00:00:00.000Z',
-      relevance: 0,
     })
     const pool = Array.from({ length: 6 }, (_, i) => item(i + 1))
     const paging = defineProvider({
@@ -258,14 +254,10 @@ describe('@refkit/mcp', () => {
       id: 'good',
       modalities: ['image'],
       search: async () => [{
-        id: 'good-1',
         modality: 'image',
         title: 'credit me',
-        source: { providerId: 'good', sourceUrl: 'https://good/1' },
-        canonicalUrl: 'https://good/1',
+        sourceUrl: 'https://good/1',
         rights: { license: 'CC-BY', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 'terms', sourceUrl: 'https://good/1' } },
-        verifiedAt: '2026-06-22T00:00:00.000Z',
-        relevance: 1,
       }],
     })
     const bad = defineProvider({

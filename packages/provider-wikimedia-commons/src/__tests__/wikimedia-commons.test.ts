@@ -77,7 +77,7 @@ describe('wikimedia-commons provider', () => {
     expect(a.rights.license).toBe('CC-BY-SA')
     expect(a.rights.licenseVersion).toBe('4.0')
     expect(a.rights.author).toBe('Basile Morin') // HTML stripped from the Artist field
-    expect(a.canonicalUrl).toBe('https://commons.wikimedia.org/wiki/File:Cat_playing_with_a_lizard.jpg')
+    expect(a.sourceUrl).toBe('https://commons.wikimedia.org/wiki/File:Cat_playing_with_a_lizard.jpg')
     expect(a.title).toBe('Cat playing with a lizard')
     expect(a.thumbnail?.url).toContain('1024px')
     expect(a.preview?.url).toBe('https://upload.wikimedia.org/wikipedia/commons/7/72/Cat_playing_with_a_lizard.jpg')

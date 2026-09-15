@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfPositiveInt,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, setIfString, setIfPositiveInt,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 export interface UnsplashConfig { accessKey: string }
@@ -33,7 +32,7 @@ function setCollections(url: URL, value: unknown) {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) url.searchParams.set('collections', value.join(','))
 }
 
-function toReference(r: UnsplashResult): Reference {
+function toReference(r: UnsplashResult): EmittedReference {
   const rights: RightsRecord = {
     license: 'unsplash',
     author: r.user.name,
@@ -41,17 +40,13 @@ function toReference(r: UnsplashResult): Reference {
     raw: { sourceTerms: 'https://unsplash.com/license', sourceUrl: r.links.html },
   }
   return {
-    id: referenceId('unsplash', r.links.html),
     modality: 'image',
     kind: 'photo',
     title: r.description ?? r.alt_description ?? undefined,
-    source: { providerId: 'unsplash', sourceUrl: r.links.html },
-    canonicalUrl: r.links.html,
+    sourceUrl: r.links.html,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: r.urls.thumb },
     visual: { width: r.width, height: r.height, dominantColors: r.color ? [r.color] : undefined },
-    relevance: 0,
     raw: r, // carries links.download_location — host fires it on use (Unsplash ToS)
   }
 }
@@ -63,7 +58,7 @@ export function unsplash(config: UnsplashConfig) {
     kinds: ['photo'],
     description: 'High-quality free stock photography (Unsplash)',
     capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.unsplash.com/search/photos')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 10, 30))) // Unsplash hard-caps per_page at 30; default kept low for free-tier rate limits
@@ -88,8 +83,7 @@ export function unsplash(config: UnsplashConfig) {
         headers: { Authorization: `Client-ID ${config.accessKey}`, 'Accept-Version': 'v1' },
         signal: ctx.signal,
       })
-      if (!res.ok) throw new Error(`unsplash search failed: ${res.status}`)
-      const json = (await res.json()) as UnsplashResponse
+      const json = await okJson<UnsplashResponse>(res, 'unsplash search')
       return json.results.map(toReference)
     },
   })

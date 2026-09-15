@@ -154,3 +154,11 @@ export function imageMediaType(mime: string | undefined, url: string): string {
   if (m) { const e = m[1].toLowerCase(); return e === 'jpg' ? 'image/jpeg' : `image/${e === 'tif' ? 'tiff' : e}` }
   return 'image/jpeg'
 }
+
+// — response helper (shared by every provider's search()) —
+
+/** Throw `${label} failed: ${status}` on a non-2xx response, else parse the JSON body. */
+export async function okJson<T>(res: Response, label: string): Promise<T> {
+  if (!res.ok) throw new Error(`${label} failed: ${res.status}`)
+  return (await res.json()) as T
+}

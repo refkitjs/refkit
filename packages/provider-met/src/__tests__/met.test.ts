@@ -36,7 +36,7 @@ describe('met provider', () => {
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.author).toBe('Vincent van Gogh')
     expect(r.title).toBe('Wheat Field with Cypresses')
-    expect(r.canonicalUrl).toBe('https://www.metmuseum.org/art/collection/search/436535')
+    expect(r.sourceUrl).toBe('https://www.metmuseum.org/art/collection/search/436535')
     expect(r.preview?.url).toContain('original/DP-42549-001.jpg')
     expect(r.thumbnail?.url).toContain('web-large')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')

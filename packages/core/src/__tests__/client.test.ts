@@ -4,20 +4,16 @@ import { searchMetaSchema } from '../schemas'
 import { cursorSeenKey, decodeCursor } from '../cursor'
 import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
-import type { Reference } from '../reference'
+import { completeReference, type EmittedReference } from '../reference'
 import type { LicenseId } from '../license'
 
-const ref = (id: string, url: string, license: LicenseId = 'CC0-1.0'): Reference => ({
-  id,
+const ref = (url: string, license: LicenseId = 'CC0-1.0'): EmittedReference => ({
   modality: 'image',
-  source: { providerId: id.split('-')[0], sourceUrl: url },
-  canonicalUrl: url,
+  sourceUrl: url,
   rights: { license, rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
-  verifiedAt: '2026-06-22T00:00:00.000Z',
-  relevance: 0,
 })
 
-const provider = (id: string, refs: Reference[]) =>
+const provider = (id: string, refs: EmittedReference[]) =>
   defineProvider({ id, modalities: ['image'], search: async () => refs })
 
 const failing = (id: string) =>
@@ -29,7 +25,7 @@ describe('createRefkit', () => {
   })
 
   it('merges results across providers and normalizes relevance', async () => {
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), provider('b', [ref('b-1', 'https://b/1')])] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), provider('b', [ref('https://b/1')])] })
     const out = await rk.search({ query: 'x', modalities: ['image'] })
     expect(out).toHaveLength(2)
     expect(out[0].relevance).toBeGreaterThan(0)
@@ -37,7 +33,7 @@ describe('createRefkit', () => {
 
   it('degrades gracefully when one provider fails (onProviderError, survivors merged)', async () => {
     const onProviderError = vi.fn()
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), failing('b')] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), failing('b')] })
     const out = await rk.search({ query: 'x', modalities: ['image'], onProviderError })
     expect(out).toHaveLength(1)
     expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'b' }))
@@ -50,7 +46,7 @@ describe('createRefkit', () => {
 
   it('gateFor drops non-allowed results', async () => {
     const rk = createRefkit({
-      providers: [provider('a', [ref('a-1', 'https://a/1', 'CC0-1.0'), ref('a-2', 'https://a/2', 'proprietary')])],
+      providers: [provider('a', [ref('https://a/1', 'CC0-1.0'), ref('https://a/2', 'proprietary')])],
     })
     const out = await rk.search({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
     expect(out.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
@@ -60,7 +56,7 @@ describe('createRefkit', () => {
     const ac = new AbortController()
     let seenQuery = ''
     let seenSignal: AbortSignal | undefined
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2')])] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1'), ref('https://a/2')])] })
     const out = await rk.search({
       query: 'x',
       modalities: ['image'],
@@ -74,7 +70,7 @@ describe('createRefkit', () => {
 
   it('evaluateUse / buildAttribution methods operate on a Reference', () => {
     const rk = createRefkit({ providers: [provider('a', [])] })
-    const r = ref('a-1', 'https://a/1', 'CC-BY')
+    const r = completeReference('a', ref('https://a/1', 'CC-BY'), '2026-06-22T00:00:00.000Z')
     expect(rk.evaluateUse(r, 'commercial-product').decision).toBe('allowed-with-attribution')
     expect(rk.buildAttribution(r).required).toBe(true)
   })
@@ -83,9 +79,9 @@ describe('createRefkit', () => {
     // fetchLimit > limit: the page-1 pool holds MORE than one batch. The cursor
     // must keep returning from the same provider page until it is exhausted —
     // advancing per batch would skip ranked results forever.
-    const pages: Record<number, Reference[]> = {
-      1: [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')],
-      2: [ref('a-5', 'https://a/5')],
+    const pages: Record<number, EmittedReference[]> = {
+      1: [ref('https://a/1'), ref('https://a/2'), ref('https://a/3'), ref('https://a/4')],
+      2: [ref('https://a/5')],
     }
     const seenPages: Array<number | undefined> = []
     const paging = defineProvider({
@@ -121,7 +117,7 @@ describe('createRefkit', () => {
   })
 
   it('cursor: rejects strings that did not come from meta.nextCursor', async () => {
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
     await expect(rk.search({ query: 'x', modalities: ['image'], cursor: 'not-a-cursor' })).rejects.toThrow(/invalid cursor/)
     await expect(rk.search({ query: 'x', modalities: ['image'], cursor: '{"v":9}' })).rejects.toThrow(/invalid cursor/)
     // Legacy v1 JSON cursors are short-lived load-more state, not durable ids —
@@ -132,7 +128,7 @@ describe('createRefkit', () => {
   it('cursor: a bad caller-supplied controls.page fails loudly on the next call, not silently', async () => {
     // v1's zod decode rejected out-of-range pages when the cursor came back;
     // v2 must preserve that instead of wrapping to some other uint32 page.
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], controls: { page: -1 } })
     expect(out.references).toHaveLength(1)
     await expect(rk.search({ query: 'x', modalities: ['image'], cursor: out.meta.nextCursor })).rejects.toThrow(/invalid cursor/)
@@ -141,7 +137,7 @@ describe('createRefkit', () => {
   it('cursor: seen never evicts the batch just returned, even when maxCursorSeen is smaller', async () => {
     // A cap below the batch size would re-show this batch on the very next
     // call and pagination would never converge.
-    const refs = [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')]
+    const refs = [ref('https://a/1'), ref('https://a/2'), ref('https://a/3'), ref('https://a/4')]
     const rk = createRefkit({ providers: [provider('a', refs)], maxCursorSeen: 1 })
     const batch1 = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2 })
     expect(batch1.references.map(r => r.canonicalUrl)).toEqual(['https://a/1', 'https://a/2'])
@@ -151,7 +147,7 @@ describe('createRefkit', () => {
 
   it('cursor: maxCursorSeen Infinity disables the cap instead of falling back to the default', async () => {
     // 501 results in one batch: the default cap would trim seen to 500.
-    const many = Array.from({ length: 501 }, (_, i) => ref(`a-${i}`, `https://a/${i}`))
+    const many = Array.from({ length: 501 }, (_, i) => ref(`https://a/${i}`))
     const rk = createRefkit({ providers: [provider('a', many)], maxCursorSeen: Infinity })
     const batch = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 501 })
     expect(batch.references).toHaveLength(501)
@@ -159,7 +155,7 @@ describe('createRefkit', () => {
   })
 
   it('cursor: maxCursorSeen caps remembered keys (oldest evicted first)', async () => {
-    const refs = [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')]
+    const refs = [ref('https://a/1'), ref('https://a/2'), ref('https://a/3'), ref('https://a/4')]
     const rk = createRefkit({ providers: [provider('a', refs)], maxCursorSeen: 2 })
     const search = (cursor?: string) => rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 1, cursor })
 
@@ -182,8 +178,8 @@ describe('createRefkit', () => {
   it('surfaces cross-source license conflicts as meta.warnings with conservative rights', async () => {
     const rk = createRefkit({
       providers: [
-        provider('a', [ref('a-1', 'https://shared/1', 'CC-BY')]),
-        provider('b', [ref('b-1', 'https://shared/1', 'CC-BY-NC')]),
+        provider('a', [ref('https://shared/1', 'CC-BY')]),
+        provider('b', [ref('https://shared/1', 'CC-BY-NC')]),
       ],
     })
     const { references, meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
@@ -203,7 +199,7 @@ describe('createRefkit', () => {
         maxActive = Math.max(maxActive, active)
         await new Promise(r => setTimeout(r, 5))
         active--
-        return [ref(`${id}-1`, `https://${id}/1`)]
+        return [ref(`https://${id}/1`)]
       },
     })
     const providers = [slow('a'), slow('b'), slow('c'), slow('d')]
@@ -218,7 +214,7 @@ describe('createRefkit', () => {
       id: 't', modalities: ['text'],
       search: async () => { throw new Error('should not be called for an image search') },
     })
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), textOnly] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), textOnly] })
     const out = await rk.search({ query: 'x', modalities: ['image'] })
     expect(out).toHaveLength(1)
   })
@@ -240,6 +236,23 @@ describe('createRefkit', () => {
     globalFetchSpy.mockRestore()
   })
 
+  it('injects a default User-Agent into provider fetches, and userAgent: false disables it', async () => {
+    const seen: (string | null)[] = []
+    const spy = vi.fn(async (_i: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('user-agent'))
+      return new Response('ok', { status: 200 })
+    }) as unknown as typeof fetch
+    const calling = (headers?: Record<string, string>) => defineProvider({
+      id: 'ua', modalities: ['image'],
+      search: async (_q, ctx) => { await ctx.fetch('https://ua/x', headers ? { headers } : undefined); return [] },
+    })
+    await createRefkit({ providers: [calling()], fetch: spy }).search({ query: 'x', modalities: ['image'] })
+    await createRefkit({ providers: [calling()], fetch: spy, userAgent: 'host/9' }).search({ query: 'x', modalities: ['image'] })
+    await createRefkit({ providers: [calling({ 'User-Agent': 'prov/3' })], fetch: spy }).search({ query: 'x', modalities: ['image'] })
+    await createRefkit({ providers: [calling()], fetch: spy, userAgent: false }).search({ query: 'x', modalities: ['image'] })
+    expect(seen).toEqual(['refkit-client/1', 'host/9', 'prov/3', null])
+  })
+
   it('resolves globalThis.fetch at search time, not at createRefkit time (late-binding)', async () => {
     // createRefkit is called BEFORE globalThis.fetch is replaced — a client that
     // resolved options.fetch ?? globalThis.fetch once at creation time would be
@@ -259,7 +272,7 @@ describe('createRefkit', () => {
   })
 
   it('throws a clear Error (not AggregateError) when no provider supports the requested modality', async () => {
-    const imageOnly = provider('img', [ref('img-1', 'https://img/1')])
+    const imageOnly = provider('img', [ref('https://img/1')])
     const rk = createRefkit({ providers: [imageOnly] })
     await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.toThrow(
       "refkit.search: no registered provider supports modalities [video]"
@@ -272,9 +285,9 @@ describe('createRefkit', () => {
     const malformedProvider = defineProvider({
       id: 'bad',
       modalities: ['image'],
-      search: async () => [{ id: '', modality: 'image' } as unknown as Reference],
+      search: async () => [{ modality: 'image' } as unknown as EmittedReference],
     })
-    const goodProvider = provider('good', [ref('good-1', 'https://good/1')])
+    const goodProvider = provider('good', [ref('https://good/1')])
     const rk = createRefkit({ providers: [malformedProvider, goodProvider] })
     const out = await rk.search({ query: 'x', modalities: ['image'], onProviderError })
     expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'bad' }))
@@ -283,8 +296,8 @@ describe('createRefkit', () => {
   })
 
   it('search() applies lexicalReranker end-to-end, ordering by query relevance', async () => {
-    const meadow = { ...ref('a-1', 'https://a/1'), title: 'a quiet meadow' }
-    const city = { ...ref('a-2', 'https://a/2'), title: 'cyberpunk neon city' }
+    const meadow = { ...ref('https://a/1'), title: 'a quiet meadow' }
+    const city = { ...ref('https://a/2'), title: 'cyberpunk neon city' }
     const rk = createRefkit({ providers: [provider('a', [meadow, city])] })
     const out = await rk.search({ query: 'cyberpunk neon', modalities: ['image'], rerank: lexicalReranker() })
     expect(out[0].canonicalUrl).toBe('https://a/2')
@@ -296,7 +309,7 @@ describe('createRefkit', () => {
       modalities: ['image'],
       search: async (q) => {
         sink.limit = q.limit
-        return Array.from({ length: count }, (_, i) => ref(`cap-${i}`, `https://cap/${i}`))
+        return Array.from({ length: count }, (_, i) => ref(`https://cap/${i}`))
       },
     })
 
@@ -359,7 +372,7 @@ describe('createRefkit', () => {
     })
     const rk = createRefkit({
       providers: [
-        provider('ok', [ref('ok-1', 'https://ok/1', 'CC0-1.0'), ref('ok-2', 'https://ok/2', 'proprietary')]),
+        provider('ok', [ref('https://ok/1', 'CC0-1.0'), ref('https://ok/2', 'proprietary')]),
         failing('bad'),
         textOnly,
       ],
@@ -377,8 +390,9 @@ describe('createRefkit', () => {
   })
 
   it('uses merge.isDuplicate to dedupe host-supplied fingerprints during search', async () => {
-    const a = { ...ref('a-1', 'https://a/1'), relevance: 0.2, raw: { fingerprint: 'same' } }
-    const b = { ...ref('a-2', 'https://a/2'), relevance: 0.9, raw: { fingerprint: 'same' } }
+    // b is emitted first, so RRF ranks it above a; the survivor must be b.
+    const a = { ...ref('https://a/1'), raw: { fingerprint: 'same' } }
+    const b = { ...ref('https://a/2'), raw: { fingerprint: 'same' } }
     const rk = createRefkit({
       providers: [provider('a', [b, a])],
       merge: {
@@ -387,7 +401,7 @@ describe('createRefkit', () => {
       },
     })
     const out = await rk.search({ query: 'x', modalities: ['image'] })
-    expect(out.map(r => r.id)).toEqual(['a-2'])
+    expect(out.map(r => r.canonicalUrl)).toEqual(['https://a/2'])
   })
 
   it('searchWithMeta reports applied and ignored unified controls by provider', async () => {
@@ -395,13 +409,13 @@ describe('createRefkit', () => {
       id: 'controlled',
       modalities: ['image'],
       capabilities: { controls: ['orientation', 'color'] },
-      search: async () => [ref('controlled-1', 'https://controlled/1')],
+      search: async () => [ref('https://controlled/1')],
     })
     const plain = defineProvider({
       id: 'plain',
       modalities: ['image'],
       capabilities: { controls: [] },
-      search: async () => [ref('plain-1', 'https://plain/1')],
+      search: async () => [ref('https://plain/1')],
     })
     const rk = createRefkit({ providers: [controlled, plain] })
     const out = await rk.searchWithMeta({
@@ -420,7 +434,7 @@ describe('createRefkit', () => {
     const bare = defineProvider({
       id: 'bare',
       modalities: ['image'],
-      search: async () => [ref('bare-1', 'https://bare/1')],
+      search: async () => [ref('https://bare/1')],
     })
     const rk = createRefkit({ providers: [bare] })
     const out = await rk.searchWithMeta({
@@ -436,7 +450,7 @@ describe('createRefkit', () => {
 
   it('produces meta that validates against the exported searchMetaSchema', async () => {
     const skipped = defineProvider({ id: 'audio-only', modalities: ['audio'], search: async () => [] })
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), skipped] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), skipped] })
     const out = await rk.searchWithMeta({
       query: 'x',
       modalities: ['image'],
@@ -456,7 +470,7 @@ describe('createRefkit', () => {
         id: 'hang', modalities: ['image'],
         search: () => new Promise(() => {}), // never settles, ignores ctx.signal
       })
-      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), hanging] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), hanging] })
       const p = rk.searchWithMeta({ query: 'x', modalities: ['image'] })
       await vi.advanceTimersByTimeAsync(10_000)
       const out = await p
@@ -475,14 +489,14 @@ describe('createRefkit', () => {
       let observedAbort = false
       const wellBehaved = defineProvider({
         id: 'wb', modalities: ['image'],
-        search: (_q, ctx) => new Promise<Reference[]>((_resolve, reject) => {
+        search: (_q, ctx) => new Promise<EmittedReference[]>((_resolve, reject) => {
           ctx.signal?.addEventListener('abort', () => {
             observedAbort = true
             reject(ctx.signal?.reason ?? new Error('aborted'))
           })
         }),
       })
-      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), wellBehaved] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), wellBehaved] })
       const p = rk.searchWithMeta({ query: 'x', modalities: ['image'] })
       await vi.advanceTimersByTimeAsync(10_000)
       const out = await p
@@ -500,7 +514,7 @@ describe('createRefkit', () => {
       let done = false
       const slow = defineProvider({
         id: 'slow', modalities: ['image'],
-        search: () => new Promise(resolve => setTimeout(() => { done = true; resolve([ref('slow-1', 'https://s/1')]) }, 60_000)),
+        search: () => new Promise(resolve => setTimeout(() => { done = true; resolve([ref('https://s/1')]) }, 60_000)),
       })
       const rk = createRefkit({ providers: [slow], resilience: false })
       const p = rk.search({ query: 'x', modalities: ['image'] })
@@ -542,7 +556,7 @@ describe('createRefkit', () => {
       search: async (_q, ctx) => {
         const res = await ctx.fetch('https://net/api', { signal: ctx.signal })
         if (!res.ok) throw new Error(`net failed: ${res.status}`)
-        return [ref('net-1', 'https://net/1')]
+        return [ref('https://net/1')]
       },
     })
     const rk = createRefkit({ providers: [usesFetch], fetch: upstream as unknown as typeof fetch, resilience: { retries: 1, timeoutMs: 10_000 } })
@@ -553,7 +567,7 @@ describe('createRefkit', () => {
 
   it('reports latencyMs on fulfilled and failed providers, not on skipped', async () => {
     const textOnly = defineProvider({ id: 'text', modalities: ['text'], search: async () => [] })
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), failing('bad'), textOnly] })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), failing('bad'), textOnly] })
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
     const byId = Object.fromEntries(out.meta.providers.map(s => [s.providerId, s]))
     expect(byId.a.latencyMs).toEqual(expect.any(Number))
@@ -576,7 +590,7 @@ describe('createRefkit', () => {
     let calls = 0
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+      search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'] })
@@ -592,7 +606,7 @@ describe('createRefkit', () => {
     let calls = 0
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+      search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'] })
@@ -605,7 +619,7 @@ describe('createRefkit', () => {
     let calls = 0
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+      search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'] })
@@ -619,21 +633,21 @@ describe('createRefkit', () => {
       async get(): Promise<string | undefined> { throw new Error('cache down') },
       async set(): Promise<void> { throw new Error('cache down') },
     }
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache: broken })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])], cache: broken })
     const out = await rk.search({ query: 'x', modalities: ['image'] })
     expect(out).toHaveLength(1)
   })
 
   it('honors a custom cacheTtlMs', async () => {
     const cache = mapCache()
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])], cache, cacheTtlMs: 1234 })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])], cache, cacheTtlMs: 1234 })
     await rk.search({ query: 'x', modalities: ['image'] })
     expect(cache.ttls).toEqual([1234])
   })
 
   it('a cache hit still flows through the license gate (hits are pre-merge; the gate stays live)', async () => {
     const cache = mapCache()
-    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1', 'proprietary')])], cache })
+    const rk = createRefkit({ providers: [provider('a', [ref('https://a/1', 'proprietary')])], cache })
     await rk.search({ query: 'x', modalities: ['image'] })
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
     expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
@@ -649,7 +663,7 @@ describe('createRefkit', () => {
         set: async () => {},
       }
       const rk = createRefkit({
-        providers: [provider('a', [ref('a-1', 'https://a/1')])],
+        providers: [provider('a', [ref('https://a/1')])],
         cache: hangingCache,
         resilience: { timeoutMs: 100 },
       })
@@ -667,7 +681,7 @@ describe('createRefkit', () => {
     let calls = 0
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+      search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { b: 2, a: 1 } } })
@@ -681,7 +695,7 @@ describe('createRefkit', () => {
       const cache = mapCache()
       const counted = defineProvider({
         id: 'c', modalities: ['image'],
-        search: async () => [ref('c-1', 'https://c/1')],
+        search: async () => [ref('https://c/1')],
       })
       const rk = createRefkit({ providers: [counted], cache })
       await rk.search({ query: 'x', modalities: ['image'] }) // live search, populates cache
@@ -700,7 +714,7 @@ describe('createRefkit', () => {
     const onProviderError = vi.fn()
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => [ref('c-1', 'https://c/1')],
+      search: async () => [ref('https://c/1')],
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'] }) // live search, populates cache
@@ -710,7 +724,7 @@ describe('createRefkit', () => {
       cache.store.set(k, JSON.stringify({ ...payload, refs: [...payload.refs, { id: '', modality: 'image' }] }))
     }
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], onProviderError })
-    expect(out.references.map(r => r.id)).toEqual(['c-1'])
+    expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://c/1'])
     expect(out.meta.providers[0]).toMatchObject({ cached: true, returned: 2, accepted: 1, rejected: 1 })
     expect(onProviderError).toHaveBeenCalledTimes(1)
     expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'c' }))
@@ -721,7 +735,7 @@ describe('createRefkit', () => {
     let calls = 0
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
-      search: async () => { calls++; return [ref('c-1', 'https://c/1')] },
+      search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
     await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: undefined } } })
@@ -732,10 +746,10 @@ describe('createRefkit', () => {
   describe('sources filter', () => {
     it('restricts the fan-out to the requested source ids; others are skipped as not-selected', async () => {
       let bCalled = false
-      const a = provider('a', [ref('a-1', 'https://a/1')])
+      const a = provider('a', [ref('https://a/1')])
       const b = defineProvider({
         id: 'b', modalities: ['image'],
-        search: async () => { bCalled = true; return [ref('b-1', 'https://b/1')] },
+        search: async () => { bCalled = true; return [ref('https://b/1')] },
       })
       const rk = createRefkit({ providers: [a, b] })
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
@@ -747,8 +761,8 @@ describe('createRefkit', () => {
     it('a modality miss stays unsupported-modality; only a source exclusion is not-selected', async () => {
       // b matches the modality but is filtered out by sources → not-selected.
       // text never matches the modality → unsupported-modality, regardless of sources.
-      const a = provider('a', [ref('a-1', 'https://a/1')])
-      const b = provider('b', [ref('b-1', 'https://b/1')])
+      const a = provider('a', [ref('https://a/1')])
+      const b = provider('b', [ref('https://b/1')])
       const textOnly = defineProvider({ id: 'text', modalities: ['text'], search: async () => [] })
       const rk = createRefkit({ providers: [a, b, textOnly] })
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
@@ -758,7 +772,7 @@ describe('createRefkit', () => {
     })
 
     it('throws a clear Error (not AggregateError) when sources match no configured provider', async () => {
-      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
       await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.toThrow(
         'refkit.search: no configured provider matches source id(s) [nope] for modalities [image]',
       )
@@ -766,7 +780,7 @@ describe('createRefkit', () => {
     })
 
     it('throws the source-miss error when the requested source exists but not for this modality', async () => {
-      const imageOnly = provider('img', [ref('img-1', 'https://img/1')])
+      const imageOnly = provider('img', [ref('https://img/1')])
       const textOnly = defineProvider({ id: 'txt', modalities: ['text'], search: async () => [] })
       const rk = createRefkit({ providers: [imageOnly, textOnly] })
       // txt is registered, but scoping an image search to [txt] has an empty intersection
@@ -776,22 +790,22 @@ describe('createRefkit', () => {
     })
 
     it('warns about unknown source ids while still searching the ones that resolved', async () => {
-      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')])] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a', 'ghost'] })
       expect(out.references).toHaveLength(1)
       expect(out.meta.warnings).toContain('unknown source id(s) ignored: ghost.')
     })
 
     it('does not warn when every requested source id resolves', async () => {
-      const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), provider('b', [ref('b-1', 'https://b/1')])] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), provider('b', [ref('https://b/1')])] })
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a', 'b'] })
       expect(out.meta.warnings.some(w => w.includes('unknown source'))).toBe(false)
     })
 
     it('coexists with the load-more cursor across a round-trip (page/seen stay global)', async () => {
-      const pages: Record<number, Reference[]> = {
-        1: [ref('a-1', 'https://a/1'), ref('a-2', 'https://a/2'), ref('a-3', 'https://a/3'), ref('a-4', 'https://a/4')],
-        2: [ref('a-5', 'https://a/5')],
+      const pages: Record<number, EmittedReference[]> = {
+        1: [ref('https://a/1'), ref('https://a/2'), ref('https://a/3'), ref('https://a/4')],
+        2: [ref('https://a/5')],
       }
       const paging = defineProvider({
         id: 'a', modalities: ['image'], capabilities: { controls: ['page'] },
@@ -800,7 +814,7 @@ describe('createRefkit', () => {
       let otherCalled = false
       const other = defineProvider({
         id: 'b', modalities: ['image'],
-        search: async () => { otherCalled = true; return [ref('b-1', 'https://b/1')] },
+        search: async () => { otherCalled = true; return [ref('https://b/1')] },
       })
       const rk = createRefkit({ providers: [paging, other] })
 
@@ -818,13 +832,13 @@ describe('createRefkit', () => {
 })
 
 describe('kind-aware routing', () => {
-  const kindProvider = (id: string, kinds: readonly string[], refs: Reference[]) =>
+  const kindProvider = (id: string, kinds: readonly string[], refs: EmittedReference[]) =>
     defineProvider({ id, modalities: ['image'], kinds, search: async () => refs })
 
   it('skips providers whose declared kinds lack the requested value', async () => {
     const rk = createRefkit({ providers: [
-      kindProvider('tex', ['texture'], [ref('tex-1', 'https://t/1')]),
-      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+      kindProvider('tex', ['texture'], [ref('https://t/1')]),
+      kindProvider('ph', ['photo'], [ref('https://p/1')]),
     ] })
     const { references, meta } = await rk.searchWithMeta({
       query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
@@ -836,8 +850,8 @@ describe('kind-aware routing', () => {
 
   it('conservatively includes providers that declare no kinds', async () => {
     const rk = createRefkit({ providers: [
-      provider('legacy', [ref('legacy-1', 'https://l/1')]), // no kinds declared
-      kindProvider('ph', ['photo'], [ref('ph-1', 'https://p/1')]),
+      provider('legacy', [ref('https://l/1')]), // no kinds declared
+      kindProvider('ph', ['photo'], [ref('https://p/1')]),
     ] })
     const out = await rk.search({
       query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },

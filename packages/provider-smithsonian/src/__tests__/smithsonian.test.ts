@@ -42,7 +42,7 @@ describe('smithsonian provider', () => {
     const r = refs[0]
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.title).toBe('Blue Morpho Butterfly')
-    expect(r.canonicalUrl).toBe('https://www.si.edu/object/edanmdm-1')
+    expect(r.sourceUrl).toBe('https://www.si.edu/object/edanmdm-1')
     expect(r.preview?.url).toBe('https://ids.si.edu/ids/deliveryService?id=NMNH-1')
     expect(r.thumbnail?.url).toContain('max=200')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')

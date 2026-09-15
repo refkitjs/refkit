@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfBoolean, setIfInt, setIfString,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, setIfBoolean, setIfInt, setIfString,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
 
@@ -39,7 +38,7 @@ interface MetObject {
   medium: string
 }
 
-function toReference(o: MetObject): Reference | null {
+function toReference(o: MetObject): EmittedReference | null {
   // The Met releases open-access (public-domain) images under CC0. Copyrighted
   // works return an empty primaryImage — nothing usable to surface.
   if (!o.isPublicDomain) return null
@@ -52,17 +51,13 @@ function toReference(o: MetObject): Reference | null {
     raw: { sourceTerms: 'https://www.metmuseum.org/information/terms-and-conditions', sourceUrl: o.objectURL },
   }
   return {
-    id: referenceId('met', o.objectURL),
     modality: 'image',
     kind: 'artwork',
     title: o.title || undefined,
-    source: { providerId: 'met', sourceUrl: o.objectURL },
-    canonicalUrl: o.objectURL,
+    sourceUrl: o.objectURL,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(o.primaryImageSmall ? { thumbnail: { url: o.primaryImageSmall } } : {}),
     preview: { url: image, mediaType: 'image/jpeg' },
-    relevance: 0,
     raw: o,
   }
 }
@@ -74,7 +69,7 @@ export function met(config: MetConfig = {}) {
     kinds: ['artwork'],
     description: 'Open Access artworks from the Metropolitan Museum of Art',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const searchUrl = new URL(`${BASE}/search`)
       searchUrl.searchParams.set('q', q.text)
       searchUrl.searchParams.set('hasImages', 'true')
@@ -90,8 +85,7 @@ export function met(config: MetConfig = {}) {
       setIfInt(searchUrl, 'dateBegin', opts?.dateBegin)
       setIfInt(searchUrl, 'dateEnd', opts?.dateEnd)
       const res = await ctx.fetch(searchUrl.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`met search failed: ${res.status}`)
-      const { objectIDs } = (await res.json()) as MetSearchResponse
+      const { objectIDs } = await okJson<MetSearchResponse>(res, 'met search')
       if (!objectIDs || objectIDs.length === 0) return []
       const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
       // the search endpoint returns every matching id — page = a window over that list
@@ -107,7 +101,7 @@ export function met(config: MetConfig = {}) {
       }))
       return objects
         .map((o) => (o ? toReference(o) : null))
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

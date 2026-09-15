@@ -22,7 +22,7 @@ describe('artic provider', () => {
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.author).toBe('Edward Kemeys') // first line of artist_display
     expect(r.title).toBe('Lion (One of a Pair, South Pedestal)')
-    expect(r.canonicalUrl).toBe('https://www.artic.edu/artworks/656')
+    expect(r.sourceUrl).toBe('https://www.artic.edu/artworks/656')
     expect(r.preview?.url).toBe('https://www.artic.edu/iiif/2/6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360/full/843,/0/default.jpg')
     expect(r.thumbnail?.url).toBe('https://www.artic.edu/iiif/2/6b1edb9c-0f3f-0ee3-47c7-ca25c39ee360/full/200,/0/default.jpg')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')

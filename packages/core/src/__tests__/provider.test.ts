@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defineProvider, type ProviderContext, type NormalizedQuery } from '../provider'
-import type { Reference } from '../reference'
+import type { EmittedReference } from '../reference'
 
 // Factory pattern: key in the closure, NOT the interface. Proves the provider is
 // implementable and that it uses the injected ctx.fetch (core stays zero-network).
@@ -8,7 +8,7 @@ const fakeUnsplash = (cfg: { accessKey: string }) => defineProvider({
   id: 'fake-unsplash',
   modalities: ['image'],
   capabilities: { controls: ['orientation'] },
-  async search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+  async search(query: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
     await ctx.fetch('https://example.test/search?key=' + cfg.accessKey + '&q=' + encodeURIComponent(query.text))
     return []
   },

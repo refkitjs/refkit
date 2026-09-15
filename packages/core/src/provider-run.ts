@@ -3,7 +3,7 @@
 // client so the pipeline stage is testable on its own; the client owns fan-out,
 // merge/rerank/gate and meta assembly.
 import type { Reference } from './reference'
-import { parseReference } from './reference'
+import { completeReference, parseEmitted, parseReference } from './reference'
 import type { KeyValueCache, NormalizedQuery, ProviderContext, ReferenceProvider } from './provider'
 import { withTimeout } from './resilience'
 import { fnv1a } from './hash'
@@ -79,9 +79,10 @@ export async function runProviderSearch(
     p.catch(() => {})
     return timeout ? Promise.race([p, timeout.expired]) : p
   }
-  // Parse raw provider items one at a time — a single bad item must not
-  // discard the rest (shared by the cache-hit and live-search paths).
-  const parseItems = (raw: unknown[]): Reference[] => {
+  // Parse items one at a time — a single bad item must not discard the rest.
+  // Cached entries are already completed references; live items are emitted by
+  // the provider and completed here (id, provenance, verifiedAt, relevance).
+  const parseCached = (raw: unknown[]): Reference[] => {
     const valid: Reference[] = []
     for (const item of raw) {
       try {
@@ -92,6 +93,22 @@ export async function runProviderSearch(
     }
     return valid
   }
+  const completeEmitted = (raw: unknown[]): Reference[] => {
+    const now = new Date().toISOString()
+    const valid: Reference[] = []
+    for (const item of raw) {
+      try {
+        valid.push(completeReference(provider.id, parseEmitted(item), now))
+      } catch (error) {
+        deps.onError?.(error)
+      }
+    }
+    return valid
+  }
+  // The per-provider limit is core's to enforce: providers emit everything the
+  // upstream page gave them and never post-truncate.
+  const truncate = (refs: Reference[]): Reference[] =>
+    typeof query.limit === 'number' && query.limit > 0 ? refs.slice(0, query.limit) : refs
   try {
     if (deps.cache && cacheKey) {
       // best-effort: a broken/corrupt/stale cache degrades to a live search
@@ -115,14 +132,14 @@ export async function runProviderSearch(
           if (!payload || payload.q !== fingerprint || !Array.isArray(payload.refs)) {
             throw new Error('cached payload mismatch') // hash collision or format drift → miss
           }
-          const valid = parseItems(payload.refs)
+          const valid = truncate(parseCached(payload.refs))
           return { ok: true, valid, returned: payload.refs.length, latencyMs: Date.now() - started, cached: true }
         } catch { /* fall through to live */ }
       }
     }
     const searching = provider.search(query, ctx)
     const raw = await raceDeadline(searching)
-    const valid = parseItems(raw)
+    const valid = truncate(completeEmitted(raw))
     if (deps.cache && cacheKey && fingerprint !== undefined) {
       const refsPayload = deps.cacheRaw ? valid : valid.map(({ raw: _raw, ...rest }) => rest)
       const payload: CachePayload = { q: fingerprint, refs: refsPayload }

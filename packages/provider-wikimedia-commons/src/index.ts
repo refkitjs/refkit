@@ -1,8 +1,7 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
+  defineProvider, okJson, setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
   CC_FAMILY_BY_TOKEN, ccVersionFor,
-  type Reference, type RightsRecord, type LicenseId,
+  type EmittedReference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
@@ -91,7 +90,7 @@ function pickTitle(objectName: string | undefined, pageTitle: string): string | 
   return stripTags(pageTitle.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, ''))
 }
 
-function toReference(page: CommonsPage): Reference | null {
+function toReference(page: CommonsPage): EmittedReference | null {
   const info = page.imageinfo?.[0]
   if (!info) return null
   const { license, version } = mapCommonsLicense(emVal(info.extmetadata, 'License'))
@@ -108,17 +107,13 @@ function toReference(page: CommonsPage): Reference | null {
     },
   }
   return {
-    id: referenceId('wikimedia-commons', info.descriptionurl),
     modality: 'image',
     title,
-    source: { providerId: 'wikimedia-commons', sourceUrl: info.descriptionurl },
-    canonicalUrl: info.descriptionurl,
+    sourceUrl: info.descriptionurl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(info.thumburl ? { thumbnail: { url: info.thumburl, width: info.thumbwidth, height: info.thumbheight } } : {}),
     preview: { url: info.url, mediaType: info.mime ?? 'image/jpeg', width: info.width, height: info.height },
     ...(info.width && info.height ? { visual: { width: info.width, height: info.height } } : {}),
-    relevance: 0,
     raw: page,
   }
 }
@@ -145,7 +140,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
     modalities: ['image'],
     description: 'Freely licensed media from the Wikimedia Commons archive',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://commons.wikimedia.org/w/api.php')
       url.searchParams.set('action', 'query')
       url.searchParams.set('format', 'json')
@@ -173,14 +168,13 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       setIfPositiveInt(url, 'iiurlwidth', opts?.iiurlwidth)
       setPipeList(url, 'iiextmetadatafilter', opts?.iiextmetadatafilter)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`wikimedia-commons search failed: ${res.status}`)
-      const json = (await res.json()) as CommonsResponse
+      const json = await okJson<CommonsResponse>(res, 'wikimedia-commons search')
       const pages = json.query?.pages
       if (!pages) return [] // no results (the search generator omits `pages` entirely)
       return Object.values(pages)
         .sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) // preserve search rank for RRF
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

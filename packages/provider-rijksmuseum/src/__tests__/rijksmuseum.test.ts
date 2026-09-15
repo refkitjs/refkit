@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateUse, referenceId, type ProviderContext } from '@refkit/core'
+import { evaluateUse, type ProviderContext } from '@refkit/core'
 import { rijksmuseum } from '../index'
 
 interface Captures {
@@ -101,16 +101,12 @@ describe('rijksmuseum provider', () => {
     expect(refs).toHaveLength(1)
 
     const landscape = refs[0]
-    expect(landscape.id).toBe(referenceId('rijksmuseum', 'https://id.rijksmuseum.nl/1'))
     expect(landscape.modality).toBe('image')
     expect(landscape.title).toBe('Landscape')
     expect(landscape.rights.author).toBe('Example Maker')
     expect(landscape.rights.license).toBe('PD')
     expect(landscape.rights.licenseVersion).toBeUndefined()
-    expect(landscape.source).toEqual({
-      providerId: 'rijksmuseum',
-      sourceUrl: 'https://www.rijksmuseum.nl/en/collection/object-1',
-    })
+    expect(landscape.sourceUrl).toBe('https://www.rijksmuseum.nl/en/collection/object-1')
     expect(landscape.rights.raw.sourceUrl).toBe('https://www.rijksmuseum.nl/en/collection/object-1')
     expect(landscape.canonicalUrl).toBe('https://id.rijksmuseum.nl/1')
     expect(landscape.thumbnail?.url).toBe('https://iiif.micr.io/example/full/max/0/default.jpg')

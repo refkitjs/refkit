@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfPositiveInt, mapCcDeedUrl, ccVersionFor,
-  type Reference, type RightsRecord, type LicenseId,
+  defineProvider, okJson, setIfString, setIfPositiveInt, mapCcDeedUrl, ccVersionFor,
+  type EmittedReference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -63,30 +62,27 @@ interface FreesoundResult {
 }
 interface FreesoundResponse { count: number; results: FreesoundResult[] }
 
-function toAudioReference(r: FreesoundResult): Reference | null {
+function toAudioReference(r: FreesoundResult): EmittedReference | null {
   if (!r.url) return null // no canonical URL → unusable; drop rather than crash the batch
   const { license, version } = mapFreesoundLicense(r.license)
-  const canonicalUrl = r.url
+  const sourceUrl = r.url
   const rights: RightsRecord = {
     license,
     // D4 name-strings carry no version; D7 deed-URLs may — ccVersionFor keeps it only for versioned CC families.
     licenseVersion: ccVersionFor(license, version),
     author: r.username || undefined,
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://freesound.org/help/tos_api/', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://freesound.org/help/tos_api/', sourceUrl },
   }
   const previewUrl = r.previews?.['preview-hq-mp3'] ?? r.previews?.['preview-lq-mp3']
   return {
-    id: referenceId('freesound', canonicalUrl),
     modality: 'audio',
     kind: 'sound-effect',
     title: r.name || undefined,
-    source: { providerId: 'freesound', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    ...(r.tags && r.tags.length > 0 ? { tags: r.tags } : {}),
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(previewUrl ? { preview: { url: previewUrl, mediaType: 'audio/mpeg' } } : {}),
-    relevance: 0, // mergeReferences assigns the final RRF relevance
     raw: r,
   }
 }
@@ -98,7 +94,7 @@ export function freesound(config: FreesoundConfig) {
     kinds: ['sound-effect'],
     description: 'Collaborative archive of CC-licensed sounds (Freesound)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const opts = q.providerOptions as FreesoundSearchOptions | undefined
       const url = new URL(BASE)
       url.searchParams.set('query', q.text)
@@ -110,10 +106,9 @@ export function freesound(config: FreesoundConfig) {
       setIfPositiveInt(url, 'page', q.controls?.page)
       setIfPositiveInt(url, 'page', opts?.page)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`freesound search failed: ${res.status}`)
-      const json = (await res.json()) as FreesoundResponse
+      const json = await okJson<FreesoundResponse>(res, 'freesound search')
       if (!json.results) return []
-      return json.results.map(toAudioReference).filter((x): x is Reference => x !== null)
+      return json.results.map(toAudioReference).filter((x): x is EmittedReference => x !== null)
     },
   })
 }

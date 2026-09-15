@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfNonNegativeInt,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, setIfString, setIfNonNegativeInt,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
 
@@ -34,33 +33,29 @@ interface SiRow {
 }
 interface SiResponse { response?: { rows?: SiRow[] } }
 
-function toReference(row: SiRow): Reference | null {
+function toReference(row: SiRow): EmittedReference | null {
   const dnr = row.content?.descriptiveNonRepeating
   const media = dnr?.online_media?.media ?? []
   // Per-media CC0 is the authoritative image-rights flag (distinct from the
   // record-level metadata_usage, which is CC0 even on rights-restricted objects).
   const cc0 = media.find((m) => m.usage?.access === 'CC0' && (m.content || m.thumbnail))
   if (!cc0) return null
-  const canonicalUrl = dnr?.record_link ?? dnr?.guid
-  if (!canonicalUrl) return null
+  const sourceUrl = dnr?.record_link ?? dnr?.guid
+  if (!sourceUrl) return null
   const image = cc0.content ?? cc0.thumbnail!
   const rights: RightsRecord = {
     license: 'CC0-1.0',
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://www.si.edu/openaccess', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://www.si.edu/openaccess', sourceUrl },
   }
   return {
-    id: referenceId('smithsonian', canonicalUrl),
     modality: 'image',
     kind: 'artwork',
     title: dnr?.title?.content || row.title || undefined,
-    source: { providerId: 'smithsonian', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(cc0.thumbnail ? { thumbnail: { url: cc0.thumbnail } } : {}),
     preview: { url: image, mediaType: 'image/jpeg' },
-    relevance: 0,
     raw: row,
   }
 }
@@ -72,7 +67,7 @@ export function smithsonian(config: SmithsonianConfig) {
     kinds: ['artwork'],
     description: 'Open Access objects from Smithsonian museums',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.si.edu/openaccess/api/v1.0/search')
       url.searchParams.set('api_key', config.apiKey)
       url.searchParams.set('q', q.text)
@@ -91,11 +86,10 @@ export function smithsonian(config: SmithsonianConfig) {
         url.searchParams.set('fq', `${url.searchParams.get('fq')} AND ${opts.filterQuery}`)
       }
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`smithsonian search failed: ${res.status}`)
-      const json = (await res.json()) as SiResponse
+      const json = await okJson<SiResponse>(res, 'smithsonian search')
       return (json.response?.rows ?? [])
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

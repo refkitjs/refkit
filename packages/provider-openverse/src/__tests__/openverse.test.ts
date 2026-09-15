@@ -155,8 +155,7 @@ describe('openverse provider', () => {
     expect(refs).toHaveLength(2)
     const cc0 = refs[0]
     expect(cc0.rights.license).toBe('CC0-1.0')
-    expect(cc0.canonicalUrl).toBe('https://ex/photo/aaa')
-    expect(cc0.source).toEqual({ providerId: 'openverse', sourceUrl: 'https://ex/photo/aaa' })
+    expect(cc0.sourceUrl).toBe('https://ex/photo/aaa')
     expect(cc0.title).toBe('blue sky')
     expect(cc0.rights.author).toBe('Alice')
     expect(cc0.thumbnail?.url).toBe('https://api.openverse.org/v1/images/aaa/thumb/')
@@ -216,7 +215,6 @@ describe('openverseAudio provider', () => {
     expect(refs).toHaveLength(1)
     const r = refs[0]
     expect(r.modality).toBe('audio')
-    expect(r.source.providerId).toBe('openverse-audio')
     expect(r.rights.license).toBe('CC-BY')
     expect(r.rights.licenseVersion).toBe('4.0')
     expect(r.preview?.url).toBe('https://cdn.freesound.org/previews/186/186942_2594536-hq.mp3')

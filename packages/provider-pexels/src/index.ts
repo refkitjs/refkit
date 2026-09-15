@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfPositiveInt,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, setIfString, setIfPositiveInt,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 export interface PexelsConfig { apiKey: string }
@@ -43,7 +42,7 @@ function applyPexelsSearchParams(url: URL, q: NormalizedQuery, options?: { allow
   setIfPositiveInt(url, 'per_page', opts?.perPage, { max: 80, clamp: true })
 }
 
-function toReference(p: PexelsPhoto): Reference {
+function toReference(p: PexelsPhoto): EmittedReference {
   const rights: RightsRecord = {
     license: 'pexels',
     author: p.photographer,
@@ -52,17 +51,13 @@ function toReference(p: PexelsPhoto): Reference {
     raw: { sourceTerms: 'https://www.pexels.com/license/', sourceUrl: p.url },
   }
   return {
-    id: referenceId('pexels', p.url),
     modality: 'image',
     kind: 'photo',
     title: p.alt || undefined,
-    source: { providerId: 'pexels', sourceUrl: p.url },
-    canonicalUrl: p.url,
+    sourceUrl: p.url,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: p.src.tiny },
     visual: { width: p.width, height: p.height, dominantColors: p.avg_color ? [p.avg_color] : undefined },
-    relevance: 0,
     raw: p,
   }
 }
@@ -74,14 +69,13 @@ export function pexels(config: PexelsConfig) {
     kinds: ['photo'],
     description: 'Free stock photos (Pexels)',
     capabilities: { controls: ['orientation', 'color', 'language', 'media.size', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.pexels.com/v1/search')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 15, 80)))
       applyPexelsSearchParams(url, q, { allowColor: true })
       const res = await ctx.fetch(url.toString(), { headers: { Authorization: config.apiKey }, signal: ctx.signal })
-      if (!res.ok) throw new Error(`pexels search failed: ${res.status}`)
-      const json = (await res.json()) as PexelsResponse
+      const json = await okJson<PexelsResponse>(res, 'pexels search')
       return json.photos.map(toReference)
     },
   })
@@ -105,7 +99,7 @@ function pickVideoFile(files: PexelsVideoFile[]): PexelsVideoFile | undefined {
   return files.find((f) => f.quality === 'hd') ?? files[0]
 }
 
-function toVideoReference(v: PexelsVideo): Reference {
+function toVideoReference(v: PexelsVideo): EmittedReference {
   const file = pickVideoFile(v.video_files ?? [])
   const rights: RightsRecord = {
     license: 'pexels',
@@ -114,17 +108,13 @@ function toVideoReference(v: PexelsVideo): Reference {
     raw: { sourceTerms: 'https://www.pexels.com/license/', sourceUrl: v.url },
   }
   return {
-    id: referenceId('pexels-video', v.url),
     modality: 'video',
     kind: 'film',
-    source: { providerId: 'pexels-video', sourceUrl: v.url },
-    canonicalUrl: v.url,
+    sourceUrl: v.url,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: v.image },
     ...(file ? { preview: { url: file.link, mediaType: file.file_type || 'video/mp4', width: file.width ?? undefined, height: file.height ?? undefined } } : {}),
     visual: { width: v.width, height: v.height },
-    relevance: 0,
     raw: v,
   }
 }
@@ -137,14 +127,13 @@ export function pexelsVideo(config: PexelsConfig) {
     kinds: ['film'],
     description: 'Free stock videos (Pexels)',
     capabilities: { controls: ['orientation', 'language', 'media.size', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.pexels.com/videos/search')
       url.searchParams.set('query', q.text)
       url.searchParams.set('per_page', String(Math.min(q.limit ?? 15, 80)))
       applyPexelsSearchParams(url, q)
       const res = await ctx.fetch(url.toString(), { headers: { Authorization: config.apiKey }, signal: ctx.signal })
-      if (!res.ok) throw new Error(`pexels video search failed: ${res.status}`)
-      const json = (await res.json()) as PexelsVideoResponse
+      const json = await okJson<PexelsVideoResponse>(res, 'pexels video search')
       return json.videos.map(toVideoReference)
     },
   })

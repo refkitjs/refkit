@@ -1,6 +1,6 @@
 import {
-  defineProvider, referenceId,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 export interface NailbookConfig {
@@ -69,12 +69,12 @@ function pickTitle(photo: NailbookPhoto): string | undefined {
   return tags.length > 0 ? tags.join(' / ') : undefined
 }
 
-function toReference(photo: NailbookPhoto): Reference | null {
+function toReference(photo: NailbookPhoto): EmittedReference | null {
   // images[0] is always the primary still (even when a later image carries a video);
   // no primary image → nothing to surface.
   const image = photo.images?.[0]
   if (!image?.base_url) return null
-  const canonicalUrl = `https://nailbook.jp/design/${photo.id}/`
+  const sourceUrl = `https://nailbook.jp/design/${photo.id}/`
   const rights: RightsRecord = {
     // Discovery source: user-posted nail-design photos with no per-item license
     // metadata, so evaluateUse returns needs-review (never auto-allowed). Only the
@@ -82,23 +82,21 @@ function toReference(photo: NailbookPhoto): Reference | null {
     license: 'unknown',
     author: photo.user?.display_name ?? undefined,
     rehostPolicy: 'thumbnail-only',
-    raw: { sourceTerms: '', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: '', sourceUrl },
   }
+  const tags = photo.tags.map(t => t.name).filter(Boolean)
   return {
-    id: referenceId('nailbook', canonicalUrl),
     modality: 'image',
     kind: 'photo',
     title: pickTitle(photo),
-    source: { providerId: 'nailbook', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    ...(tags.length > 0 ? { tags } : {}),
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     // thumbnail/preview are resized variants; their pixel dims aren't known here.
     // `visual` carries the original asset dimensions.
     thumbnail: { url: image.base_url + THUMB_VARIANT },
     preview: { url: image.base_url + PREVIEW_VARIANT, mediaType: 'image/jpeg' },
     visual: { width: image.width, height: image.height },
-    relevance: 0, // per-source order; mergeReferences assigns the final RRF relevance
     raw: photo,
   }
 }
@@ -114,7 +112,7 @@ export function nailbook(config: NailbookConfig = {}) {
     // real pagination needs a stateful `scrolling_key` search_after cursor that doesn't
     // map onto the stateless `controls.page` model). One request per search, by design.
     capabilities: { controls: [] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const res = await ctx.fetch(SEARCH_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -129,12 +127,12 @@ export function nailbook(config: NailbookConfig = {}) {
         body: JSON.stringify({ keyword: q.text }),
         signal: ctx.signal,
       })
-      if (!res.ok) throw new Error(`nailbook search failed: ${res.status}`)
-      const json = (await res.json()) as NailbookSearchResponse
-      const refs = (json.data?.items ?? [])
+      const json = await okJson<NailbookSearchResponse>(res, 'nailbook search')
+      // The endpoint has no per-request size knob, so the whole page is emitted;
+      // core applies query.limit.
+      return (json.data?.items ?? [])
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
-      return typeof q.limit === 'number' && q.limit > 0 ? refs.slice(0, q.limit) : refs
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

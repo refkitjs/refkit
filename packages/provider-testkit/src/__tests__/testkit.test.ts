@@ -1,24 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { defineProvider, type ProviderContext, type Reference } from '@refkit/core'
+import { defineProvider, type EmittedReference, type ProviderContext } from '@refkit/core'
 import { expectLicenseMap, searchConformant, type LicenseMapResult } from '../index'
 
-// A minimal, otherwise-conformant reference. Individual tests override
+// A minimal, otherwise-conformant emitted item. Individual tests override
 // exactly the field under examination.
-function baseRef(overrides: Partial<Reference> = {}): Reference {
+function baseRef(overrides: Partial<EmittedReference> = {}): EmittedReference {
   return {
-    id: 'fake:abc123',
     modality: 'image',
-    source: { providerId: 'fake', sourceUrl: 'https://example.com/photo/1' },
-    canonicalUrl: 'https://example.com/photo/1',
+    sourceUrl: 'https://example.com/photo/1',
     rights: {
       license: 'CC0-1.0',
       rehostPolicy: 'hotlink-required',
       raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
     },
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: 'https://example.com/photo/1-thumb.jpg' },
     preview: { url: 'https://example.com/photo/1-full.jpg', mediaType: 'image/jpeg' },
-    relevance: 1,
     ...overrides,
   }
 }
@@ -26,7 +22,7 @@ function baseRef(overrides: Partial<Reference> = {}): Reference {
 // Fixture-fetch fake provider: search() ignores ctx.fetch's real behavior and
 // just returns whatever result set the test configured, but still routes
 // through ctx.fetch once so the shape matches a real satellite.
-function fakeProvider(results: Reference[]) {
+function fakeProvider(results: EmittedReference[]) {
   return defineProvider({
     id: 'fake',
     modalities: ['image'],
@@ -40,11 +36,13 @@ function fakeProvider(results: Reference[]) {
 const fixtureFetch: typeof fetch = (async () => new Response('{}', { status: 200 })) as typeof fetch
 
 describe('searchConformant', () => {
-  it('passes a conformant provider and returns parsed refs', async () => {
+  it('passes a conformant provider and returns completed refs', async () => {
     const provider = fakeProvider([baseRef()])
     const refs = await searchConformant(provider, fixtureFetch)
     expect(refs).toHaveLength(1)
-    expect(refs[0].id).toBe('fake:abc123')
+    expect(refs[0].id).toMatch(/^fake:/) // stamped by core, not by the provider
+    expect(refs[0].source).toEqual({ providerId: 'fake', sourceUrl: 'https://example.com/photo/1' })
+    expect(refs[0].canonicalUrl).toBe('https://example.com/photo/1')
   })
 
   it('accepts an extensionless CDN-style thumbnail (real providers: openverse /thumb/, smithsonian deliveryService)', async () => {
@@ -69,16 +67,10 @@ describe('searchConformant', () => {
     await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/image preview has non-image mediaType: text\/html/)
   })
 
-  it('fails when a ref carries a different provider\'s id prefix', async () => {
-    const provider = fakeProvider([baseRef({ id: 'other:abc123' })])
-    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/id does not identify the provider/)
-  })
-
-  it('fails when source.providerId does not match the provider', async () => {
-    const provider = fakeProvider([
-      baseRef({ source: { providerId: 'other', sourceUrl: 'https://example.com/photo/1' } }),
-    ])
-    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/source\.providerId does not match the provider/)
+  it('fails when a result carries no sourceUrl', async () => {
+    const { sourceUrl: _sourceUrl, ...noUrl } = baseRef()
+    const provider = fakeProvider([noUrl as EmittedReference])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/failed emittedReferenceSchema/)
   })
 
   it('fails when licenseVersion is stamped on a non-CC-family license (CC0-1.0)', async () => {
@@ -96,15 +88,11 @@ describe('searchConformant', () => {
   })
 })
 
-const kindRef = (kind?: string): Reference => ({
-  id: 'kp:1',
+const kindRef = (kind?: string): EmittedReference => ({
   modality: 'image',
   ...(kind ? { kind } : {}),
-  source: { providerId: 'kp', sourceUrl: 'https://kp/1' },
-  canonicalUrl: 'https://kp/1',
+  sourceUrl: 'https://kp/1',
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://kp/1' } },
-  verifiedAt: '2026-07-24T00:00:00.000Z',
-  relevance: 0,
 })
 
 describe('declared-kinds consistency', () => {

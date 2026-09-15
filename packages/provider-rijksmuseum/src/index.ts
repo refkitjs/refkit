@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfBoolean, mapRightsUrl, ccVersionFor,
-  type Reference, type RightsRecord,
+  defineProvider, okJson, setIfString, setIfBoolean, mapRightsUrl, ccVersionFor,
+  type EmittedReference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -96,7 +95,7 @@ function firstCreatorLabel(
   return undefined
 }
 
-function toReference(rec: EdmRecord): Reference | null {
+function toReference(rec: EdmRecord): EmittedReference | null {
   const canonicalUrl = rec.aggregatedCHO?.id
   const imageUrl = rec.isShownBy?.id ?? rec.object?.id
   if (typeof canonicalUrl !== 'string' || !canonicalUrl) return null
@@ -116,17 +115,15 @@ function toReference(rec: EdmRecord): Reference | null {
   }
 
   return {
-    id: referenceId('rijksmuseum', canonicalUrl),
     modality: 'image',
     kind: 'artwork',
     title: firstLocalized(rec.aggregatedCHO?.title, ['en', 'nl']),
-    source: { providerId: 'rijksmuseum', sourceUrl },
+    // the landing page differs from the CHO identifier here, so both are emitted
+    sourceUrl,
     canonicalUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: imageUrl },
     preview: { url: imageUrl, mediaType: 'image/jpeg' },
-    relevance: 0,
     raw: rec,
   }
 }
@@ -142,7 +139,7 @@ export function rijksmuseum(config: RijksmuseumConfig = {}) {
     kinds: ['artwork'],
     description: 'Rijksmuseum collection artworks, incl. the Dutch Golden Age',
     capabilities: { controls: [] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const opts = q.providerOptions as RijksmuseumSearchOptions | undefined
       const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
       const searchUrl = new URL(SEARCH)
@@ -156,15 +153,14 @@ export function rijksmuseum(config: RijksmuseumConfig = {}) {
       setIfBoolean(searchUrl, 'imageAvailable', opts?.imageAvailable)
 
       const res = await ctx.fetch(searchUrl.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error('rijksmuseum search failed: ' + res.status)
-      const page = (await res.json()) as SearchPage
+      const page = await okJson<SearchPage>(res, 'rijksmuseum search')
       const ids = (page.orderedItems ?? [])
         .map(item => item.id)
         .filter((url): url is string => typeof url === 'string')
         .slice(0, n)
       if (ids.length === 0) return []
 
-      const records = await Promise.all(ids.map(async (idUrl): Promise<Reference | null> => {
+      const records = await Promise.all(ids.map(async (idUrl): Promise<EmittedReference | null> => {
         try {
           const separator = idUrl.includes('?') ? '&' : '?'
           const recordUrl = idUrl + separator + '_profile=edm-framed'
@@ -177,7 +173,7 @@ export function rijksmuseum(config: RijksmuseumConfig = {}) {
         }
       }))
 
-      return records.filter((record): record is Reference => record !== null)
+      return records.filter((record): record is EmittedReference => record !== null)
     },
   })
 }

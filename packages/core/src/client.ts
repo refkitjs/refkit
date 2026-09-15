@@ -9,7 +9,7 @@ import type { ReferenceProvider, KeyValueCache, ProviderOptionsById } from './pr
 import type { SearchControlKey, SearchControls } from './controls'
 import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
 import { normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
-import { retryingFetch } from './resilience'
+import { retryingFetch, withDefaultUserAgent } from './resilience'
 import { runProviderSearch } from './provider-run'
 import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
 
@@ -34,6 +34,9 @@ export interface RefkitOptions {
    *  Pass false to shrink cache entries — cache-hit refs then carry no `raw`, so a
    *  `merge.isDuplicate` hook reading `raw` won't see it on hits. */
   cacheRaw?: boolean
+  /** User-Agent sent on provider fetches that don't set one themselves. Default
+   *  'refkit-client/1'; false disables the injection entirely. */
+  userAgent?: string | false
   /** Max provider searches in flight at once per search call. Default: unlimited
    *  (every matching provider fires simultaneously). Set when querying many
    *  sources at once — a provider's timeout only starts when its slot starts, so
@@ -156,6 +159,7 @@ const MAX_POOL_LIMIT = 100 // never ask a single source for more than this, even
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_RETRIES = 1
 const DEFAULT_CACHE_TTL_MS = 300_000
+const DEFAULT_USER_AGENT = 'refkit-client/1'
 // Cursor: how many further provider pages one load-more call may try when the
 // current page's pool is fully consumed, before reporting an empty batch.
 const MAX_CURSOR_ADVANCES = 3
@@ -245,7 +249,10 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // Built once per search (doFetch/retries are fixed for the whole call) and
     // shared across every provider in the fan-out below, instead of allocating
     // a fresh wrapper per provider.
-    const sharedFetch = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
+    const withRetry = resilience && resilience.retries > 0 ? retryingFetch(doFetch, { retries: resilience.retries }) : doFetch
+    const sharedFetch = options.userAgent === false
+      ? withRetry
+      : withDefaultUserAgent(withRetry, options.userAgent ?? DEFAULT_USER_AGENT)
     const concurrency = options.concurrency !== undefined && options.concurrency >= 1
       ? Math.floor(options.concurrency)
       : undefined

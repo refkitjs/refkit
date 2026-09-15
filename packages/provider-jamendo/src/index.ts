@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl, ccVersionFor,
-  type Reference, type RightsRecord,
+  defineProvider, okJson, setIfString, setIfStringList, setIfBoolean, setIfNonNegativeInt, mapCcDeedUrl, ccVersionFor,
+  type EmittedReference, type RightsRecord,
   type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
@@ -57,10 +56,10 @@ interface JamendoResponse {
 // the provider's tests import.
 export const mapJamendoLicense = mapCcDeedUrl
 
-function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null {
+function toAudioReference(t: JamendoTrack, mediaType: string): EmittedReference | null {
   if (!t.shareurl) return null // no canonical URL → unusable; drop rather than crash the batch
   const { license, version } = mapJamendoLicense(t.license_ccurl)
-  const canonicalUrl = t.shareurl
+  const sourceUrl = t.shareurl
   const rights: RightsRecord = {
     license,
     // CC version is metadata only (attribution/audit), kept for every versioned CC family —
@@ -70,21 +69,17 @@ function toAudioReference(t: JamendoTrack, mediaType: string): Reference | null 
     author: t.artist_name || undefined,
     // governed by the per-item CC license; the mp3 stream is served directly by Jamendo
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: t.license_ccurl, sourceUrl: canonicalUrl },
+    raw: { sourceTerms: t.license_ccurl, sourceUrl },
   }
   return {
-    id: referenceId('jamendo', canonicalUrl),
     modality: 'audio',
     kind: 'music',
     title: t.name || undefined,
-    source: { providerId: 'jamendo', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     // audio has no native thumbnail; the album art is the closest visual handle
     ...(t.image ? { thumbnail: { url: t.image } } : {}),
     preview: { url: t.audio, mediaType },
-    relevance: 0, // per-source order; mergeReferences assigns the final RRF relevance
     raw: t,
   }
 }
@@ -96,7 +91,7 @@ export function jamendo(config: JamendoConfig) {
     kinds: ['music'],
     description: 'CC-licensed independent music (Jamendo)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL(BASE)
       url.searchParams.set('client_id', config.clientId)
       url.searchParams.set('format', 'json')
@@ -117,13 +112,12 @@ export function jamendo(config: JamendoConfig) {
       // jamendo's offset is non-negative (0 is valid) → setIfNonNegativeInt, not PositiveInt.
       setIfNonNegativeInt(url, 'offset', opts?.offset)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`jamendo search failed: ${res.status}`)
-      const json = (await res.json()) as JamendoResponse
+      const json = await okJson<JamendoResponse>(res, 'jamendo search')
       if (json.headers?.status !== 'success') throw new Error(`jamendo search error: ${json.headers?.error_message || json.headers?.status}`)
       const mediaType = JAMENDO_AUDIO_MIME[opts?.audioformat ?? 'mp31'] ?? 'audio/mpeg'
       return (json.results ?? [])
         .map((t) => toAudioReference(t, mediaType))
-        .filter((x): x is Reference => x !== null)
+        .filter((x): x is EmittedReference => x !== null)
     },
   })
 }

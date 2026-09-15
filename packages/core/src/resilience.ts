@@ -93,3 +93,15 @@ export function retryingFetch(fetchImpl: typeof fetch, opts: RetryOptions): type
   }
   return wrapped as typeof fetch
 }
+
+/** Add a User-Agent to requests that carry none (Node's default UA is rejected by
+ *  some source edges). Browsers ignore the header silently. */
+export function withDefaultUserAgent(fetchImpl: typeof fetch, ua: string): typeof fetch {
+  const wrapped = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
+    const fromRequest = typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined
+    const headers = new Headers(init?.headers ?? fromRequest)
+    if (!headers.has('user-agent')) headers.set('user-agent', ua)
+    return fetchImpl(input, { ...init, headers })
+  }
+  return wrapped as typeof fetch
+}

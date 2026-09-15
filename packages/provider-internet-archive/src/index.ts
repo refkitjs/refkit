@@ -1,6 +1,6 @@
 import {
-  defineProvider, referenceId, mapRightsUrl, ccVersionFor,
-  type Reference, type RightsRecord, type Modality,
+  defineProvider, okJson, mapRightsUrl, ccVersionFor,
+  type EmittedReference, type RightsRecord, type Modality,
   type NormalizedQuery, type ProviderContext,
   setIfPositiveInt,
 } from '@refkit/core'
@@ -51,13 +51,13 @@ function authorOf(creator: string | string[] | undefined): string | undefined {
   return Array.isArray(creator) ? creator.join(', ') || undefined : creator || undefined
 }
 
-/** Map one search doc → Reference, or null if its mediatype is out of v1 scope (D1).
- *  canonicalUrl = the details page; thumbnail = the services image endpoint; preview
+/** Map one search doc → EmittedReference, or null if its mediatype is out of v1 scope (D1).
+ *  sourceUrl = the details page; thumbnail = the services image endpoint; preview
  *  omitted (search exposes no clean direct media stream). */
-export function toReference(doc: IaDoc): Reference | null {
+export function toReference(doc: IaDoc): EmittedReference | null {
   const modality = mediatypeToModality(doc.mediatype)
   if (!modality) return null
-  const canonicalUrl = `https://archive.org/details/${doc.identifier}`
+  const sourceUrl = `https://archive.org/details/${doc.identifier}`
   // Solr fields can arrive as scalars OR arrays — coerce to the first scalar before mapping.
   const licenseurl = Array.isArray(doc.licenseurl) ? doc.licenseurl[0] : doc.licenseurl
   const title = Array.isArray(doc.title) ? doc.title[0] : doc.title
@@ -72,19 +72,15 @@ export function toReference(doc: IaDoc): Reference | null {
     ...(jurisdiction ? { jurisdiction } : {}),
     author: authorOf(doc.creator),
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://archive.org/about/terms.php', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://archive.org/about/terms.php', sourceUrl },
   }
   return {
-    id: referenceId('internet-archive', canonicalUrl),
     modality,
     kind: modality === 'video' ? 'film' : 'ebook',
     title: title || undefined,
-    source: { providerId: 'internet-archive', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: `https://archive.org/services/img/${doc.identifier}` },
-    relevance: 0,
     raw: doc,
   }
 }
@@ -96,7 +92,7 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
     kinds: ['film', 'ebook'],
     description: 'Public-domain and CC films and texts from the Internet Archive',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL(BASE)
       url.searchParams.set('q', `(${escapeLucene(q.text)}) AND mediatype:(movies OR texts)`)
       for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'mediatype']) {
@@ -108,12 +104,11 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
       const rows = Math.min(config.maxRows ?? q.limit ?? 20, 100)
       url.searchParams.set('rows', String(rows))
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`internet-archive search failed: ${res.status}`)
-      const json = (await res.json()) as IaResponse
+      const json = await okJson<IaResponse>(res, 'internet-archive search')
       const docs = json.response?.docs ?? []
       return docs
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

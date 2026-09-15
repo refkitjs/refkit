@@ -21,8 +21,7 @@ describe('pexels provider', () => {
     const r = refs[0]
     expect(r.rights.license).toBe('pexels')
     expect(r.rights.rehostPolicy).toBe('hotlink-required')
-    expect(r.id).toMatch(/^pexels:/)
-    expect(r.canonicalUrl).toBe('https://www.pexels.com/photo/trees-3573351/')
+    expect(r.sourceUrl).toBe('https://www.pexels.com/photo/trees-3573351/')
     expect(r.rights.author).toBe('Lukas Rodriguez')
     expect(r.title).toBe('Brown Rocks During Golden Hour')
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/photos/3573351/x?h=200')
@@ -93,9 +92,8 @@ describe('pexelsVideo provider', () => {
     expect(refs).toHaveLength(1)
     const r = refs[0]
     expect(r.modality).toBe('video')
-    expect(r.source.providerId).toBe('pexels-video')
     expect(r.rights.license).toBe('pexels')
-    expect(r.canonicalUrl).toBe('https://www.pexels.com/video/a-cat-6394054/')
+    expect(r.sourceUrl).toBe('https://www.pexels.com/video/a-cat-6394054/')
     expect(r.rights.author).toBe('Cottonbro')
     expect(r.preview?.url).toBe('https://player.vimeo.com/x-hd.mp4') // HD preferred over SD
     expect(r.preview?.mediaType).toBe('video/mp4')

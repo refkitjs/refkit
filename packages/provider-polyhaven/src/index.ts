@@ -1,6 +1,6 @@
 import {
-  defineProvider, referenceId, imageMediaType,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, imageMediaType,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   offsetForPage, setIfNonNegativeInt,
 } from '@refkit/core'
 
@@ -54,7 +54,7 @@ function firstAuthor(authors?: Record<string, string>): string | undefined {
   return names.length ? names.join(', ') : undefined
 }
 
-function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: string): Reference {
+function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: string): EmittedReference {
   const canonical = `https://polyhaven.com/a/${id}`
   const rights: RightsRecord = {
     license: 'CC0-1.0',
@@ -62,20 +62,18 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: 
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: PH_TERMS, sourceUrl: canonical },
   }
+  const tags = [...(asset.categories ?? []), ...(asset.tags ?? [])]
   return {
-    id: referenceId('polyhaven', canonical),
     modality: 'image',
     kind,
     title: asset.name || undefined,
-    source: { providerId: 'polyhaven', sourceUrl: canonical },
-    canonicalUrl: canonical,
+    ...(tags.length > 0 ? { tags } : {}),
+    sourceUrl: canonical,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(asset.thumbnail_url ? { thumbnail: { url: asset.thumbnail_url } } : {}),
     // textureImageUrl may resolve a .png fallback — derive the MIME from the extension
     // (core imageMediaType) rather than hardcoding jpeg (mislabeling a PNG as JPEG).
     preview: { url: imageUrl, mediaType: imageMediaType(undefined, imageUrl) },
-    relevance: 0,
     raw: asset,
   }
 }
@@ -90,12 +88,11 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       ? 'CC0 HDRI environments for 3D lighting (Poly Haven)'
       : 'CC0 PBR textures for 3D work (Poly Haven)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const listUrl = new URL(`${PH_BASE}/assets`)
       listUrl.searchParams.set('t', assetType)
       const res = await ctx.fetch(listUrl.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`polyhaven list failed: ${res.status}`)
-      const list = (await res.json()) as PolyHavenList
+      const list = await okJson<PolyHavenList>(res, 'polyhaven list')
       let entries = Object.entries(list)
       // Client-side keyword filter — the list endpoint has no query param.
       const text = q.text?.trim().toLowerCase()
@@ -122,7 +119,7 @@ export function polyhaven(config: PolyHavenConfig = {}) {
           return null // one bad files fetch must not drop the whole batch
         }
       }))
-      return refs.filter((r): r is Reference => r !== null)
+      return refs.filter((r): r is EmittedReference => r !== null)
     },
   })
 }
@@ -152,7 +149,7 @@ function acgPreviewUrl(preview?: Record<string, string>): string | undefined {
   return undefined
 }
 
-function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
+function acgToReference(a: AmbientCgAsset, imageUrl: string): EmittedReference {
   const canonical = `https://ambientcg.com/view?id=${a.assetId}`
   const rights: RightsRecord = {
     license: 'CC0-1.0',
@@ -160,17 +157,13 @@ function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
     raw: { sourceTerms: ACG_TERMS, sourceUrl: canonical },
   }
   return {
-    id: referenceId('ambientcg', canonical),
     modality: 'image',
     kind: 'texture',
     title: a.displayName || undefined,
-    source: { providerId: 'ambientcg', sourceUrl: canonical },
-    canonicalUrl: canonical,
+    sourceUrl: canonical,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: imageUrl },
     preview: { url: imageUrl, mediaType: 'image/png' },
-    relevance: 0,
     raw: a,
   }
 }
@@ -182,7 +175,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
     kinds: ['texture'],
     description: 'CC0 PBR materials and textures (ambientCG)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL(ACG_BASE)
       url.searchParams.set('type', 'Material') // image-based PBR materials only (D1)
       url.searchParams.set('include', 'displayData,imageData')
@@ -192,8 +185,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
       setIfNonNegativeInt(url, 'offset', offsetForPage(q.controls?.page, pageSize))
       if (q.text?.trim()) url.searchParams.set('q', q.text.trim())
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`ambientcg search failed: ${res.status}`)
-      const { foundAssets } = (await res.json()) as AmbientCgResponse
+      const { foundAssets } = await okJson<AmbientCgResponse>(res, 'ambientcg search')
       if (!foundAssets || foundAssets.length === 0) return []
       return foundAssets
         .map((a) => {
@@ -202,7 +194,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
           const imageUrl = acgPreviewUrl(a.previewImage)
           return imageUrl ? acgToReference(a, imageUrl) : null
         })
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

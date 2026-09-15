@@ -1,7 +1,7 @@
 import {
-  defineProvider, referenceId, ccVersionFor,
+  defineProvider, okJson, ccVersionFor,
   setIfString, setIfInt, setIfStringList,
-  type Reference, type RightsRecord, type LicenseId, type SearchLicenseControls,
+  type EmittedReference, type RightsRecord, type LicenseId, type SearchLicenseControls,
   type NormalizedQuery, type ProviderContext,
   setIfPositiveInt,
 } from '@refkit/core'
@@ -146,33 +146,29 @@ function flickrSafeSearch(safety: string | undefined): 1 | 2 | 3 | undefined {
   return undefined
 }
 
-function toReference(p: FlickrPhoto): Reference {
+function toReference(p: FlickrPhoto): EmittedReference {
   const { license, version } = mapFlickrLicense(p.license)
-  const canonicalUrl = `https://www.flickr.com/photos/${p.owner}/${p.id}`
+  const sourceUrl = `https://www.flickr.com/photos/${p.owner}/${p.id}`
   const rights: RightsRecord = {
     license,
     licenseVersion: ccVersionFor(license, version),
     author: p.ownername || undefined,
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://www.flickr.com/help/terms', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://www.flickr.com/help/terms', sourceUrl },
   }
   const previewUrl = p.url_l ?? p.url_m
   const previewW = p.url_l ? p.width_l : p.width_m
   const previewH = p.url_l ? p.height_l : p.height_m
   const thumbUrl = p.url_t ?? p.url_m
   return {
-    id: referenceId('flickr', canonicalUrl),
     modality: 'image',
     kind: 'photo',
     title: p.title || undefined,
-    source: { providerId: 'flickr', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(thumbUrl ? { thumbnail: { url: thumbUrl } } : {}),
     ...(previewUrl ? { preview: { url: previewUrl, mediaType: 'image/jpeg', width: previewW, height: previewH } } : {}),
     ...(previewW && previewH ? { visual: { width: previewW, height: previewH } } : {}),
-    relevance: 0,
     raw: p,
   }
 }
@@ -184,7 +180,7 @@ export function flickr(config: FlickrConfig) {
     kinds: ['photo'],
     description: 'Community photography with per-item CC licensing (Flickr)',
     capabilities: { controls: ['sort', 'safety', 'license.commercial', 'license.modification', 'license.allowUnknown', 'creator.id', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const opts = q.providerOptions as FlickrSearchOptions | undefined
       const url = new URL('https://api.flickr.com/services/rest/')
       url.searchParams.set('method', 'flickr.photos.search')
@@ -227,8 +223,7 @@ export function flickr(config: FlickrConfig) {
       url.searchParams.set('format', 'json')
       url.searchParams.set('nojsoncallback', '1')
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`flickr search failed: ${res.status}`)
-      const json = (await res.json()) as FlickrResponse
+      const json = await okJson<FlickrResponse>(res, 'flickr search')
       if (json.stat !== 'ok' || !json.photos) throw new Error(`flickr search error: stat=${json.stat}`)
       return json.photos.photo.map(toReference)
     },

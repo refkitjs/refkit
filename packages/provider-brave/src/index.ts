@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfPositiveInt, setIfBoolean,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext, type SearchSafety,
+  defineProvider, okJson, setIfString, setIfPositiveInt, setIfBoolean,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext, type SearchSafety,
 } from '@refkit/core'
 
 export interface BraveConfig {
@@ -33,7 +32,7 @@ function braveSafeSearch(control: SearchSafety | undefined, fallback: BraveConfi
   return fallback ?? 'strict'
 }
 
-function toReference(r: BraveImageResult): Reference {
+function toReference(r: BraveImageResult): EmittedReference {
   const rights: RightsRecord = {
     // open web → no license metadata → evaluateUse returns needs-review (never auto-allowed)
     license: 'unknown',
@@ -42,15 +41,11 @@ function toReference(r: BraveImageResult): Reference {
     raw: { sourceTerms: '', sourceUrl: r.url },
   }
   return {
-    id: referenceId('brave', r.properties.url), // origin image URL is the most stable identifier
     modality: 'image',
     title: r.title,
-    source: { providerId: 'brave', sourceUrl: r.url },
-    canonicalUrl: r.url, // the source webpage, not the raw image bytes
+    sourceUrl: r.url, // the source webpage, not the raw image bytes
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: r.thumbnail.src },
-    relevance: 0,
     raw: r,
   }
 }
@@ -61,7 +56,7 @@ export function brave(config: BraveConfig) {
     modalities: ['image'],
     description: 'Open-web image search (Brave)',
     capabilities: { controls: ['safety'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.search.brave.com/res/v1/images/search')
       url.searchParams.set('q', q.text)
       url.searchParams.set('count', String(Math.min(q.limit ?? 50, 200)))
@@ -76,8 +71,7 @@ export function brave(config: BraveConfig) {
         headers: { 'X-Subscription-Token': config.token, Accept: 'application/json' },
         signal: ctx.signal,
       })
-      if (!res.ok) throw new Error(`brave search failed: ${res.status}`)
-      const json = (await res.json()) as BraveResponse
+      const json = await okJson<BraveResponse>(res, 'brave search')
       return json.results.map(toReference)
     },
   })
