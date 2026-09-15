@@ -74,7 +74,9 @@ the removed/added lists before upgrading.
   `SEARCH_CONTROL_KEYS`, `getControl`, `setControl`, `hasControl`,
   `buildSearchControlsSchema`, `searchControlsSchema`, `searchControlKeySchema`,
   `searchMetaSchema`, `providerSearchStatusSchema` and the `MODALITIES` tuple to the public
-  surface — `@refkit/mcp` imports these instead of keeping local copies.
+  surface — `@refkit/mcp` imports only `buildSearchControlsSchema` and `searchMetaSchema`
+  from core, and derives its modality enum from the registered providers rather than
+  keeping a local copy.
 - Orchestrator stages are exported for testing and reuse: `selectProviders`,
   `PROVIDER_SKIP_REASONS`, `runPass`, and `SearchMeta.passes` (per-pass latency, warnings
   and rights conflicts now accumulate across cursor page advances).

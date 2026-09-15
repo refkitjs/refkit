@@ -128,13 +128,17 @@ await refkit.search({ query: '桜', modalities: ['image'], sources: ['nailbook']
 Declaring it on a provider of your own — it must stay pure and dependency-free, since it runs before any request:
 
 ```ts
-import { defineProvider } from '@refkit/core'
+import { defineProvider, type EmittedReference } from '@refkit/core'
 
 defineProvider({
   id: 'textures-only',
   modalities: ['image'],
   accepts: ({ text }) => /texture|material|pbr/i.test(text),
-  search: async (query, ctx) => fetchAndMap(query, ctx), // returns EmittedReference[]
+  search: async (_query, _ctx) => {
+    const items: EmittedReference[] = []
+    // fetch the upstream page and map each item to an EmittedReference
+    return items
+  },
 })
 ```
 

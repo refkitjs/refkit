@@ -94,8 +94,9 @@ legacy feature→control routing, and the MCP `filters` parameter.
   table. `SearchControlKey`, `SEARCH_CONTROL_KEYS`, `getControl`, `setControl`,
   `hasControl` and `buildSearchControlsSchema(kinds?)` all derive from it.
 - `schemas.ts` exports `searchMetaSchema` and `providerSearchStatusSchema`.
-  `modality.ts` exports the `MODALITIES` tuple. MCP imports these and keeps no local
-  copies.
+  `modality.ts` exports the `MODALITIES` tuple. MCP imports only
+  `buildSearchControlsSchema` and `searchMetaSchema` from core, and derives its
+  modality enum from the registered providers rather than importing `MODALITIES`.
 
 ### D5 — Orchestrator stages and multi-pass fidelity
 
@@ -144,7 +145,8 @@ legacy feature→control routing, and the MCP `filters` parameter.
   bypasses `accepts`. If every modality-matching provider declines, the search returns
   an empty result (no throw).
 - nailbook accepts only queries mentioning nail art
-  (`/nail|manicure|ネイル|ジェル|美甲|指甲|甲油/i`).
+  (`/(?<!s)nail|manicure|マニキュア|ネイル|ジェル|美甲|指甲|甲油|\bgel\b/i`); the `(?<!s)`
+  lookbehind excludes "snail"; `\bgel\b` is word-bounded.
 - polyhaven matches each whitespace token independently against id, name, categories
   and tags and ranks assets by number of matched tokens.
 
