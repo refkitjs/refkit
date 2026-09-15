@@ -1,4 +1,5 @@
 // Public API — @refkit/core P0.
+export { MODALITIES } from './modality'
 export type { Modality } from './modality'
 export {
   LICENSE_FACTS, LICENSE_IDS, factsFor, isKnownLicenseId, isIndeterminate,
@@ -25,11 +26,11 @@ export { mergeReferences } from './merge'
 export type { MergeOptions, RightsConflict } from './merge'
 export { evaluateUse, evaluatePermissions, NOT_LEGAL_ADVICE, INTENTS } from './evaluate-use'
 export type { Intent, Decision, Verdict, PermissionKey, EvaluateOptions } from './evaluate-use'
-export { defineProvider } from './provider'
+export {
+  CONTROL_PATHS, SEARCH_CONTROL_KEYS, getControl, setControl, hasControl,
+  buildSearchControlsSchema, searchControlsSchema,
+} from './controls'
 export type {
-  ReferenceProvider,
-  ProviderContext,
-  NormalizedQuery,
   SearchControls,
   SearchControlKey,
   SearchSort,
@@ -38,13 +39,20 @@ export type {
   SearchMediaControls,
   SearchCreatorControls,
   SearchTextControls,
+  WellKnownKind,
+  ResourceKind,
+} from './controls'
+export { searchMetaSchema, providerSearchStatusSchema, searchControlKeySchema } from './schemas'
+export { defineProvider } from './provider'
+export type {
+  ReferenceProvider,
+  ProviderContext,
+  NormalizedQuery,
   ProviderCapabilities,
   ProviderOptionValue,
   ProviderOptions,
   ProviderOptionsById,
   KeyValueCache,
-  WellKnownKind,
-  ResourceKind,
 } from './provider'
 export {
   setIfString, setIfBoolean, setIfStringList,
@@ -55,8 +63,9 @@ export {
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
 export type { ProviderRun, ProviderRunDeps } from './provider-run'
-export { createRefkit } from './client'
+export { createRefkit, PROVIDER_SKIP_REASONS } from './client'
 export type {
+  ProviderSkipReason,
   RefkitClient,
   RefkitOptions,
   ResilienceOptions,

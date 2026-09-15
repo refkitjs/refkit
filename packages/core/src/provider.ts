@@ -1,77 +1,8 @@
 import type { Modality } from './modality'
 import type { Reference } from './reference'
-
-export type SearchSort = 'relevance' | 'latest' | 'popular' | 'interesting'
-export type SearchSafety = 'strict' | 'moderate' | 'off'
-
-/** Fine-grained resource kind. Open vocabulary: well-known values get
- *  autocomplete; any other string is a valid custom kind. Well-known values are
- *  hints, not validation — core never rejects unknown kinds. */
-export type WellKnownKind =
-  | 'photo' | 'illustration' | 'vector' | 'icon' | 'artwork'
-  | 'texture' | 'hdri' | '3d-model'
-  | 'film' | 'animation'
-  | 'music' | 'sound-effect'
-  | 'ebook' | 'poem'
-export type ResourceKind = WellKnownKind | (string & {})
-
-export interface SearchLicenseControls {
-  commercial?: boolean
-  modification?: boolean
-  allowUnknown?: boolean
-}
-
-export interface SearchMediaControls {
-  kind?: ResourceKind
-  size?: 'small' | 'medium' | 'large'
-  minWidth?: number
-  minHeight?: number
-  duration?: 'short' | 'medium' | 'long'
-}
-
-export interface SearchCreatorControls {
-  id?: string
-  name?: string
-}
-
-export interface SearchTextControls {
-  copyright?: 'public-domain' | 'copyrighted' | 'any'
-}
-
-export interface SearchControls {
-  orientation?: 'landscape' | 'portrait' | 'square'
-  color?: string
-  language?: string
-  sort?: SearchSort
-  safety?: SearchSafety
-  license?: SearchLicenseControls
-  media?: SearchMediaControls
-  creator?: SearchCreatorControls
-  text?: SearchTextControls
-  /** Provider-local page cursor: each provider paginates its own result stream;
-   *  after RRF merging, page N+1 may overlap or shift relative to page N. For
-   *  UI "load more", dedupe across pages by canonicalUrl (see README). */
-  page?: number
-}
-
-export type SearchControlKey =
-  | 'orientation'
-  | 'color'
-  | 'language'
-  | 'sort'
-  | 'safety'
-  | 'license.commercial'
-  | 'license.modification'
-  | 'license.allowUnknown'
-  | 'media.kind'
-  | 'media.size'
-  | 'media.minWidth'
-  | 'media.minHeight'
-  | 'media.duration'
-  | 'creator.id'
-  | 'creator.name'
-  | 'text.copyright'
-  | 'page'
+// The control vocabulary (SearchControls and friends) lives in controls.ts —
+// one registry, one definition; provider.ts only consumes it.
+import type { ResourceKind, SearchControlKey, SearchControls } from './controls'
 
 export interface ProviderCapabilities {
   controls: readonly SearchControlKey[]

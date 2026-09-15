@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRefkit } from '../client'
+import { searchMetaSchema } from '../schemas'
 import { cursorSeenKey, decodeCursor } from '../cursor'
 import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
@@ -413,6 +414,39 @@ describe('createRefkit', () => {
       appliedByProvider: { controlled: ['orientation', 'color'], plain: [] },
       ignoredByProvider: { controlled: ['safety'], plain: ['orientation', 'color', 'safety'] },
     })
+  })
+
+  it('reports every requested control as ignored by a provider that declares no capabilities', async () => {
+    const bare = defineProvider({
+      id: 'bare',
+      modalities: ['image'],
+      search: async () => [ref('bare-1', 'https://bare/1')],
+    })
+    const rk = createRefkit({ providers: [bare] })
+    const out = await rk.searchWithMeta({
+      query: 'x',
+      modalities: ['image'],
+      controls: { orientation: 'landscape', color: 'blue' },
+    })
+    expect(out.meta.controls?.requested).toEqual(['orientation', 'color'])
+    expect(out.meta.controls?.ignoredByProvider.bare).toEqual(['orientation', 'color'])
+    // declares nothing → applies nothing (an undeclared control is never routed)
+    expect(out.meta.controls?.appliedByProvider).toEqual({ bare: [] })
+  })
+
+  it('produces meta that validates against the exported searchMetaSchema', async () => {
+    const skipped = defineProvider({ id: 'audio-only', modalities: ['audio'], search: async () => [] })
+    const rk = createRefkit({ providers: [provider('a', [ref('a-1', 'https://a/1')]), skipped] })
+    const out = await rk.searchWithMeta({
+      query: 'x',
+      modalities: ['image'],
+      controls: { orientation: 'landscape' },
+      providerOptions: { a: { orderBy: 'latest' } },
+      gateFor: 'commercial-product',
+    })
+    const parsed = searchMetaSchema.safeParse(out.meta)
+    expect(parsed.error?.issues ?? []).toEqual([])
+    expect(parsed.success).toBe(true)
   })
 
   it('times out a hanging provider, returns partial results, and reports the timeout', async () => {

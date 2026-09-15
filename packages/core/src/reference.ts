@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Modality } from './modality'
+import { MODALITIES, type Modality } from './modality'
 import { rightsRecordSchema, type RightsRecord } from './rights'
 
 export interface ReferenceMedia { url: string; width?: number; height?: number }
@@ -39,7 +39,7 @@ export interface Reference {
   raw?: unknown
 }
 
-const modalitySchema: z.ZodType<Modality> = z.enum(['image', 'video', 'audio', 'text'])
+const modalitySchema: z.ZodType<Modality> = z.enum(MODALITIES)
 
 export const referenceSchema: z.ZodType<Reference> = z.object({
   id: z.string().min(1),

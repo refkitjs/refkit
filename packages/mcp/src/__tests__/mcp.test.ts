@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit, defineProvider } from '@refkit/core'
+import { createRefkit, defineProvider, PROVIDER_SKIP_REASONS, SEARCH_CONTROL_KEYS } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
@@ -547,6 +547,17 @@ describe('dynamic declaration-derived schema', () => {
     expect(schema.properties.sources.items.enum).toBeUndefined()
     const kindEnum = schema.properties.controls.properties.media.properties.kind.enum as string[]
     expect(kindEnum).toEqual(expect.arrayContaining(['photo', 'illustration', 'vector', 'film', 'animation', 'texture', 'custom-kind']))
+    await client.close()
+  })
+
+  it('declares the control-key vocabulary straight from core (no local mirror)', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const out = tools.find(t => t.name === 'search_references')!.outputSchema as Record<string, any>
+    const requestedEnum = out.properties.meta.properties.controls.properties.requested.items.enum as string[]
+    expect(requestedEnum).toEqual([...SEARCH_CONTROL_KEYS])
+    const reasonEnum = out.properties.meta.properties.providers.items.properties.reason.enum as string[]
+    expect(reasonEnum).toEqual([...PROVIDER_SKIP_REASONS])
     await client.close()
   })
 })

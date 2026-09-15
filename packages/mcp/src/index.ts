@@ -2,66 +2,13 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord, Modality } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
 
-const MODALITIES = ['image', 'video', 'audio', 'text'] as const
-const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
 // Legacy media.kind control values — kept in the dynamic enum because they stay
 // meaningful as upstream filter translations for providers that support the
 // media.kind control without declaring kinds.
 const BASE_MEDIA_KINDS = ['photo', 'illustration', 'vector', 'film', 'animation'] as const
-const SEARCH_CONTROL_KEYS = [
-  'orientation',
-  'color',
-  'language',
-  'sort',
-  'safety',
-  'license.commercial',
-  'license.modification',
-  'license.allowUnknown',
-  'media.kind',
-  'media.size',
-  'media.minWidth',
-  'media.minHeight',
-  'media.duration',
-  'creator.id',
-  'creator.name',
-  'text.copyright',
-  'page',
-] as const satisfies readonly SearchControlKey[]
-
-const searchControlKeySchema = z.enum(SEARCH_CONTROL_KEYS)
-
-function buildSearchControlsSchema(kindValues: [string, ...string[]]) {
-  return z.object({
-    orientation: z.enum(ORIENTATIONS).optional(),
-    color: z.string().optional(),
-    language: z.string().optional(),
-    sort: z.enum(['relevance', 'latest', 'popular', 'interesting']).optional(),
-    safety: z.enum(['strict', 'moderate', 'off']).optional(),
-    license: z.object({
-      commercial: z.boolean().optional(),
-      modification: z.boolean().optional(),
-      allowUnknown: z.boolean().optional(),
-    }).optional(),
-    media: z.object({
-      kind: z.enum(kindValues).optional(),
-      size: z.enum(['small', 'medium', 'large']).optional(),
-      minWidth: z.number().int().nonnegative().optional(),
-      minHeight: z.number().int().nonnegative().optional(),
-      duration: z.enum(['short', 'medium', 'long']).optional(),
-    }).optional(),
-    creator: z.object({
-      id: z.string().optional(),
-      name: z.string().optional(),
-    }).optional(),
-    text: z.object({
-      copyright: z.enum(['public-domain', 'copyrighted', 'any']).optional(),
-    }).optional(),
-    page: z.number().int().positive().optional(),
-  })
-}
 
 const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
 const providerOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
@@ -119,39 +66,6 @@ const agentRefSchema = z.object({
     .describe('present when `intent` (or `gateFor`) is set: may this be used for that intent, and how confident'),
   useExplanation: z.string().optional().describe('plain-language use verdict summary for agents'),
   attribution: z.string().optional().describe('ready-to-use credit line; present when the license requires attribution'),
-})
-
-const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
-  query: z.string(),
-  modalities: z.array(z.enum(MODALITIES)),
-  limit: z.number(),
-  poolFactor: z.number(),
-  fetchLimit: z.number(),
-  controls: z.object({
-    requested: z.array(searchControlKeySchema),
-    appliedByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
-    ignoredByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
-  }).optional(),
-  providerOptions: z.array(z.string()).optional(),
-  providers: z.array(z.object({
-    providerId: z.string(),
-    status: z.enum(['fulfilled', 'failed', 'skipped']),
-    returned: z.number().optional(),
-    accepted: z.number().optional(),
-    rejected: z.number().optional(),
-    reason: z.enum(['unsupported-modality', 'unsupported-kind', 'not-selected']).optional(),
-    error: z.string().optional(),
-    latencyMs: z.number().optional(),
-    cached: z.boolean().optional(),
-  })),
-  gate: z.object({
-    intent: z.enum(INTENTS),
-    before: z.number(),
-    after: z.number(),
-    dropped: z.number(),
-  }).optional(),
-  nextCursor: z.string().optional().describe('opaque load-more cursor; pass back as `cursor` to fetch the next page with cross-page dedup'),
-  warnings: z.array(z.string()),
 })
 
 /** Wrap a configured RefkitClient as an MCP server exposing `search_references`. */

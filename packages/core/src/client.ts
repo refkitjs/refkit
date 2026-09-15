@@ -5,13 +5,8 @@ import type { Intent, Verdict } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
 import type { Attribution } from './attribution'
 import { buildAttribution } from './attribution'
-import type {
-  ReferenceProvider,
-  KeyValueCache,
-  SearchControls,
-  SearchControlKey,
-  ProviderOptionsById,
-} from './provider'
+import type { ReferenceProvider, KeyValueCache, ProviderOptionsById } from './provider'
+import type { SearchControlKey, SearchControls } from './controls'
 import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
 import { normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
 import { retryingFetch } from './resilience'
@@ -55,6 +50,10 @@ export interface RefkitOptions {
   maxCursorSeen?: number
 }
 
+/** Why a configured provider sat a search out (no fetch attempted). */
+export const PROVIDER_SKIP_REASONS = ['unsupported-modality', 'unsupported-kind', 'not-selected'] as const
+export type ProviderSkipReason = (typeof PROVIDER_SKIP_REASONS)[number]
+
 export interface ProviderError {
   providerId: string
   error: unknown
@@ -66,7 +65,7 @@ export interface ProviderSearchStatus {
   returned?: number
   accepted?: number
   rejected?: number
-  reason?: 'unsupported-modality' | 'unsupported-kind' | 'not-selected'
+  reason?: ProviderSkipReason
   error?: string
   latencyMs?: number
   cached?: boolean
@@ -205,13 +204,13 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // conservatively included on kind-filtered queries (same progressive
     // philosophy as capabilities-based control routing).
     const matchesKind = (p: ReferenceProvider) => kindFilter === undefined || !p.kinds || p.kinds.includes(kindFilter)
-    const skipReasonFor = (p: ReferenceProvider): NonNullable<ProviderSearchStatus['reason']> | undefined => {
+    const skipReasonFor = (p: ReferenceProvider): ProviderSkipReason | undefined => {
       if (!matchesModality(p)) return 'unsupported-modality'
       if (!inSources(p)) return 'not-selected'
       if (!matchesKind(p)) return 'unsupported-kind'
       return undefined
     }
-    const skipReasons = new Map<string, NonNullable<ProviderSearchStatus['reason']>>()
+    const skipReasons = new Map<string, ProviderSkipReason>()
     for (const p of options.providers) {
       const reason = skipReasonFor(p)
       if (reason) skipReasons.set(p.id, reason)
