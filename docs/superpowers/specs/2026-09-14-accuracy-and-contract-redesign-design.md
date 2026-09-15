@@ -52,10 +52,10 @@ backward-compatibility obligation. Deprecated surfaces are deleted, not aliased.
 - `compareRestrictiveness` returns `'incomparable'` whenever either operand is
   indeterminate, so the public comparator never orders an all-unknown row.
 - Cross-source conflict detection is keyed on **facts**, not labels: two records for
-  the same canonical URL conflict when `compareRestrictiveness(factsOf(a), factsOf(b))
-  !== 'equal'`. Same id with narrower supplied facts is a conflict; CC0 vs PD (identical
-  facts) is not. `RightsConflict.licenses` lists the distinct source-declared ids
-  involved (possibly a single id).
+  the same canonical URL conflict iff their facts rows differ (five-axis fingerprint
+  inequality). Same id with narrower supplied facts is a conflict; CC0 vs PD (identical
+  facts) is not; two sources both declaring `unknown` is not. `RightsConflict.licenses`
+  lists the distinct source-declared ids involved (possibly a single id).
 - `licenseVersion` may only be present when `license` is one of the six versioned CC
   families; enforced by a zod refine on `rightsRecordSchema`. `CC_VERSIONED_FAMILIES`
   and `ccVersionFor` move to `license.ts`.
