@@ -36,7 +36,14 @@ export interface RefkitOptions {
    *  returned matches the query — a source that answered something else stops
    *  out-ranking the ones that answered. Defaults ON with a 0.1 floor (a source
    *  is dampened, never erased, so non-English titles keep a foothold); pass a
-   *  floor to tune it, or `false` for unweighted fusion. */
+   *  floor to tune it, or `false` for unweighted fusion.
+   *
+   *  The weights reach the final ORDER through the reranker: the lexical
+   *  reranker's `fusionWeight` (default 0.5) blends the fused relevance back into
+   *  its score. With `fusionWeight: 0` — or a BYO reranker that ignores the
+   *  incoming `relevance` — confidence only breaks ties among refs the reranker
+   *  scores equally, and otherwise survives as the `confidence` diagnostic on
+   *  each `meta.providers` entry. */
   sourceConfidence?: boolean | { floor?: number }
   /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
   resilience?: ResilienceOptions | false
@@ -180,7 +187,10 @@ export interface SearchInput {
   rerank?: Reranker | false
   /** Drop results the ranker scored below this (0..1, post-rerank relevance) and
    *  report the cut in `meta.threshold`. Off by default — a threshold can empty
-   *  the batch, which only the caller can decide is better than weak results. */
+   *  the batch, which only the caller can decide is better than weak results.
+   *  Under `rerank: false` the value is graded against max-normalised RRF, where
+   *  the top item is always 1 and the rest sit just below it, so a bar calibrated
+   *  for the lexical reranker's blend does not transfer between the two paths. */
   minRelevance?: number
 }
 

@@ -108,7 +108,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
         cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
-        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion'),
+        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, fused cross-source relevance, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion. true cannot re-enable reranking when the host built the client with rerank: false'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },

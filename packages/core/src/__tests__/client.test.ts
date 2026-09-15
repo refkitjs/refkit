@@ -1002,7 +1002,7 @@ describe('multi-pass fidelity, deadline and gate context', () => {
 })
 
 describe('accuracy defaults', () => {
-  const titled = (url: string, title: string) => ({ ...ref(url), title })
+  const titled = (url: string, title: string, extra: Partial<EmittedReference> = {}) => ({ ...ref(url), title, ...extra })
 
   it('a source whose batch never mentions the query sinks below a source that does', async () => {
     const noise = defineProvider({
@@ -1022,6 +1022,35 @@ describe('accuracy defaults', () => {
     expect(meta.providers.find(p => p.providerId === 'signal')?.confidence).toBe(1)
   })
 
+  it('under the shipped defaults the trustworthy source wins an equal lexical hit', async () => {
+    // Both sources return a ref titled "A lion" for the query "lion"; noise's
+    // even carries a resolution edge. Confidence only reaches the ranking through
+    // the reranker's fusionWeight, so without it the default reranker would hand
+    // the top slot to the mostly-irrelevant source.
+    const signal = defineProvider({
+      id: 'signal', modalities: ['image'],
+      search: async () => [titled('https://s.test/1', 'A lion')],
+    })
+    const noise = defineProvider({
+      id: 'noise', modalities: ['image'],
+      search: async () => [
+        titled('https://n.test/0', 'A lion', { visual: { width: 4000, height: 3000 } }),
+        titled('https://n.test/1', 'Unrelated thing'),
+        titled('https://n.test/2', 'Unrelated thing'),
+        titled('https://n.test/3', 'Unrelated thing'),
+      ],
+    })
+    const { references, meta } = await createRefkit({ providers: [signal, noise] })
+      .searchWithMeta({ query: 'lion', modalities: ['image'], limit: 10 })
+    // Confidence: signal 1 (1/1 hit), noise 0.1 + 0.9·0.25 = 0.325. Fusion (k=60,
+    // rank 0, max-normalised): signal 1, noise's lion 0.325. Equal lexical 1, so
+    // base(signal) = 1 + 0.5·1 + 0.15·0.5 = 1.575 beats
+    // base(noise) = 1 + 0.5·0.325 + 0.15·1 = 1.3125 despite the resolution edge.
+    expect(references[0].source.providerId).toBe('signal')
+    expect(meta.providers.find(p => p.providerId === 'signal')?.confidence).toBeCloseTo(1, 5)
+    expect(meta.providers.find(p => p.providerId === 'noise')?.confidence).toBeCloseTo(0.325, 5)
+  })
+
   it('sourceConfidence: false leaves the fusion unweighted', async () => {
     const noise = defineProvider({
       id: 'noise', modalities: ['image'],
@@ -1035,6 +1064,22 @@ describe('accuracy defaults', () => {
     const { references, meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
     expect(references[0].source.providerId).toBe('noise') // rank-0 tie, input order
     expect(meta.providers.every(p => p.confidence === undefined)).toBe(true)
+  })
+
+  it('omits confidence for a fulfilled provider that returned nothing', async () => {
+    // There is nothing to rate: an empty batch neither mentions the query nor
+    // fails to, so reporting the 1 that keeps the weights array parallel would
+    // read as "fully trusted".
+    const empty = defineProvider({ id: 'empty', modalities: ['image'], search: async () => [] })
+    const p = defineProvider({
+      id: 'p', modalities: ['image'],
+      search: async () => [titled('https://x.test/1', 'A lion')],
+    })
+    const { meta } = await createRefkit({ providers: [empty, p], resilience: false })
+      .searchWithMeta({ query: 'lion', modalities: ['image'] })
+    const status = meta.providers.find(s => s.providerId === 'empty')
+    expect(status).toEqual({ providerId: 'empty', status: 'fulfilled', returned: 0, accepted: 0, rejected: 0, latencyMs: expect.any(Number) })
+    expect(meta.providers.find(s => s.providerId === 'p')?.confidence).toBe(1)
   })
 
   it('a custom confidence floor deepens the dampening', async () => {
@@ -1082,10 +1127,12 @@ describe('accuracy defaults', () => {
       search: async () => [titled('https://x.test/1', 'A lion'), titled('https://x.test/2', 'Unrelated')],
     })
     const { references, meta } = await createRefkit({ providers: [p], resilience: false })
-      .searchWithMeta({ query: 'lion', modalities: ['image'], minRelevance: 0.2 })
+      .searchWithMeta({ query: 'lion', modalities: ['image'], minRelevance: 0.5 })
+    // The blend is lexical 1 + fusion 1 + quality 0.5 over total 1.65 → 0.95 for
+    // the match, and fusion-only 0.98 + quality over 1.65 → 0.34 for the miss.
     expect(references.map(r => r.canonicalUrl)).toEqual(['https://x.test/1'])
-    expect(meta.threshold).toEqual({ minRelevance: 0.2, dropped: 1 })
-    expect(meta.warnings).toContain('1 result(s) below minRelevance 0.2.')
+    expect(meta.threshold).toEqual({ minRelevance: 0.5, dropped: 1 })
+    expect(meta.warnings).toContain('1 result(s) below minRelevance 0.5.')
     const parsed = searchMetaSchema.safeParse(meta)
     expect(parsed.error?.issues ?? []).toEqual([])
   })

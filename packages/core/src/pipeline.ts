@@ -155,7 +155,13 @@ export function collectStatuses(deps: PassDeps, runs: readonly ProviderRun[]): {
 /** Per-source merge weights from lexical confidence, stamped onto each fulfilled
  *  status so a caller can see which source actually answered the query.
  *  `perSourceIds` is parallel to `perSource` (see collectStatuses). Returns
- *  undefined when confidence weighting is off. */
+ *  undefined when confidence weighting is off.
+ *
+ *  A source that returned NOTHING is reported with no `confidence` at all: an
+ *  empty batch neither mentions the query nor fails to, so any number would be a
+ *  claim we can't back. Its weight (sourceConfidence's 1 for an empty list) stays
+ *  in the array to keep it parallel to `perSource`, and never multiplies anything
+ *  — an empty list contributes no RRF positions. */
 export function confidenceStage(
   deps: PassDeps,
   perSource: readonly Reference[][],
@@ -168,7 +174,7 @@ export function confidenceStage(
   const weights = perSource.map(list => sourceConfidence(qTokens, list, floor))
   perSourceIds.forEach((id, i) => {
     const status = statusByProvider.get(id)
-    if (status) statusByProvider.set(id, { ...status, confidence: weights[i] })
+    if (status && perSource[i].length > 0) statusByProvider.set(id, { ...status, confidence: weights[i] })
   })
   return weights
 }

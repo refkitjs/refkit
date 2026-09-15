@@ -26,13 +26,14 @@ describe('lexicalReranker', () => {
   })
 
   it('returns a single ref unchanged and rewrites relevance to the normalised blend', async () => {
-    const refs = [ref('a', 'cyberpunk city')]
+    const refs = [ref('a', 'cyberpunk city', { relevance: 0.4 })]
     const out = await lexicalReranker()({ query: 'cyberpunk', refs })
     expect(out).toHaveLength(1)
     expect(out[0].id).toBe('a')
-    // base = lexW·1 + qualW·0.5 (no visual) = 1 + 0.075 = 1.075; total = 1 + 0.15 = 1.15.
-    // Pins the denominator + blend so a wrong divisor can't hide behind ordering.
-    expect(out[0].relevance).toBeCloseTo(1.075 / 1.15, 5)
+    // base = lexW·1 + fusW·0.4 (the incoming fused relevance) + qualW·0.5 (no
+    // visual) = 1 + 0.2 + 0.075 = 1.275; total = 1 + 0.5 + 0.15 = 1.65. Pins the
+    // denominator + blend so a wrong divisor can't hide behind ordering.
+    expect(out[0].relevance).toBeCloseTo(1.275 / 1.65, 5)
   })
 
   it('keeps input order and zeroes relevance when nothing matches (lexical-only)', async () => {
@@ -135,7 +136,7 @@ describe('lexicalReranker', () => {
       'Forest path near Graigddu-isaf 3',
     ].map((t, i) => wiki(`d${i}`, t))
     const other = wiki('o', 'Forest path in Finland')
-    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0 })({
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, fusionWeight: 0 })({
       query: 'forest path',
       refs: [...dupes, other],
     }) as Reference[]
@@ -145,10 +146,65 @@ describe('lexicalReranker', () => {
     expect(out.every(r => r.relevance === 1)).toBe(true)
   })
 
+  it('does not treat untitled refs as near-duplicates of each other', () => {
+    // Jaccard over two EMPTY title-token sets is 0, not 1: "we cannot tell these
+    // two apart" is not evidence that they are the same upload batch. With 1,
+    // every untitled ref after the first from a source ate the penalty and lost
+    // its place to a weaker-matching sibling. `u1`'s title tokenizes to nothing
+    // (all stopwords), which is the same empty set by another route.
+    const wiki = (id: string, opts: Partial<Reference>) =>
+      ref(id, '', { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` }, ...opts })
+    const described = 'a forest path near the river bridge'
+    const refs = [
+      wiki('u0', { title: undefined, description: described }),
+      wiki('u1', { title: 'the of a', description: described }),
+      wiki('u2', { title: undefined, description: described }),
+      // Covers the query 4/5 — below the untitled refs, but above a penalised one.
+      wiki('t', { title: 'Forest path near river crossing' }),
+    ]
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, fusionWeight: 0, nearDuplicatePenalty: 0.25 })({
+      query: 'forest path near river bridge',
+      refs,
+    }) as Reference[]
+    expect(out.map(r => r.id)).toEqual(['u0', 'u1', 'u2', 't'])
+    expect(out.slice(0, 3).every(r => r.relevance === 1)).toBe(true)
+  })
+
+  it('carries the incoming fused relevance into the score via fusionWeight', () => {
+    // Fusion already encodes cross-source agreement and source confidence; an
+    // equal lexical hit must be broken by it, not discarded.
+    const low = ref('low', 'red lion', { relevance: 0.3 })
+    const high = ref('high', 'red lion', { relevance: 1 })
+    const flat = { qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0 }
+    const fused = lexicalReranker({ ...flat, fusionWeight: 1 })({ query: 'red lion', refs: [low, high] }) as Reference[]
+    expect(fused.map(r => r.id)).toEqual(['high', 'low'])
+    // total = lexW + fusW = 2; base(high) = 1 + 1, base(low) = 1 + 0.3.
+    expect(fused[0].relevance).toBeCloseTo(1, 5)
+    expect(fused[1].relevance).toBeCloseTo(1.3 / 2, 5)
+    const ignored = lexicalReranker({ ...flat, fusionWeight: 0 })({ query: 'red lion', refs: [low, high] }) as Reference[]
+    expect(ignored[0].relevance).toBe(ignored[1].relevance) // pure lexical: a real tie
+  })
+
+  it('nearDuplicateThreshold 1 penalises only an exact title-token repeat', () => {
+    const wiki = (id: string, title: string) =>
+      ref(id, title, { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` } })
+    const refs = [
+      wiki('exact0', 'Forest path near river'),
+      wiki('exact1', 'Forest path near river'),
+      // 3 of 4 tokens shared → Jaccard 0.6, under the raised bar.
+      wiki('almost', 'Forest path near lake'),
+    ]
+    const out = lexicalReranker({
+      lexicalWeight: 0, qualityWeight: 0, sourceDiversity: 0,
+      nearDuplicatePenalty: 0.25, nearDuplicateThreshold: 1,
+    })({ query: 'forest path', refs }) as Reference[]
+    expect(out.map(r => r.id)).toEqual(['exact0', 'almost', 'exact1'])
+  })
+
   it("breaks a tie on the source's own score when sourceScoreWeight > 0", () => {
     const lo = ref('lo', 'red lion', { sourceScore: 1 })
     const hi = ref('hi', 'red lion', { sourceScore: 9 })
-    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0, sourceScoreWeight: 0.5 })({
+    const out = lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, nearDuplicatePenalty: 0, fusionWeight: 0, sourceScoreWeight: 0.5 })({
       query: 'red lion',
       refs: [lo, hi],
     }) as Reference[]
@@ -168,7 +224,7 @@ describe('lexicalReranker', () => {
 
   it('gives a source with a single scored ref the neutral 0.5, not 0', () => {
     const solo = ref('solo', 'red lion', { sourceScore: 3 })
-    const out = lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, sourceScoreWeight: 1 })({
+    const out = lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, fusionWeight: 0, sourceScoreWeight: 1 })({
       query: 'red lion',
       refs: [solo],
     }) as Reference[]

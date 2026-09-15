@@ -59,6 +59,12 @@ export function refText(ref: Pick<Reference, 'title' | 'description' | 'tags' | 
 export interface LexicalRerankOptions {
   /** Weight of the query↔ranking-text term-coverage score. Default 1. */
   lexicalWeight?: number
+  /** Weight of the INCOMING fused `relevance` — max-normalised RRF, which already
+   *  carries cross-source agreement and the per-source confidence weights. Default
+   *  0.5, so an equal lexical hit from a source that mostly answered the query
+   *  outranks the same hit from one that mostly didn't. 0 restores pure lexical
+   *  ordering and makes source confidence a tie-break plus a diagnostic. */
+  fusionWeight?: number
   /** Weight of the resolution quality boost (0 disables). Default 0.15. */
   qualityWeight?: number
   /** Weight of the license-permissiveness boost (0 disables). Default 0. */
@@ -70,7 +76,8 @@ export interface LexicalRerankOptions {
    *  top with one subject (0 disables). Default 0.25. */
   nearDuplicatePenalty?: number
   /** Title-token Jaccard at or above which two same-source titles count as near
-   *  duplicates. Default 0.7; values outside 0…1 fall back to the default. */
+   *  duplicates. Default 0.7; values outside 0…1 fall back to the default — to
+   *  disable the penalty set `nearDuplicatePenalty: 0`, not a threshold of 0. */
   nearDuplicateThreshold?: number
   /** Weight of the source's own upstream score, min-max normalised WITHIN each
    *  source (0 disables). Default 0 — upstream scales are not comparable across
@@ -87,10 +94,12 @@ function lexicalScore(queryTokens: string[], ref: Reference): number {
   return hit / queryTokens.length
 }
 
-/** Token-set overlap ratio. Two empty sets (both untitled) are indistinguishable,
- *  hence maximally similar — and the 0/0 division never happens. */
+/** Token-set overlap ratio. Two EMPTY sets score 0, not 1: untitled refs (and
+ *  titles that tokenize to nothing) carry no evidence that they are the same
+ *  upload batch, and calling them duplicates penalised every one after the first.
+ *  The early return also keeps the 0/0 division from happening. */
 function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1
+  if (a.size === 0 || b.size === 0) return 0
   let inter = 0
   for (const t of a) if (b.has(t)) inter++
   return inter / (a.size + b.size - inter)
@@ -135,7 +144,9 @@ function sourceScoreScores(refs: readonly Reference[]): number[] {
 
 /**
  * Zero-dependency default reranker. Scores each ref by a weighted blend of query
- * term-coverage (over title + description + tags + excerpt), resolution quality,
+ * term-coverage (over title + description + tags + excerpt), the INCOMING fused
+ * relevance (so cross-source agreement and source confidence survive the rerank
+ * instead of being overwritten by a pure lexical score), resolution quality,
  * license permissiveness and the source's own score, then greedily emits results
  * with a small per-source diversity penalty (MMR-lite) plus a same-source
  * near-duplicate-title penalty, so neither one provider nor one upload batch can
@@ -152,6 +163,7 @@ export function lexicalReranker(opts: LexicalRerankOptions = {}): Reranker {
     return Number.isFinite(v) && v > 0 ? v : 0
   }
   const lexW = w(opts.lexicalWeight, 1)
+  const fusW = w(opts.fusionWeight, 0.5)
   const qualW = w(opts.qualityWeight, 0.15)
   const licW = w(opts.licenseWeight, 0)
   const divW = w(opts.sourceDiversity, 0.1)
@@ -161,7 +173,7 @@ export function lexicalReranker(opts: LexicalRerankOptions = {}): Reranker {
   // titles duplicates), so it falls back to the default instead of inverting intent.
   const rawDupT = opts.nearDuplicateThreshold
   const dupT = typeof rawDupT === 'number' && Number.isFinite(rawDupT) && rawDupT > 0 && rawDupT <= 1 ? rawDupT : 0.7
-  const total = lexW + qualW + licW + ssW || 1
+  const total = lexW + fusW + qualW + licW + ssW || 1
 
   return ({ query, refs }) => {
     const qTokens = [...new Set(tokenize(query))]
@@ -176,6 +188,9 @@ export function lexicalReranker(opts: LexicalRerankOptions = {}): Reranker {
       nearDup: false,
       base:
         lexW * lexicalScore(qTokens, ref) +
+        // The merge writes a max-normalised 0..1 relevance here; the Math.min(1, …)
+        // below caps the emitted blend either way.
+        fusW * ref.relevance +
         qualW * qual[i] +
         licW * permissivenessScore(factsOf(ref.rights)) +
         ssW * upstream[i],
