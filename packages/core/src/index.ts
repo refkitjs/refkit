@@ -29,9 +29,7 @@ export { defineProvider } from './provider'
 export type {
   ReferenceProvider,
   ProviderContext,
-  QueryFeature,
   NormalizedQuery,
-  SearchFilters,
   SearchControls,
   SearchControlKey,
   SearchSort,

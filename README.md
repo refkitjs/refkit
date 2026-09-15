@@ -256,7 +256,7 @@ Audio/video are extra factories on existing packages: `openverseAudio()`, `pexel
 
 Agents can use refkit in two ways:
 
-1. **SDK inside a host tool** — your app defines its own `search` tool, wires `createRefkit({ providers, fetch, cache })`, and controls keys, caching, retries, rerankers, filters, and provider-specific options.
+1. **SDK inside a host tool** — your app defines its own `search` tool, wires `createRefkit({ providers, fetch, cache })`, and controls keys, caching, retries, rerankers, search controls, and provider-specific options.
 2. **MCP adapter** — `@refkit/mcp` exposes the same license-normalized search over `search_references`, useful when you want a zero-glue tool that works across MCP-capable agents.
 
 ## MCP

@@ -2,42 +2,16 @@ import type { Modality } from './modality'
 import type {
   NormalizedQuery,
   ProviderOptionsById,
-  QueryFeature,
   ReferenceProvider,
   SearchControlKey,
   SearchControls,
-  SearchFilters,
 } from './provider'
 
-// Legacy-compat routing: a provider with NO capabilities but with deprecated
-// queryFeatures keeps receiving the filter-ish controls those features implied —
-// a pre-capabilities third-party provider must degrade loudly (deprecation),
-// never silently (unfiltered results). Providers that declare capabilities are
-// routed by capabilities alone.
-const LEGACY_FEATURE_CONTROLS: Partial<Record<QueryFeature, SearchControlKey>> = {
-  color: 'color',
-  orientation: 'orientation',
-  language: 'language',
-}
-
+// A control reaches a provider only if that provider declares it. A provider
+// without `capabilities` declares nothing, so it receives no controls — better
+// an unfiltered-but-honest search than a silently ignored constraint.
 function effectiveControlCaps(provider: ReferenceProvider): readonly SearchControlKey[] {
-  if (provider.capabilities) return provider.capabilities.controls
-  return (provider.queryFeatures ?? [])
-    .map(f => LEGACY_FEATURE_CONTROLS[f])
-    .filter((k): k is SearchControlKey => k !== undefined)
-}
-
-function controlsFromFilters(filters: SearchFilters | undefined): SearchControls {
-  if (!filters) return {}
-  return {
-    ...(filters.orientation ? { orientation: filters.orientation } : {}),
-    ...(filters.color ? { color: filters.color } : {}),
-    ...(filters.language ? { language: filters.language } : {}),
-  }
-}
-
-export function mergeSearchControls(controls: SearchControls | undefined, filters: SearchFilters | undefined): SearchControls {
-  return { ...controlsFromFilters(filters), ...(controls ?? {}) }
+  return provider.capabilities?.controls ?? []
 }
 
 function hasControl(controls: SearchControls, key: SearchControlKey): boolean {
@@ -104,36 +78,23 @@ export function unsupportedControlKeys(provider: ReferenceProvider, controls: Se
   return requested.filter(key => !supported.has(key))
 }
 
-export function normalizeControlsForProvider(input: {
-  controls?: SearchControls
-  filters?: SearchFilters
-}, provider: ReferenceProvider): SearchControls | undefined {
-  const merged = mergeSearchControls(input.controls, input.filters)
-  const supported = supportedControlKeys(provider, merged)
+export function normalizeControlsForProvider(controls: SearchControls | undefined, provider: ReferenceProvider): SearchControls | undefined {
+  if (!controls) return undefined
+  const supported = supportedControlKeys(provider, controls)
   if (supported.length === 0) return undefined
   const out: SearchControls = {}
-  for (const key of supported) setControl(out, key, merged)
+  for (const key of supported) setControl(out, key, controls)
   return out
 }
 
 export function normalizeQuery(
-  input: { query: string; modalities: Modality[]; filters?: SearchFilters; controls?: SearchControls; providerOptions?: ProviderOptionsById; limit?: number },
+  input: { query: string; modalities: Modality[]; controls?: SearchControls; providerOptions?: ProviderOptionsById; limit?: number },
   provider: ReferenceProvider,
 ): NormalizedQuery {
-  // Single-track routing: legacy `filters` are merged into `controls` (controls
-  // win on conflict) and routed by `capabilities.controls` alone. The deprecated
-  // NormalizedQuery.filters channel is then DERIVED from the routed controls, so
-  // a provider reading either channel sees the same values — no double semantics.
-  const controls = normalizeControlsForProvider(input, provider)
-  const filters: SearchFilters = {}
-  if (controls?.color) filters.color = controls.color
-  if (controls?.orientation) filters.orientation = controls.orientation
-  if (controls?.language) filters.language = controls.language
-  const hasFilters = Object.keys(filters).length > 0
+  const controls = normalizeControlsForProvider(input.controls, provider)
   return {
     text: input.query,
     modalities: input.modalities.filter(m => provider.modalities.includes(m)),
-    ...(hasFilters ? { filters } : {}),
     ...(controls ? { controls } : {}),
     ...(input.providerOptions?.[provider.id] ? { providerOptions: input.providerOptions[provider.id] } : {}),
     ...(input.limit !== undefined ? { limit: input.limit } : {}),

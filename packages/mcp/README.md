@@ -45,12 +45,11 @@ await serveStdio(createRefkit({
 
 ## The `search_references` tool
 
-Input: `{ query, modalities?, controls?, filters?, providerOptions?, explain?, limit?, intent?, gateFor? }`.
+Input: `{ query, modalities?, controls?, providerOptions?, explain?, limit?, intent?, gateFor? }`.
 
 - `controls` — provider-neutral search controls such as `{ orientation, color, language, sort, safety, license, media }`; providers translate supported controls and report ignored controls when `explain: true`.
 - `intent` — annotate each result with a **use-verdict** for that intended use (no filtering).
 - `gateFor` — return only results whose license allows that intent.
-- `filters` — compatibility alias for `controls.orientation`, `controls.color`, and `controls.language`.
 - `explain` — include provider status, applied and ignored unified controls, warnings, and gate/drop metadata.
 - `providerOptions` — typed provider-specific whitelisted controls keyed by provider id, for example:
 

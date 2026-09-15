@@ -30,7 +30,6 @@ function fakeProvider(results: Reference[]) {
   return defineProvider({
     id: 'fake',
     modalities: ['image'],
-    queryFeatures: [],
     async search(_query, ctx: ProviderContext) {
       await ctx.fetch('https://example.com/api')
       return results

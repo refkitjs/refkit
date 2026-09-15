@@ -32,7 +32,7 @@ describe('pixabay provider', () => {
     expect(r.visual).toEqual({ width: 4000, height: 2250 })
   })
 
-  it('forwards documented image search filters and Pixabay-specific options', async () => {
+  it('forwards documented image search controls and Pixabay-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(FIXTURE), { status: 200 }) }) as typeof fetch,
@@ -40,7 +40,7 @@ describe('pixabay provider', () => {
     await pixabay({ key: 'SECRET' }).search({
       text: 'flowers',
       modalities: ['image'],
-      filters: { orientation: 'landscape', color: 'blue', language: 'de' },
+      controls: { orientation: 'landscape', color: 'blue', language: 'de' },
       providerOptions: {
         imageType: 'illustration',
         orientation: 'vertical',
@@ -100,23 +100,6 @@ describe('pixabay provider', () => {
     expect(url.searchParams.get('safesearch')).toBe('true')
     expect(url.searchParams.get('order')).toBe('latest')
   })
-
-  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
-    let calledUrl = ''
-    const ctx: ProviderContext = {
-      fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(FIXTURE), { status: 200 }) }) as typeof fetch,
-    }
-    await pixabay({ key: 'SECRET' }).search({
-      text: 'flowers',
-      modalities: ['image'],
-      filters: { orientation: 'portrait', color: 'red', language: 'en' },
-      controls: { orientation: 'landscape', color: 'blue', language: 'de' },
-    }, ctx)
-    const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('horizontal')
-    expect(url.searchParams.get('colors')).toBe('blue')
-    expect(url.searchParams.get('lang')).toBe('de')
-  })
 })
 
 describe('pixabayVideo provider', () => {
@@ -151,7 +134,7 @@ describe('pixabayVideo provider', () => {
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pixabay license is commercial-OK
   })
 
-  it('forwards documented video search filters and Pixabay-specific options', async () => {
+  it('forwards documented video search controls and Pixabay-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => { calledUrl = String(input); return new Response(JSON.stringify(VIDEO_FIXTURE), { status: 200 }) }) as typeof fetch,
@@ -159,7 +142,7 @@ describe('pixabayVideo provider', () => {
     await pixabayVideo({ key: 'SECRET' }).search({
       text: 'flowers',
       modalities: ['video'],
-      filters: { language: 'fr' },
+      controls: { language: 'fr' },
       providerOptions: {
         videoType: 'animation',
         category: 'education',

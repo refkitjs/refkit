@@ -37,7 +37,7 @@ describe('unsplash provider', () => {
     expect(refs[0].title).toBe('coffee cup')
   })
 
-  it('forwards documented search filters and Unsplash-specific options', async () => {
+  it('forwards documented search controls and Unsplash-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => {
@@ -48,8 +48,6 @@ describe('unsplash provider', () => {
     await unsplash({ accessKey: 'k' }).search({
       text: 'coffee',
       modalities: ['image'],
-      // NormalizedQuery.filters is deprecated (a mirror derived from controls);
-      // providers read controls — this exercises the current contract.
       controls: { color: 'blue', orientation: 'square', language: 'zh-Hans' },
       providerOptions: { orderBy: 'latest', contentFilter: 'high', collections: ['abc', 'def'], page: 3, perPage: 12 },
     }, ctx)
@@ -83,26 +81,6 @@ describe('unsplash provider', () => {
     expect(url.searchParams.get('lang')).toBe('zh-Hans')
     expect(url.searchParams.get('order_by')).toBe('latest')
     expect(url.searchParams.get('content_filter')).toBe('high')
-  })
-
-  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
-    let calledUrl = ''
-    const ctx: ProviderContext = {
-      fetch: (async (input: Parameters<typeof fetch>[0]) => {
-        calledUrl = String(input)
-        return new Response(JSON.stringify(FIXTURE), { status: 200 })
-      }) as typeof fetch,
-    }
-    await unsplash({ accessKey: 'k' }).search({
-      text: 'coffee',
-      modalities: ['image'],
-      filters: { color: 'red', orientation: 'portrait', language: 'en-US' },
-      controls: { color: 'blue', orientation: 'square', language: 'zh-Hans' },
-    }, ctx)
-    const url = new URL(calledUrl)
-    expect(url.searchParams.get('color')).toBe('blue')
-    expect(url.searchParams.get('orientation')).toBe('squarish')
-    expect(url.searchParams.get('lang')).toBe('zh-Hans')
   })
 
   it('declares kinds and description', () => {

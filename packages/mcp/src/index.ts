@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord, Modality } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord, Modality } from '@refkit/core'
 
 const MODALITIES = ['image', 'video', 'audio', 'text'] as const
 const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
@@ -31,11 +31,6 @@ const SEARCH_CONTROL_KEYS = [
   'page',
 ] as const satisfies readonly SearchControlKey[]
 
-const filtersSchema = z.object({
-  color: z.string().optional(),
-  orientation: z.enum(ORIENTATIONS).optional(),
-  language: z.string().optional(),
-})
 const searchControlKeySchema = z.enum(SEARCH_CONTROL_KEYS)
 
 function buildSearchControlsSchema(kindValues: [string, ...string[]]) {
@@ -132,7 +127,6 @@ const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
   limit: z.number(),
   poolFactor: z.number(),
   fetchLimit: z.number(),
-  appliedFilters: filtersSchema.optional(),
   controls: z.object({
     requested: z.array(searchControlKeySchema),
     appliedByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
@@ -195,7 +189,6 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
           'restrict the search to specific sources by id (omit to search every configured source — see "Configured sources" in this tool description). '
           + 'Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources\' queries.',
         ),
-        filters: filtersSchema.optional().describe('compatibility alias for controls.orientation, controls.color, and controls.language'),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
         explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
@@ -211,12 +204,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         meta: searchMetaSchema.optional(),
       },
     },
-    async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor, sources }) => {
+    async ({ query, modalities, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor, sources }) => {
       const searchInput = {
         query,
         modalities: modalities ?? ['image'],
         sources,
-        filters: filters as SearchFilters | undefined,
         controls: controls as SearchControls | undefined,
         providerOptions: providerOptions as ProviderOptionsById | undefined,
         limit,

@@ -8,13 +8,12 @@ import { buildAttribution } from './attribution'
 import type {
   ReferenceProvider,
   KeyValueCache,
-  SearchFilters,
   SearchControls,
   SearchControlKey,
   ProviderOptionsById,
 } from './provider'
 import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
-import { mergeSearchControls, normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
+import { normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
 import { retryingFetch } from './resilience'
 import { runProviderSearch } from './provider-run'
 import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
@@ -92,7 +91,6 @@ export interface SearchMeta {
   limit: number
   poolFactor: number
   fetchLimit: number
-  appliedFilters?: SearchFilters
   controls?: SearchControlsMeta
   providerOptions?: string[]
   providers: ProviderSearchStatus[]
@@ -122,9 +120,6 @@ export interface SearchInput {
    *  "no results"); ids that resolve to nothing while others still match are
    *  reported in `meta.warnings`. */
   sources?: string[]
-  /** @deprecated Compatibility alias for `controls.color` / `controls.orientation`
-   *  / `controls.language` (controls win on conflict). Use `controls`. */
-  filters?: SearchFilters
   controls?: SearchControls
   /** Provider-specific search controls keyed by provider id. Core routes only the
    * matching entry to each provider; providers whitelist what they translate. */
@@ -269,12 +264,11 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
     // provider-local page. The cursor path may run several passes per call.
     const runPass = async (page: number | undefined): Promise<PassOutcome> => {
       const controls = page !== undefined ? { ...input.controls, page } : input.controls
-      const requestedControlsSource = mergeSearchControls(controls, input.filters)
-      const requestedControls = requestedControlKeys(requestedControlsSource)
+      const requestedControls = requestedControlKeys(controls ?? {})
       const controlsMeta = requestedControls.length > 0 ? {
         requested: requestedControls,
-        appliedByProvider: Object.fromEntries(options.providers.map(p => [p.id, supportedControlKeys(p, requestedControlsSource)])),
-        ignoredByProvider: Object.fromEntries(options.providers.map(p => [p.id, unsupportedControlKeys(p, requestedControlsSource)])),
+        appliedByProvider: Object.fromEntries(options.providers.map(p => [p.id, supportedControlKeys(p, controls ?? {})])),
+        ignoredByProvider: Object.fromEntries(options.providers.map(p => [p.id, unsupportedControlKeys(p, controls ?? {})])),
       } : undefined
       const statusByProvider = new Map<string, ProviderSearchStatus>()
       for (const p of options.providers) {
@@ -288,7 +282,6 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         const query = normalizeQuery({
           query: input.query,
           modalities: input.modalities,
-          filters: input.filters,
           controls,
           providerOptions: input.providerOptions,
           limit: fetchLimit,
@@ -417,7 +410,6 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         limit,
         poolFactor,
         fetchLimit,
-        ...(input.filters ? { appliedFilters: input.filters } : {}),
         ...(pass.controlsMeta ? { controls: pass.controlsMeta } : {}),
         ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
         providers: options.providers.map(p => pass.statusByProvider.get(p.id)

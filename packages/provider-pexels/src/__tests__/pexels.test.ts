@@ -29,7 +29,7 @@ describe('pexels provider', () => {
     expect(r.visual).toEqual({ width: 3066, height: 3968, dominantColors: ['#374824'] })
   })
 
-  it('forwards documented photo search filters and Pexels-specific options', async () => {
+  it('forwards documented photo search controls and Pexels-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => {
@@ -40,7 +40,7 @@ describe('pexels provider', () => {
     await pexels({ apiKey: 'k' }).search({
       text: 'trees',
       modalities: ['image'],
-      filters: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
+      controls: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
       providerOptions: { orientation: 'landscape', color: 'red', size: 'large', locale: 'fr-FR', page: 2, perPage: 11 },
     }, ctx)
     const url = new URL(calledUrl)
@@ -71,26 +71,6 @@ describe('pexels provider', () => {
     expect(url.searchParams.get('locale')).toBe('zh-CN')
     expect(url.searchParams.get('size')).toBe('large')
     expect(url.searchParams.get('page')).toBe('2')
-  })
-
-  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
-    let calledUrl = ''
-    const ctx: ProviderContext = {
-      fetch: (async (input: Parameters<typeof fetch>[0]) => {
-        calledUrl = String(input)
-        return new Response(JSON.stringify(FIXTURE), { status: 200 })
-      }) as typeof fetch,
-    }
-    await pexels({ apiKey: 'k' }).search({
-      text: 'trees',
-      modalities: ['image'],
-      filters: { orientation: 'landscape', color: '#000000', language: 'en-US' },
-      controls: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
-    }, ctx)
-    const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('portrait')
-    expect(url.searchParams.get('color')).toBe('#ffffff')
-    expect(url.searchParams.get('locale')).toBe('zh-CN')
   })
 })
 
@@ -124,7 +104,7 @@ describe('pexelsVideo provider', () => {
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pexels license is commercial-OK
   })
 
-  it('forwards documented video search filters and Pexels-specific options', async () => {
+  it('forwards documented video search controls and Pexels-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => {
@@ -135,7 +115,7 @@ describe('pexelsVideo provider', () => {
     await pexelsVideo({ apiKey: 'k' }).search({
       text: 'cat',
       modalities: ['video'],
-      filters: { orientation: 'landscape', language: 'en-US' },
+      controls: { orientation: 'landscape', language: 'en-US' },
       providerOptions: { orientation: 'portrait', size: 'medium', locale: 'fr-FR', page: 3, perPage: 12, color: 'red' },
     }, ctx)
     const url = new URL(calledUrl)

@@ -124,14 +124,14 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
-  it('accepts filters and providerOptions for provider-specific search controls', async () => {
-    let seen: { filters?: unknown; providerOptions?: unknown } = {}
+  it('accepts providerOptions and forwards the matching entry to its provider', async () => {
+    let seen: unknown
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
       capabilities: { controls: ['orientation'] },
       search: async (q) => {
-        seen = { filters: q.filters, providerOptions: q.providerOptions }
+        seen = q.providerOptions
         return []
       },
     })
@@ -144,12 +144,10 @@ describe('@refkit/mcp', () => {
       arguments: {
         query: 'sky',
         modalities: ['image'],
-        filters: { orientation: 'landscape' },
         providerOptions: { fake: { sort: 'latest' } },
       },
     })
-    expect(seen.filters).toEqual({ orientation: 'landscape' })
-    expect(seen.providerOptions).toEqual({ sort: 'latest' })
+    expect(seen).toEqual({ sort: 'latest' })
     await client.close()
   })
 
@@ -158,7 +156,6 @@ describe('@refkit/mcp', () => {
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'color', 'safety'] },
       search: async (q) => {
         seen = q.controls
@@ -185,7 +182,6 @@ describe('@refkit/mcp', () => {
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation'] },
       search: async () => [],
     })
@@ -222,8 +218,8 @@ describe('@refkit/mcp', () => {
   it('forwards sources to core, restricting which providers are searched', async () => {
     let aCalled = false
     let bCalled = false
-    const a = defineProvider({ id: 'a', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { aCalled = true; return [] } })
-    const b = defineProvider({ id: 'b', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { bCalled = true; return [] } })
+    const a = defineProvider({ id: 'a', modalities: ['image'], search: async () => { aCalled = true; return [] } })
+    const b = defineProvider({ id: 'b', modalities: ['image'], search: async () => { bCalled = true; return [] } })
     const server = createRefkitMcpServer(createRefkit({ providers: [a, b] }))
     const [clientT, serverT] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: 'test', version: '1.0.0' })
@@ -261,7 +257,6 @@ describe('@refkit/mcp', () => {
     const good = defineProvider({
       id: 'good',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       search: async () => [{
         id: 'good-1',
         modality: 'image',
@@ -276,7 +271,6 @@ describe('@refkit/mcp', () => {
     const bad = defineProvider({
       id: 'bad',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       search: async () => { throw new Error('offline') },
     })
     const server = createRefkitMcpServer(createRefkit({ providers: [good, bad] }))

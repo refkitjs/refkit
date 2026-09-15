@@ -1,17 +1,6 @@
 import type { Modality } from './modality'
 import type { Reference } from './reference'
 
-/** @deprecated Superseded by {@link ProviderCapabilities}`.controls` — declare
- *  supported {@link SearchControlKey}s instead. No longer read by core routing;
- *  will be removed in a future minor. */
-export type QueryFeature =
-  | 'keyword'
-  | 'color'
-  | 'orientation'
-  | 'license-filter'
-  | 'author'
-  | 'language'
-
 export type SearchSort = 'relevance' | 'latest' | 'popular' | 'interesting'
 export type SearchSafety = 'strict' | 'moderate' | 'off'
 
@@ -88,15 +77,6 @@ export interface ProviderCapabilities {
   controls: readonly SearchControlKey[]
 }
 
-/** @deprecated Compatibility alias for {@link SearchControls} `color` /
- *  `orientation` / `language`. Values are merged into `controls` (controls win on
- *  conflict) and routed by `capabilities.controls`; use `controls` directly. */
-export interface SearchFilters {
-  color?: string
-  orientation?: 'landscape' | 'portrait' | 'square'
-  language?: string
-}
-
 export type ProviderOptionValue = string | number | boolean | readonly string[] | undefined
 export type ProviderOptions = Record<string, ProviderOptionValue>
 export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
@@ -104,10 +84,6 @@ export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
 export interface NormalizedQuery {
   text: string
   modalities: Modality[]
-  /** @deprecated Mirror of the routed `controls` color/orientation/language, kept
-   *  for providers still reading the legacy channel — always consistent with
-   *  `controls`. Read `controls` instead. */
-  filters?: SearchFilters
   controls?: SearchControls
   providerOptions?: ProviderOptions
   limit?: number
@@ -145,8 +121,6 @@ export interface ReferenceProvider {
   /** One-line content-domain summary, surfaced in the MCP tool's source list
    *  so an agent can judge topical fit (e.g. "CC0 PBR textures for 3D work"). */
   description?: string
-  /** @deprecated Not read by core anymore — declare `capabilities.controls`. */
-  queryFeatures?: QueryFeature[]
   capabilities?: ProviderCapabilities
   search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]>
 }

@@ -7,7 +7,7 @@ import type { Reference } from '../reference'
 const fakeUnsplash = (cfg: { accessKey: string }) => defineProvider({
   id: 'fake-unsplash',
   modalities: ['image'],
-  queryFeatures: ['keyword', 'orientation'],
+  capabilities: { controls: ['orientation'] },
   async search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
     await ctx.fetch('https://example.test/search?key=' + cfg.accessKey + '&q=' + encodeURIComponent(query.text))
     return []
@@ -31,7 +31,7 @@ describe('ReferenceProvider / defineProvider', () => {
   })
 
   it('defineProvider returns its input unchanged (identity helper)', () => {
-    const p = defineProvider({ id: 'x', modalities: ['text'], queryFeatures: [], search: async () => [] })
+    const p = defineProvider({ id: 'x', modalities: ['text'], search: async () => [] })
     expect(p.id).toBe('x')
   })
 
@@ -39,7 +39,6 @@ describe('ReferenceProvider / defineProvider', () => {
     const p = defineProvider({
       id: 'x',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'color', 'safety'] },
       search: async () => [],
     })
