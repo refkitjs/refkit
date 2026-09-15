@@ -884,3 +884,109 @@ describe('kind-aware routing', () => {
     })).rejects.toThrow('kind "texture"')
   })
 })
+
+// A CC-BY record whose source terms are narrower than the label implies: same
+// license id, different facts — the cross-source conflict the merge reports.
+const narrowCcBy = { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false } as const
+type NarrowFacts = typeof narrowCcBy
+
+describe('multi-pass fidelity, deadline and gate context', () => {
+  it('cursor advance accumulates pass diagnostics instead of overwriting them', async () => {
+    // provider `flaky` fails on page 1 and succeeds on page 2; `steady` returns the same
+    // single item on every page so page 1's pool is exhausted after the first call.
+    let calls = 0
+    const flaky = defineProvider({
+      id: 'flaky', modalities: ['image'], capabilities: { controls: ['page'] },
+      search: async (q) => {
+        calls++
+        if ((q.controls?.page ?? 1) === 1) throw new Error('boom')
+        return [ref('https://f.test/2')]
+      },
+    })
+    const steady = defineProvider({
+      id: 'steady', modalities: ['image'], capabilities: { controls: ['page'] },
+      search: async () => [ref('https://s.test/1')],
+    })
+    const rk = createRefkit({ providers: [flaky, steady], resilience: false })
+    const first = await rk.searchWithMeta({ query: 'q', modalities: ['image'], limit: 5 })
+    expect(first.meta.passes).toBe(1)
+    const second = await rk.searchWithMeta({ query: 'q', modalities: ['image'], limit: 5, cursor: first.meta.nextCursor })
+    expect(second.meta.passes).toBeGreaterThan(1)
+    expect(second.meta.warnings.some(w => /pass 1: 1 provider\(s\) failed/.test(w))).toBe(true)
+    expect(second.references.map(r => r.canonicalUrl)).toEqual(['https://f.test/2'])
+    expect(calls).toBeGreaterThan(1)
+    // latency is summed over every pass, so a multi-pass call never under-reports it
+    expect(second.meta.providers.find(p => p.providerId === 'steady')?.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it('concatenates rights conflicts across passes, deduped by URL', async () => {
+    const item = (url: string, facts?: NarrowFacts): EmittedReference => ({
+      modality: 'image', sourceUrl: url,
+      rights: { license: 'CC-BY', ...(facts ? { facts } : {}), rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
+    })
+    // page 2 repeats shared/1 (already returned) and adds shared/2
+    const source = (id: string, facts?: NarrowFacts) => defineProvider({
+      id, modalities: ['image'], capabilities: { controls: ['page'] },
+      search: async (q) => (q.controls?.page ?? 1) === 1
+        ? [item('https://shared/1', facts)]
+        : [item('https://shared/1', facts), item('https://shared/2', facts)],
+    })
+    const rk = createRefkit({ providers: [source('a'), source('b', narrowCcBy)] })
+    const first = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 1 })
+    expect(first.references.map(r => r.canonicalUrl)).toEqual(['https://shared/1'])
+    const second = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 1, cursor: first.meta.nextCursor })
+    expect(second.meta.passes).toBe(2)
+    const conflicts = second.meta.warnings.filter(w => w.includes('conflict'))
+    // shared/1 conflicts on BOTH passes but is warned about once; shared/2 only on pass 2
+    expect(conflicts).toEqual([
+      'cross-source rights conflict for https://shared/1: CC-BY declared with differing facts → resolved to CC-BY.',
+      'cross-source rights conflict for https://shared/2: CC-BY declared with differing facts → resolved to CC-BY.',
+    ])
+  })
+
+  it('names a same-label facts conflict as such instead of "CC-BY → resolved to CC-BY"', async () => {
+    const url = 'https://shared/x'
+    const emitWith = (facts?: NarrowFacts): EmittedReference => ({
+      modality: 'image', sourceUrl: url,
+      rights: { license: 'CC-BY', ...(facts ? { facts } : {}), rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
+    })
+    const rk = createRefkit({ providers: [
+      defineProvider({ id: 'a', modalities: ['image'], search: async () => [emitWith()] }),
+      defineProvider({ id: 'b', modalities: ['image'], search: async () => [emitWith(narrowCcBy)] }),
+    ] })
+    const { meta } = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
+    expect(meta.warnings).toContain(`cross-source rights conflict for ${url}: CC-BY declared with differing facts → resolved to CC-BY.`)
+  })
+
+  it('deadlineMs bounds the whole search and reports hung providers as failed', async () => {
+    const hung = defineProvider({
+      id: 'hung', modalities: ['image'],
+      search: (_q, ctx) => new Promise<EmittedReference[]>((_, reject) => {
+        ctx.signal?.addEventListener('abort', () => reject(ctx.signal?.reason))
+      }),
+    })
+    const fast = defineProvider({ id: 'fast', modalities: ['image'], search: async () => [ref('https://x.test/1')] })
+    const rk = createRefkit({ providers: [hung, fast], resilience: false })
+    const started = Date.now()
+    const { references, meta } = await rk.searchWithMeta({ query: 'q', modalities: ['image'], deadlineMs: 100 })
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(references).toHaveLength(1)
+    expect(meta.providers.find(p => p.providerId === 'hung')?.status).toBe('failed')
+  })
+
+  it('gateContext forwards the user jurisdiction to the search-time gate', async () => {
+    const url = 'https://x.test/us'
+    const us = defineProvider({
+      id: 'us', modalities: ['image'],
+      search: async () => [{
+        modality: 'image', sourceUrl: url,
+        rights: { license: 'PD', jurisdiction: 'US', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
+      }],
+    })
+    const rk = createRefkit({ providers: [us], resilience: false })
+    const open = await rk.search({ query: 'q', modalities: ['image'], gateFor: 'commercial-product' })
+    const gated = await rk.search({ query: 'q', modalities: ['image'], gateFor: 'commercial-product', gateContext: { userJurisdiction: 'DE' } })
+    expect(open).toHaveLength(1)
+    expect(gated).toHaveLength(0)
+  })
+})

@@ -67,9 +67,12 @@ export {
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
 export type { ProviderRun, ProviderRunDeps } from './provider-run'
-export { createRefkit, PROVIDER_SKIP_REASONS } from './client'
+export { selectProviders, PROVIDER_SKIP_REASONS } from './select'
+export type { ProviderSkipReason, ProviderSelection } from './select'
+export { runPass } from './pipeline'
+export type { PassDeps, PassOutcome } from './pipeline'
+export { createRefkit } from './client'
 export type {
-  ProviderSkipReason,
   RefkitClient,
   RefkitOptions,
   ResilienceOptions,

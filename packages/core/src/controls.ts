@@ -78,7 +78,7 @@ export const CONTROL_PATHS = {
 } as const satisfies Record<string, readonly [keyof SearchControls] | readonly [keyof SearchControls, string]>
 
 export type SearchControlKey = keyof typeof CONTROL_PATHS
-export const SEARCH_CONTROL_KEYS = Object.keys(CONTROL_PATHS) as SearchControlKey[]
+export const SEARCH_CONTROL_KEYS: readonly SearchControlKey[] = Object.keys(CONTROL_PATHS) as SearchControlKey[]
 
 type Path = readonly [keyof SearchControls, string?]
 
