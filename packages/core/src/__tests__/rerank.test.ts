@@ -38,7 +38,9 @@ describe('lexicalReranker', () => {
 
   it('keeps input order and zeroes relevance when nothing matches (lexical-only)', async () => {
     const refs = [ref('a', 'red lion'), ref('b', 'blue whale')]
-    const out = await lexicalReranker({ qualityWeight: 0, sourceDiversity: 0 })({ query: 'cyberpunk neon', refs })
+    // fusionWeight 0 explicitly: the fixture's incoming relevance is 0, so the
+    // fusion term would vanish anyway — saying so keeps "lexical-only" honest.
+    const out = await lexicalReranker({ qualityWeight: 0, sourceDiversity: 0, fusionWeight: 0 })({ query: 'cyberpunk neon', refs })
     expect(out.map((r) => r.id)).toEqual(['a', 'b'])
     expect(out.every((r) => r.relevance === 0)).toBe(true)
   })
@@ -64,6 +66,23 @@ describe('lexicalReranker', () => {
     const out = await lexicalReranker()({ query: 'lion', refs })
     const sources = out.map((r) => r.source.providerId)
     expect(sources.slice(0, 2)).toEqual(['a', 'b']) // b promoted above the 2nd+ a
+  })
+
+  it('spreads sources under the shipped blend, fusion term live', async () => {
+    // Hand-computed with every default in play (lexW 1, fusW 0.5, qualW 0.15,
+    // divW 0.1, total 1.65): all four titles cover the query (lexical 1) and
+    // carry no visual (quality 0.5 → +0.075), so base(a*) = 1 + 0.5·1.0 + 0.075
+    // = 1.575 and base(b1) = 1 + 0.5·0.9 + 0.075 = 1.525. Once the first 'a' is
+    // picked its siblings pay the 0.1 source penalty (→ 1.475), which costs them
+    // more than the 0.05 fusion edge they hold over 'b1' — so the second source
+    // still surfaces second. Titles differ per ref, so no near-duplicate penalty
+    // is doing this work.
+    const fromA = (id: string) =>
+      ref(id, `lion ${id}`, { relevance: 1, source: { providerId: 'a', sourceUrl: `https://x/${id}` } })
+    const b1 = ref('b1', 'lion cub', { relevance: 0.9, source: { providerId: 'b', sourceUrl: 'https://x/b1' } })
+    const out = await lexicalReranker()({ query: 'lion', refs: [fromA('a1'), fromA('a2'), fromA('a3'), b1] })
+    expect(out.map(r => r.id)).toEqual(['a1', 'b1', 'a2', 'a3'])
+    expect(out.findIndex(r => r.source.providerId === 'b')).toBeLessThan(3)
   })
 
   it('prefers a more permissive license on a tie when licenseWeight > 0', async () => {
@@ -185,20 +204,29 @@ describe('lexicalReranker', () => {
     expect(ignored[0].relevance).toBe(ignored[1].relevance) // pure lexical: a real tie
   })
 
-  it('nearDuplicateThreshold 1 penalises only an exact title-token repeat', () => {
+  it('nearDuplicateThreshold decides what counts as a repeat (0.8 pair penalised at the default, spared at 1)', () => {
     const wiki = (id: string, title: string) =>
       ref(id, title, { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` } })
+    // Title-token Jaccard against 'Forest path near river': exact1 → 1.0,
+    // bridge → 4/5 = 0.8 (over the 0.7 default, under a raised 1), weak → 0.4.
+    // Query coverage over 5 query tokens: 4/5 = 0.8 for the three 'Forest path
+    // near river…' titles, 3/5 = 0.6 for weak — so only the 0.25 near-duplicate
+    // penalty (0.8 → 0.55) can let weak overtake one of them.
     const refs = [
       wiki('exact0', 'Forest path near river'),
       wiki('exact1', 'Forest path near river'),
-      // 3 of 4 tokens shared → Jaccard 0.6, under the raised bar.
-      wiki('almost', 'Forest path near lake'),
+      wiki('bridge', 'Forest path near river bridge'),
+      wiki('weak', 'Near river crossing'),
     ]
-    const out = lexicalReranker({
-      lexicalWeight: 0, qualityWeight: 0, sourceDiversity: 0,
-      nearDuplicatePenalty: 0.25, nearDuplicateThreshold: 1,
-    })({ query: 'forest path', refs }) as Reference[]
-    expect(out.map(r => r.id)).toEqual(['exact0', 'almost', 'exact1'])
+    const flat = { qualityWeight: 0, sourceDiversity: 0, fusionWeight: 0 }
+    const query = 'forest path near river crossing'
+    // Default 0.7: bridge repeats the picked exact0 closely enough to be
+    // penalised, which drops it below weak.
+    const atDefault = lexicalReranker(flat)({ query, refs }) as Reference[]
+    expect(atDefault.map(r => r.id)).toEqual(['exact0', 'weak', 'exact1', 'bridge'])
+    // Raised to 1: only the exact repeat is penalised, so bridge keeps its 0.8.
+    const atOne = lexicalReranker({ ...flat, nearDuplicateThreshold: 1 })({ query, refs }) as Reference[]
+    expect(atOne.map(r => r.id)).toEqual(['exact0', 'bridge', 'weak', 'exact1'])
   })
 
   it("breaks a tie on the source's own score when sourceScoreWeight > 0", () => {

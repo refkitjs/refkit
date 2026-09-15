@@ -910,6 +910,23 @@ describe('query acceptance (accepts)', () => {
     expect(out.meta.providers.find(p => p.providerId === 'picky')).toEqual({ providerId: 'picky', status: 'skipped', reason: 'declined' })
   })
 
+  it('hands accepts the real query text, then runs the provider', async () => {
+    let seen: { text: string; modalities: string[] } | undefined
+    let ran = false
+    const picky = defineProvider({
+      id: 'picky', modalities: ['image'],
+      accepts: (q) => { seen = { text: q.text, modalities: [...q.modalities] }; return true },
+      search: async () => { ran = true; return [ref('https://x.test/1')] },
+    })
+    const out = await createRefkit({ providers: [picky], resilience: false })
+      .search({ query: 'lion cub', modalities: ['image'] })
+    // The predicate must see the caller's query verbatim — a placeholder or the
+    // tokenized form would make every source-side topical gate a coin flip.
+    expect(seen).toEqual({ text: 'lion cub', modalities: ['image'] })
+    expect(ran).toBe(true)
+    expect(out.map(r => r.canonicalUrl)).toEqual(['https://x.test/1'])
+  })
+
   it('an explicit sources whitelist bypasses acceptance', async () => {
     const picky = defineProvider({
       id: 'picky', modalities: ['image'],
