@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-pexels",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Pexels provider satellite for refkit — image search, hotlink-required.",
   "type": "module",
   "license": "Apache-2.0",
