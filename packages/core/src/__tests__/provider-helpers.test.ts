@@ -3,7 +3,7 @@ import {
   offsetForPage,
   setIfString, setIfBoolean, setIfStringList,
   setIfInt, setIfPositiveInt, setIfNonNegativeInt, setIfNumber,
-  first, mapCcDeedUrl, mapRightsUrl, ccVersionFor, isLikelyImageUrl, imageMediaType,
+  first, mapCcDeedUrl, mapRightsUrl, isLikelyImageUrl, imageMediaType, plainText,
 } from '../provider-helpers'
 
 const params = (fn: (u: URL) => void) => { const u = new URL('https://x.test/'); fn(u); return u.searchParams }
@@ -108,14 +108,6 @@ describe('mapCcDeedUrl', () => {
   it('never throws on a non-string input (array/number) → unknown', () => {
     expect(mapCcDeedUrl(['x'] as any)).toEqual({ license: 'unknown' })
   })
-  it('ccVersionFor: version rides only on versioned CC families', () => {
-    expect(ccVersionFor('CC-BY-NC', '2.0')).toBe('2.0')
-    expect(ccVersionFor('CC-BY-ND', '4.0')).toBe('4.0')
-    expect(ccVersionFor('CC-BY', '4.0')).toBe('4.0')
-    expect(ccVersionFor('CC0-1.0', '1.0')).toBeUndefined()
-    expect(ccVersionFor('proprietary', '2.0')).toBeUndefined()
-    expect(ccVersionFor('CC-BY-NC', undefined)).toBeUndefined()
-  })
 })
 
 describe('mapRightsUrl (CC deeds + faithful rightsstatements.org)', () => {
@@ -155,5 +147,43 @@ describe('image helpers', () => {
     expect(imageMediaType(undefined, 'https://x/y.png')).toBe('image/png')
     expect(imageMediaType(undefined, 'https://x/y.jpg')).toBe('image/jpeg')
     expect(imageMediaType('application/octet-stream', 'https://x/y')).toBe('image/jpeg')
+  })
+})
+
+describe('plainText', () => {
+  it('strips markup, collapses whitespace, and drops empties', () => {
+    expect(plainText('<p>A <em>lion</em> at rest.</p>')).toBe('A lion at rest.')
+    expect(plainText('<a href="x">Forest</a> path in <b>spring</b>')).toBe('Forest path in spring')
+    expect(plainText('  two \n  lines ')).toBe('two lines')
+    expect(plainText('<p></p>')).toBeUndefined()
+    expect(plainText('')).toBeUndefined()
+    expect(plainText(null)).toBeUndefined()
+    expect(plainText(undefined)).toBeUndefined()
+  })
+  it('caps length at 500 chars by default; honors an explicit cap', () => {
+    expect(plainText('x'.repeat(600))).toHaveLength(500)
+    expect(plainText('x'.repeat(600), 10)).toBe('xxxxxxxxxx')
+    expect(plainText('short', 10)).toBe('short')
+  })
+  it('inserts a boundary space for block/br tags instead of fusing adjacent words', () => {
+    expect(plainText('<p>One.</p><p>Two.</p>')).toBe('One. Two.')
+    expect(plainText('Line one<br />Line two')).toBe('Line one Line two')
+    expect(plainText('a <b>bold</b> word')).toBe('a bold word') // inline tags with surrounding spaces still collapse to one
+  })
+  it('decodes common HTML entities after stripping tags', () => {
+    expect(plainText("Cats &amp; dogs&nbsp;play &#39;now&#x27;")).toBe("Cats & dogs play 'now'")
+    expect(plainText('&lt;b&gt;')).toBe('<b>') // decoded after tag-stripping, so this never becomes a tag
+  })
+  it('caps by code point, never splitting a surrogate pair', () => {
+    const prefix = 'x'.repeat(500)
+    const withAstral = prefix + '😀' // 😀 is a surrogate pair (2 UTF-16 code units, 1 code point)
+    const out = plainText(withAstral, 500)
+    expect(out).toBe(prefix)
+    expect(/[\uD800-\uDFFF]/.test(out ?? '')).toBe(false)
+  })
+  it('leaves a numeric entity in the surrogate range (D800-DFFF) untouched rather than emitting a lone surrogate', () => {
+    const out = plainText('a &#xD800; b')
+    expect(out).toBe('a &#xD800; b')
+    expect(/[\uD800-\uDFFF]/.test(out ?? '')).toBe(false)
   })
 })

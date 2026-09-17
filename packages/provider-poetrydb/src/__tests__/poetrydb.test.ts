@@ -36,11 +36,10 @@ describe('poetrydb provider', () => {
     expect(r.rights.license).toBe('PD')
     expect(r.title).toBe('Ozymandias')
     expect(r.rights.author).toBe('Percy Bysshe Shelley')
-    expect(r.id).toMatch(/^poetrydb:/)
     expect(r.text?.excerptKind).toBe('passage')
     expect(r.text?.excerpt.split('\n').length).toBe(8) // first 8 lines
     expect(r.text?.excerpt).toContain('I met a traveller')
-    expect(r.canonicalUrl).toContain('poetrydb.org')
+    expect(r.sourceUrl).toContain('poetrydb.org')
   })
 
   it('returns [] on a no-match {status:404} response (bare-array contract)', async () => {

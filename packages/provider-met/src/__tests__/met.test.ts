@@ -21,6 +21,10 @@ const OBJ_PD = {
   primaryImageSmall: 'https://images.metmuseum.org/CRDImages/ep/web-large/DP-42549-001.jpg',
   title: 'Wheat Field with Cypresses', artistDisplayName: 'Vincent van Gogh',
   objectURL: 'https://www.metmuseum.org/art/collection/search/436535', objectName: 'Painting', medium: 'Oil on canvas',
+  // culture/period come back '' for this object upstream; populated here (as other Met
+  // objects do return them) so the description join is exercised across all four facets
+  culture: 'Dutch', period: '17th century', classification: 'Paintings',
+  tags: [{ term: 'Lions' }, { term: 'Hunting' }],
 }
 const OBJ_COPYRIGHT = {
   objectID: 999999, isPublicDomain: false, primaryImage: '', primaryImageSmall: '',
@@ -36,10 +40,27 @@ describe('met provider', () => {
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.author).toBe('Vincent van Gogh')
     expect(r.title).toBe('Wheat Field with Cypresses')
-    expect(r.canonicalUrl).toBe('https://www.metmuseum.org/art/collection/search/436535')
+    expect(r.sourceUrl).toBe('https://www.metmuseum.org/art/collection/search/436535')
     expect(r.preview?.url).toContain('original/DP-42549-001.jpg')
     expect(r.thumbnail?.url).toContain('web-large')
+    expect(r.description).toBe('Painting. Oil on canvas. Dutch. 17th century')
+    expect(r.tags).toEqual(['Paintings', 'Lions', 'Hunting'])
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
+  })
+
+  it('omits description segments the object leaves blank and omits tags entirely when there are none', async () => {
+    const sparse = {
+      objectID: 1, isPublicDomain: true,
+      primaryImage: 'https://images.metmuseum.org/CRDImages/ph/original/DP1.jpg',
+      primaryImageSmall: 'https://images.metmuseum.org/CRDImages/ph/web-large/DP1.jpg',
+      title: 'Untitled', artistDisplayName: '',
+      objectURL: 'https://www.metmuseum.org/art/collection/search/1',
+      objectName: 'Photograph', medium: 'Gelatin silver print',
+      culture: '', period: '', classification: '', tags: null,
+    }
+    const refs = await met().search({ text: 'x', modalities: ['image'] }, ctxRouting({ total: 1, objectIDs: [1] }, { '1': sparse }))
+    expect(refs[0].description).toBe('Photograph. Gelatin silver print')
+    expect(refs[0].tags).toBeUndefined()
   })
 
   it('returns [] when the search finds nothing', async () => {

@@ -1,6 +1,6 @@
 import {
-  defineProvider, referenceId, imageMediaType,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, imageMediaType,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
   offsetForPage, setIfNonNegativeInt,
 } from '@refkit/core'
 
@@ -54,7 +54,7 @@ function firstAuthor(authors?: Record<string, string>): string | undefined {
   return names.length ? names.join(', ') : undefined
 }
 
-function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: string): Reference {
+function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: string): EmittedReference {
   const canonical = `https://polyhaven.com/a/${id}`
   const rights: RightsRecord = {
     license: 'CC0-1.0',
@@ -62,20 +62,18 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: 
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: PH_TERMS, sourceUrl: canonical },
   }
+  const tags = [...(asset.categories ?? []), ...(asset.tags ?? [])]
   return {
-    id: referenceId('polyhaven', canonical),
     modality: 'image',
     kind,
     title: asset.name || undefined,
-    source: { providerId: 'polyhaven', sourceUrl: canonical },
-    canonicalUrl: canonical,
+    ...(tags.length > 0 ? { tags } : {}),
+    sourceUrl: canonical,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(asset.thumbnail_url ? { thumbnail: { url: asset.thumbnail_url } } : {}),
     // textureImageUrl may resolve a .png fallback — derive the MIME from the extension
     // (core imageMediaType) rather than hardcoding jpeg (mislabeling a PNG as JPEG).
     preview: { url: imageUrl, mediaType: imageMediaType(undefined, imageUrl) },
-    relevance: 0,
     raw: asset,
   }
 }
@@ -90,21 +88,33 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       ? 'CC0 HDRI environments for 3D lighting (Poly Haven)'
       : 'CC0 PBR textures for 3D work (Poly Haven)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const listUrl = new URL(`${PH_BASE}/assets`)
       listUrl.searchParams.set('t', assetType)
       const res = await ctx.fetch(listUrl.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`polyhaven list failed: ${res.status}`)
-      const list = (await res.json()) as PolyHavenList
+      const list = await okJson<PolyHavenList>(res, 'polyhaven list')
       let entries = Object.entries(list)
-      // Client-side keyword filter — the list endpoint has no query param.
-      const text = q.text?.trim().toLowerCase()
-      if (text) {
-        entries = entries.filter(([id, a]) =>
-          id.includes(text) ||
-          a.name?.toLowerCase().includes(text) ||
-          a.categories?.some((c) => c.toLowerCase().includes(text)) ||
-          a.tags?.some((t) => t.toLowerCase().includes(text)))
+      // Client-side keyword filter — the list endpoint has no query param. Match
+      // PER TOKEN, not on the whole phrase: asset metadata is single-word (id,
+      // name, categories, tags), so "forest rock" as one substring matches
+      // nothing while both of its words describe real assets. Assets covering
+      // more of the query rank first. Split on anything that isn't alphanumeric
+      // (not just whitespace) so punctuation from a natural-language query
+      // ("forest, rock.") doesn't glue onto a token and prevent it matching.
+      const tokens = (q.text ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+      const fields = (id: string, a: PolyHavenAsset) => [id, a.name ?? '', ...(a.categories ?? []), ...(a.tags ?? [])].map(s => s.toLowerCase())
+      if (tokens.length > 0) {
+        entries = entries
+          // `fields` is built once per asset, not once per (asset, token) pair —
+          // the full list is thousands of assets wide.
+          .map(([id, a]) => {
+            const haystack = fields(id, a)
+            return { id, a, hits: tokens.filter(t => haystack.some(f => f.includes(t))).length }
+          })
+          .filter(e => e.hits > 0)
+          // stable sort — assets with equally many hits keep the list's own order
+          .sort((x, y) => y.hits - x.hits)
+          .map(e => [e.id, e.a] as [string, PolyHavenAsset])
       }
       const n = Math.min(config.maxAssets ?? q.limit ?? 12, 30)
       // the list endpoint returns everything — page = a window over the filtered list
@@ -122,7 +132,7 @@ export function polyhaven(config: PolyHavenConfig = {}) {
           return null // one bad files fetch must not drop the whole batch
         }
       }))
-      return refs.filter((r): r is Reference => r !== null)
+      return refs.filter((r): r is EmittedReference => r !== null)
     },
   })
 }
@@ -152,7 +162,7 @@ function acgPreviewUrl(preview?: Record<string, string>): string | undefined {
   return undefined
 }
 
-function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
+function acgToReference(a: AmbientCgAsset, imageUrl: string): EmittedReference {
   const canonical = `https://ambientcg.com/view?id=${a.assetId}`
   const rights: RightsRecord = {
     license: 'CC0-1.0',
@@ -160,17 +170,13 @@ function acgToReference(a: AmbientCgAsset, imageUrl: string): Reference {
     raw: { sourceTerms: ACG_TERMS, sourceUrl: canonical },
   }
   return {
-    id: referenceId('ambientcg', canonical),
     modality: 'image',
     kind: 'texture',
     title: a.displayName || undefined,
-    source: { providerId: 'ambientcg', sourceUrl: canonical },
-    canonicalUrl: canonical,
+    sourceUrl: canonical,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: imageUrl },
     preview: { url: imageUrl, mediaType: 'image/png' },
-    relevance: 0,
     raw: a,
   }
 }
@@ -182,7 +188,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
     kinds: ['texture'],
     description: 'CC0 PBR materials and textures (ambientCG)',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL(ACG_BASE)
       url.searchParams.set('type', 'Material') // image-based PBR materials only (D1)
       url.searchParams.set('include', 'displayData,imageData')
@@ -192,8 +198,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
       setIfNonNegativeInt(url, 'offset', offsetForPage(q.controls?.page, pageSize))
       if (q.text?.trim()) url.searchParams.set('q', q.text.trim())
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`ambientcg search failed: ${res.status}`)
-      const { foundAssets } = (await res.json()) as AmbientCgResponse
+      const { foundAssets } = await okJson<AmbientCgResponse>(res, 'ambientcg search')
       if (!foundAssets || foundAssets.length === 0) return []
       return foundAssets
         .map((a) => {
@@ -202,7 +207,7 @@ export function ambientcg(config: AmbientCgConfig = {}) {
           const imageUrl = acgPreviewUrl(a.previewImage)
           return imageUrl ? acgToReference(a, imageUrl) : null
         })
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

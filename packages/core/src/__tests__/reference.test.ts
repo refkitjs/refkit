@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseReference, referenceSchema, type Reference } from '../reference'
+import { completeReference, parseEmitted, parseReference, referenceSchema, type Reference } from '../reference'
 
 const ref: Reference = {
   id: 'p:abc',
@@ -53,5 +53,32 @@ describe('referenceSchema / parseReference', () => {
     }
     expect(parseReference({ ...base, kind: 'texture' }).kind).toBe('texture')
     expect(parseReference(base).kind).toBeUndefined()
+  })
+})
+
+describe('EmittedReference → Reference', () => {
+  const emitted = {
+    modality: 'image', title: 'T', sourceUrl: 'https://X.test/a/', tags: ['t1'],
+    rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
+    sourceScore: 12.5,
+  }
+  it('completeReference stamps id, source, canonicalUrl, verifiedAt and relevance', () => {
+    const r = completeReference('p', parseEmitted(emitted), '2026-01-01T00:00:00.000Z')
+    expect(r.id).toMatch(/^p:[0-9a-z]+$/)
+    expect(r.source).toEqual({ providerId: 'p', sourceUrl: 'https://X.test/a/' })
+    expect(r.canonicalUrl).toBe('https://X.test/a/')
+    expect(r.verifiedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(r.relevance).toBe(0)
+    expect(r.tags).toEqual(['t1'])
+    expect(r.sourceScore).toBe(12.5)
+    expect('sourceUrl' in r).toBe(false)
+  })
+  it('an explicit canonicalUrl is kept', () => {
+    const r = completeReference('p', parseEmitted({ ...emitted, canonicalUrl: 'https://x.test/canon' }), '2026-01-01T00:00:00.000Z')
+    expect(r.canonicalUrl).toBe('https://x.test/canon')
+    expect(r.source.sourceUrl).toBe('https://X.test/a/')
+  })
+  it('parseEmitted rejects a missing sourceUrl', () => {
+    expect(() => parseEmitted({ ...emitted, sourceUrl: undefined })).toThrow()
   })
 })

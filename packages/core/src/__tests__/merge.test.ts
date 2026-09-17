@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mergeReferences, stricterLicense, type RightsConflict } from '../merge'
+import { mergeReferences, type RightsConflict } from '../merge'
 import type { Reference } from '../reference'
-import type { LicenseId } from '../license'
+import { compareRestrictiveness, LICENSE_FACTS, type LicenseFacts, type LicenseId } from '../license'
+import { evaluateUse } from '../evaluate-use'
 
 const make = (id: string, url: string, hash?: string): Reference => ({
   id,
@@ -45,6 +46,36 @@ describe('mergeReferences (RRF)', () => {
       [make('b-1', 'https://shared/1')],
     ])
     expect(out).toHaveLength(1)
+  })
+
+  it("weights scale a source's RRF contribution", () => {
+    const a = make('a-1', 'https://x.test/a')
+    const b = make('b-1', 'https://x.test/b')
+    const unweighted = mergeReferences([[a], [b]])
+    expect(unweighted[0].relevance).toBe(1)
+    expect(unweighted[1].relevance).toBe(1)
+    const weighted = mergeReferences([[a], [b]], { weights: [1, 0.1] })
+    expect(weighted[0].canonicalUrl).toBe('https://x.test/a')
+    expect(weighted[1].relevance).toBeCloseTo(0.1, 5)
+  })
+
+  it('treats a missing or invalid weight as 1 instead of erasing the list', () => {
+    const lists = [
+      [make('a-1', 'https://x.test/a')],
+      [make('b-1', 'https://x.test/b')],
+      [make('c-1', 'https://x.test/c')], // no weight supplied at all
+    ]
+    const out = mergeReferences(lists, { weights: [NaN, -1] })
+    expect(out).toHaveLength(3)
+    for (const r of out) expect(r.relevance).toBe(1)
+  })
+
+  it('an all-zero weighting yields 0 relevance, never NaN', () => {
+    // Possible only with an explicit confidence floor of 0: every contribution is
+    // zeroed, so there is no max to normalise against.
+    const out = mergeReferences([[make('a-1', 'https://x.test/a')]], { weights: [0] })
+    expect(out).toHaveLength(1)
+    expect(out[0].relevance).toBe(0)
   })
 
   it('returns [] for empty / all-empty input without throwing', () => {
@@ -107,14 +138,6 @@ describe('mergeReferences (RRF)', () => {
     expect(out[0].rights.license).toBe('unknown')
   })
 
-  it('stricterLicense: dominance picks the stricter; incomparable pairs return undefined', () => {
-    expect(stricterLicense('CC-BY', 'CC-BY-NC')).toBe('CC-BY-NC')
-    expect(stricterLicense('CC0-1.0', 'proprietary')).toBe('proprietary')
-    expect(stricterLicense('CC0-1.0', 'PD')).toBeDefined() // equal permissiveness — either
-    expect(stricterLicense('unsplash', 'CC-BY-ND')).toBeUndefined()
-    expect(stricterLicense('CC-BY-SA', 'unknown')).toBe('unknown') // unknown grants nothing determinable
-  })
-
   it('handles a large pool without a Math.max(...spread) stack overflow', () => {
     // The fused-score max must not be computed via `Math.max(...scores)`: spreading
     // ~10^5 args overflows the call stack (RangeError). Pool size here is well past
@@ -123,5 +146,73 @@ describe('mergeReferences (RRF)', () => {
     const out = mergeReferences([big])
     expect(out).toHaveLength(200_000)
     expect(out[0].relevance).toBe(1) // top still normalised to exactly 1.0
+  })
+})
+
+describe('cross-source rights resolution (facts)', () => {
+  const ref = (providerId: string, license: string, facts?: LicenseFacts): Reference => ({
+    id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+    rights: { license, ...(facts ? { facts } : {}), rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
+    verifiedAt: new Date().toISOString(), relevance: 0,
+  })
+
+  it('the stricter facts win regardless of id spelling', () => {
+    const custom: LicenseFacts = { commercialUse: true, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: true }
+    const out = mergeReferences([[ref('a', 'CC0-1.0')], [ref('b', 'acme-sa', custom)]])
+    expect(out[0].rights.license).toBe('acme-sa')
+  })
+
+  it('an indeterminate side collapses the conflict to unknown', () => {
+    const out = mergeReferences([[ref('a', 'proprietary')], [ref('b', 'unknown')]])
+    expect(out[0].rights.license).toBe('unknown')
+  })
+
+  it('incomparable facts collapse to unknown', () => {
+    const out = mergeReferences([[ref('a', 'unsplash')], [ref('b', 'CC-BY')]])
+    expect(out[0].rights.license).toBe('unknown')
+    expect(compareRestrictiveness(LICENSE_FACTS.unsplash, LICENSE_FACTS['CC-BY'])).toBe('incomparable')
+  })
+
+  it('the same id with narrower facts is a conflict; the narrower claim wins', () => {
+    // Both sources say CC-BY, but B's terms withhold commercial use. Detection is
+    // keyed on facts, so the label agreeing must not let the looser claim stand.
+    const seen: RightsConflict[] = []
+    const narrower: LicenseFacts = { commercialUse: false, derivatives: true, redistribution: true, attributionRequired: true, shareAlike: false }
+    const out = mergeReferences(
+      [[ref('a', 'CC-BY')], [ref('b', 'CC-BY', narrower)]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(out[0].rights.facts?.commercialUse).toBe(false)
+    expect(evaluateUse(out[0].rights, 'commercial-product').decision).toBe('denied')
+    expect(seen).toHaveLength(1)
+    expect(seen[0].licenses).toEqual(['CC-BY']) // one id: only the facts disagreed
+  })
+
+  it('different ids with identical facts (CC0 vs PD) are not a conflict', () => {
+    const seen: RightsConflict[] = []
+    const out = mergeReferences(
+      [[ref('a', 'CC0-1.0')], [ref('b', 'PD')]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(seen).toHaveLength(0)
+    expect(out[0].rights.license).toBe('CC0-1.0') // first record's rights kept
+  })
+
+  it('two sources agreeing on an identical indeterminate claim are not a conflict', () => {
+    // Both declare 'unknown' — compareRestrictiveness('incomparable' for any
+    // indeterminate side) must not be what opens the conflict, or agreeing
+    // sources would spuriously report one.
+    const seen: RightsConflict[] = []
+    const make = (providerId: string): Reference => ({
+      id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+      rights: { license: 'unknown', rehostPolicy: 'no-store', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
+      verifiedAt: new Date().toISOString(), relevance: 0,
+    })
+    const out = mergeReferences(
+      [[make('a')], [make('b')]],
+      { onRightsConflict: (c) => seen.push(c) },
+    )
+    expect(seen).toHaveLength(0)
+    expect(out[0].rights.license).toBe('unknown')
   })
 })

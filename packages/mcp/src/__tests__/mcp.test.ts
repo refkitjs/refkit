@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit, defineProvider } from '@refkit/core'
+import { createRefkit, defineProvider, PROVIDER_SKIP_REASONS, SEARCH_CONTROL_KEYS } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
@@ -87,13 +87,9 @@ describe('@refkit/mcp', () => {
 
   it('returns nextCursor at the top level WITHOUT explain, and the cursor round-trips', async () => {
     const item = (i: number) => ({
-      id: `pg:${i}`,
       modality: 'image' as const,
-      source: { providerId: 'pg', sourceUrl: `https://pg/${i}` },
-      canonicalUrl: `https://pg/${i}`,
+      sourceUrl: `https://pg/${i}`,
       rights: { license: 'CC0-1.0' as const, rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 't', sourceUrl: `https://pg/${i}` } },
-      verifiedAt: '2026-06-22T00:00:00.000Z',
-      relevance: 0,
     })
     const pool = Array.from({ length: 6 }, (_, i) => item(i + 1))
     const paging = defineProvider({
@@ -124,14 +120,14 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
-  it('accepts filters and providerOptions for provider-specific search controls', async () => {
-    let seen: { filters?: unknown; providerOptions?: unknown } = {}
+  it('accepts providerOptions and forwards the matching entry to its provider', async () => {
+    let seen: unknown
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
       capabilities: { controls: ['orientation'] },
       search: async (q) => {
-        seen = { filters: q.filters, providerOptions: q.providerOptions }
+        seen = q.providerOptions
         return []
       },
     })
@@ -144,12 +140,10 @@ describe('@refkit/mcp', () => {
       arguments: {
         query: 'sky',
         modalities: ['image'],
-        filters: { orientation: 'landscape' },
         providerOptions: { fake: { sort: 'latest' } },
       },
     })
-    expect(seen.filters).toEqual({ orientation: 'landscape' })
-    expect(seen.providerOptions).toEqual({ sort: 'latest' })
+    expect(seen).toEqual({ sort: 'latest' })
     await client.close()
   })
 
@@ -158,7 +152,6 @@ describe('@refkit/mcp', () => {
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'color', 'safety'] },
       search: async (q) => {
         seen = q.controls
@@ -185,7 +178,6 @@ describe('@refkit/mcp', () => {
     const fakeProvider = defineProvider({
       id: 'fake',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation'] },
       search: async () => [],
     })
@@ -222,8 +214,8 @@ describe('@refkit/mcp', () => {
   it('forwards sources to core, restricting which providers are searched', async () => {
     let aCalled = false
     let bCalled = false
-    const a = defineProvider({ id: 'a', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { aCalled = true; return [] } })
-    const b = defineProvider({ id: 'b', modalities: ['image'], queryFeatures: ['keyword'], search: async () => { bCalled = true; return [] } })
+    const a = defineProvider({ id: 'a', modalities: ['image'], search: async () => { aCalled = true; return [] } })
+    const b = defineProvider({ id: 'b', modalities: ['image'], search: async () => { bCalled = true; return [] } })
     const server = createRefkitMcpServer(createRefkit({ providers: [a, b] }))
     const [clientT, serverT] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: 'test', version: '1.0.0' })
@@ -257,26 +249,141 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('reranks by default and passes rerank:false through as raw fusion order', async () => {
+    const titles = ['Something else', 'A lion']
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image'],
+      search: async () => titles.map((title, i) => ({
+        modality: 'image' as const,
+        title,
+        sourceUrl: `https://p/${i}`,
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: `https://p/${i}` } },
+      })),
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const titleOf = async (args: Record<string, unknown>) => {
+      const res = await client.callTool({ name: 'search_references', arguments: { query: 'lion', modalities: ['image'], ...args } })
+      return (res.structuredContent as { references: Array<{ title?: string }> }).references[0].title
+    }
+    expect(await titleOf({})).toBe('A lion') // reranked: the query match leads
+    expect(await titleOf({ rerank: false })).toBe('Something else') // provider order
+    await client.close()
+  })
+
+  it('minRelevance cuts weak results after the rerank and reports the bar in meta', async () => {
+    const titles = ['Unrelated', 'A lion']
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image'],
+      search: async () => titles.map((title, i) => ({
+        modality: 'image' as const,
+        title,
+        sourceUrl: `https://p/${i}`,
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: `https://p/${i}` } },
+      })),
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    type Out = { references: Array<{ title?: string }>; meta?: { threshold?: unknown; warnings: string[] } }
+    const call = (args: Record<string, unknown>) =>
+      client.callTool({ name: 'search_references', arguments: { query: 'lion', modalities: ['image'], explain: true, ...args } })
+        .then(r => r.structuredContent as Out)
+
+    // The bar is graded against the reranker's blend: the match scores ~0.95,
+    // the miss ~0.35 (fusion + quality only), so 0.5 keeps exactly one.
+    const cut = await call({ minRelevance: 0.5 })
+    expect(cut.references.map(r => r.title)).toEqual(['A lion'])
+    expect(cut.meta?.threshold).toEqual({ minRelevance: 0.5, dropped: 1 })
+    expect(cut.meta?.warnings).toContain('1 result(s) below minRelevance 0.5.')
+    // Same bar, raw fusion order: RRF max-normalises, so both items sit at ~1
+    // and the threshold cuts nothing — the two scales are not interchangeable.
+    const raw = await call({ minRelevance: 0.5, rerank: false })
+    expect(raw.references).toHaveLength(2)
+    expect(raw.meta?.threshold).toEqual({ minRelevance: 0.5, dropped: 0 })
+    await client.close()
+  })
+
+  it('deadlineMs bounds the whole search; a hung source is reported as failed', async () => {
+    const hung = defineProvider({
+      id: 'hung',
+      modalities: ['image'],
+      search: (_q, ctx) => new Promise((_resolve, reject) => {
+        ctx.signal?.addEventListener('abort', () => reject(ctx.signal?.reason))
+      }),
+    })
+    const fast = defineProvider({
+      id: 'fast',
+      modalities: ['image'],
+      search: async () => [{
+        modality: 'image' as const,
+        title: 'A lion',
+        sourceUrl: 'https://fast/1',
+        rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://fast/1' } },
+      }],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [hung, fast], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({
+      name: 'search_references',
+      arguments: { query: 'lion', modalities: ['image'], deadlineMs: 100, explain: true },
+    })
+    const structured = res.structuredContent as {
+      references: Array<{ title?: string }>
+      meta?: { providers: Array<{ providerId: string; status: string }> }
+    }
+    expect(structured.references.map(r => r.title)).toEqual(['A lion'])
+    expect(structured.meta?.providers.find(p => p.providerId === 'hung')?.status).toBe('failed')
+    await client.close()
+  })
+
+  it('gateContext.userJurisdiction reaches the search-time gate', async () => {
+    const us = defineProvider({
+      id: 'us',
+      modalities: ['image'],
+      search: async () => [{
+        modality: 'image' as const,
+        title: 'public domain print',
+        sourceUrl: 'https://us/1',
+        rights: { license: 'PD' as const, jurisdiction: 'US', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://us/1' } },
+      }],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [us], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const count = async (args: Record<string, unknown>) => {
+      const res = await client.callTool({ name: 'search_references', arguments: { query: 'print', modalities: ['image'], gateFor: 'commercial-product', ...args } })
+      return (res.structuredContent as { references: unknown[] }).references.length
+    }
+    // A US-declared PD record is 'allowed' with no caller jurisdiction, but a
+    // mismatched one downgrades it to needs-review, which the gate drops.
+    expect(await count({})).toBe(1)
+    expect(await count({ gateContext: { userJurisdiction: 'DE' } })).toBe(0)
+    await client.close()
+  })
+
   it('returns meta and use explanations when explain is true', async () => {
     const good = defineProvider({
       id: 'good',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       search: async () => [{
-        id: 'good-1',
         modality: 'image',
         title: 'credit me',
-        source: { providerId: 'good', sourceUrl: 'https://good/1' },
-        canonicalUrl: 'https://good/1',
+        sourceUrl: 'https://good/1',
         rights: { license: 'CC-BY', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 'terms', sourceUrl: 'https://good/1' } },
-        verifiedAt: '2026-06-22T00:00:00.000Z',
-        relevance: 1,
       }],
     })
     const bad = defineProvider({
       id: 'bad',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       search: async () => { throw new Error('offline') },
     })
     const server = createRefkitMcpServer(createRefkit({ providers: [good, bad] }))
@@ -290,11 +397,12 @@ describe('@refkit/mcp', () => {
     })
     const structured = res.structuredContent as {
       references: Array<{ useExplanation?: string }>
-      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number }>; warnings: string[] }
+      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number; confidence?: number }>; warnings: string[] }
     }
     expect(structured.references[0].useExplanation).toContain('allowed-with-attribution')
     expect(structured.meta?.providers).toEqual([
-      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number) },
+      // 'credit me' matches the query, so the source is fully trusted in the fusion
+      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
       { providerId: 'bad', status: 'failed', error: 'offline', latencyMs: expect.any(Number) },
     ])
     expect(structured.meta?.warnings).toContain('1 provider(s) failed; returning partial results.')
@@ -553,6 +661,17 @@ describe('dynamic declaration-derived schema', () => {
     expect(schema.properties.sources.items.enum).toBeUndefined()
     const kindEnum = schema.properties.controls.properties.media.properties.kind.enum as string[]
     expect(kindEnum).toEqual(expect.arrayContaining(['photo', 'illustration', 'vector', 'film', 'animation', 'texture', 'custom-kind']))
+    await client.close()
+  })
+
+  it('declares the control-key vocabulary straight from core (no local mirror)', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const out = tools.find(t => t.name === 'search_references')!.outputSchema as Record<string, any>
+    const requestedEnum = out.properties.meta.properties.controls.properties.requested.items.enum as string[]
+    expect(requestedEnum).toEqual([...SEARCH_CONTROL_KEYS])
+    const reasonEnum = out.properties.meta.properties.providers.items.properties.reason.enum as string[]
+    expect(reasonEnum).toEqual([...PROVIDER_SKIP_REASONS])
     await client.close()
   })
 })

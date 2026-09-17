@@ -1,8 +1,7 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
+  defineProvider, okJson, plainText, setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
   CC_FAMILY_BY_TOKEN, ccVersionFor,
-  type Reference, type RightsRecord, type LicenseId,
+  type EmittedReference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
   offsetForPage,
 } from '@refkit/core'
@@ -75,32 +74,29 @@ interface CommonsResponse { query?: { pages?: Record<string, CommonsPage> } }
 
 const emVal = (em: Record<string, ExtMeta> | undefined, key: string): string | undefined => em?.[key]?.value
 
-// extmetadata Artist/ObjectName routinely embed HTML (anchor tags, spans). Strip to text.
-function stripTags(s: string | undefined): string | undefined {
-  if (s == null) return undefined
-  const text = s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
-  return text || undefined
-}
-
 // ObjectName usually holds a clean caption, but for some files (often old-master
 // scans) it carries Structured-Data multilingual label markup ("… title QS:P1476,
 // de:…") instead. Fall back to the file name (sans "File:" prefix and extension) then.
 function pickTitle(objectName: string | undefined, pageTitle: string): string | undefined {
-  const name = stripTags(objectName)
+  const name = plainText(objectName)
   if (name && !name.includes('QS:')) return name
-  return stripTags(pageTitle.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, ''))
+  return plainText(pageTitle.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, ''))
 }
 
-function toReference(page: CommonsPage): Reference | null {
+function toReference(page: CommonsPage): EmittedReference | null {
   const info = page.imageinfo?.[0]
   if (!info) return null
   const { license, version } = mapCommonsLicense(emVal(info.extmetadata, 'License'))
-  const author = stripTags(emVal(info.extmetadata, 'Artist'))
+  const author = plainText(emVal(info.extmetadata, 'Artist'))
   const title = pickTitle(emVal(info.extmetadata, 'ObjectName'), page.title)
+  // ImageDescription is the uploader's caption, HTML and occasionally essay-length;
+  // Categories arrives as one pipe-separated string.
+  const description = plainText(emVal(info.extmetadata, 'ImageDescription'))
+  const categories = (emVal(info.extmetadata, 'Categories') ?? '').split('|').map(s => s.trim()).filter(Boolean)
   const rights: RightsRecord = {
     license,
     licenseVersion: ccVersionFor(license, version),
-    author: author || undefined,
+    author,
     rehostPolicy: 'cache-allowed',
     raw: {
       sourceTerms: emVal(info.extmetadata, 'LicenseUrl') ?? info.descriptionurl,
@@ -108,17 +104,15 @@ function toReference(page: CommonsPage): Reference | null {
     },
   }
   return {
-    id: referenceId('wikimedia-commons', info.descriptionurl),
     modality: 'image',
     title,
-    source: { providerId: 'wikimedia-commons', sourceUrl: info.descriptionurl },
-    canonicalUrl: info.descriptionurl,
+    ...(description ? { description } : {}),
+    ...(categories.length > 0 ? { tags: categories } : {}),
+    sourceUrl: info.descriptionurl,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(info.thumburl ? { thumbnail: { url: info.thumburl, width: info.thumbwidth, height: info.thumbheight } } : {}),
     preview: { url: info.url, mediaType: info.mime ?? 'image/jpeg', width: info.width, height: info.height },
     ...(info.width && info.height ? { visual: { width: info.width, height: info.height } } : {}),
-    relevance: 0,
     raw: page,
   }
 }
@@ -145,7 +139,7 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
     modalities: ['image'],
     description: 'Freely licensed media from the Wikimedia Commons archive',
     capabilities: { controls: ['page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://commons.wikimedia.org/w/api.php')
       url.searchParams.set('action', 'query')
       url.searchParams.set('format', 'json')
@@ -173,14 +167,13 @@ export function wikimediaCommons(config: WikimediaCommonsConfig = {}) {
       setIfPositiveInt(url, 'iiurlwidth', opts?.iiurlwidth)
       setPipeList(url, 'iiextmetadatafilter', opts?.iiextmetadatafilter)
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`wikimedia-commons search failed: ${res.status}`)
-      const json = (await res.json()) as CommonsResponse
+      const json = await okJson<CommonsResponse>(res, 'wikimedia-commons search')
       const pages = json.query?.pages
       if (!pages) return [] // no results (the search generator omits `pages` entirely)
       return Object.values(pages)
         .sort((a, b) => (a.index ?? 0) - (b.index ?? 0)) // preserve search rank for RRF
         .map(toReference)
-        .filter((r): r is Reference => r !== null)
+        .filter((r): r is EmittedReference => r !== null)
     },
   })
 }

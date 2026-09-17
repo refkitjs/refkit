@@ -52,7 +52,7 @@ describe('flickr provider', () => {
     expect(r.rights.license).toBe('CC-BY')
     expect(r.rights.licenseVersion).toBe('2.0')
     expect(r.rights.author).toBe('Alice')
-    expect(r.canonicalUrl).toBe('https://www.flickr.com/photos/99@N00/111')
+    expect(r.sourceUrl).toBe('https://www.flickr.com/photos/99@N00/111')
     expect(r.title).toBe('Sunset over bay')
     expect(r.thumbnail?.url).toBe('https://live.staticflickr.com/1/111_t.jpg')
     expect(r.preview?.url).toBe('https://live.staticflickr.com/1/111_b.jpg')

@@ -45,7 +45,7 @@ describe('mediatypeToModality (D1)', () => {
   })
 })
 
-import { evaluateUse, referenceId, type ProviderContext } from '@refkit/core'
+import { evaluateUse, type ProviderContext } from '@refkit/core'
 import { internetArchive } from '../index'
 
 const DOCS = [
@@ -102,12 +102,12 @@ describe('internetArchive search', () => {
       { text: 'animation', modalities: ['video', 'text'], limit: 10 },
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
-    const bunny = refs.find(r => r.id === referenceId('internet-archive', 'https://archive.org/details/big_buck_bunny'))!
+    const bunny = refs.find(r => r.sourceUrl === 'https://archive.org/details/big_buck_bunny')!
     expect(bunny.modality).toBe('video')
     expect(bunny.rights.license).toBe('CC-BY')
     expect(bunny.rights.licenseVersion).toBe('3.0')
     expect(bunny.rights.author).toBe('Blender Foundation')
-    expect(bunny.canonicalUrl).toBe('https://archive.org/details/big_buck_bunny')
+    expect(bunny.sourceUrl).toBe('https://archive.org/details/big_buck_bunny')
     expect(bunny.thumbnail?.url).toBe('https://archive.org/services/img/big_buck_bunny')
     expect(bunny.preview).toBeUndefined()
     expect(evaluateUse(bunny.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
@@ -118,7 +118,7 @@ describe('internetArchive search', () => {
       { text: 'news', modalities: ['video', 'text'] },
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
-    const clip = refs.find(r => r.canonicalUrl === 'https://archive.org/details/cbsnews-clip')!
+    const clip = refs.find(r => r.sourceUrl === 'https://archive.org/details/cbsnews-clip')!
     expect(clip).toBeDefined()
     expect(clip.rights.license).toBe('unknown')
     expect(evaluateUse(clip.rights, 'commercial-product').decision).toBe('needs-review')
@@ -129,7 +129,7 @@ describe('internetArchive search', () => {
       { text: 'alice', modalities: ['video', 'text'] },
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
-    const alice = refs.find(r => r.canonicalUrl === 'https://archive.org/details/alices_adventures')!
+    const alice = refs.find(r => r.sourceUrl === 'https://archive.org/details/alices_adventures')!
     expect(alice.modality).toBe('text')
     expect(alice.rights.license).toBe('CC0-1.0')
     expect(alice.rights.author).toBe('Carroll, Lewis, Tenniel, John')
@@ -141,7 +141,7 @@ describe('internetArchive search', () => {
       { text: 'x', modalities: ['video', 'text'] },
       ctxResponding({ response: { numFound: 4, docs: DOCS } }),
     )
-    expect(refs.map(r => r.canonicalUrl)).not.toContain('https://archive.org/details/some_collection')
+    expect(refs.map(r => r.sourceUrl)).not.toContain('https://archive.org/details/some_collection')
     expect(refs).toHaveLength(5) // bunny + clip + alice + arr_doc + nc_doc
   })
 
@@ -150,7 +150,7 @@ describe('internetArchive search', () => {
       { text: 'nc', modalities: ['video', 'text'] },
       ctxResponding({ response: { numFound: 5, docs: DOCS } }),
     )
-    const nc = refs.find(r => r.canonicalUrl === 'https://archive.org/details/nc_doc')!
+    const nc = refs.find(r => r.sourceUrl === 'https://archive.org/details/nc_doc')!
     expect(nc).toBeDefined()
     expect(nc.rights.license).toBe('CC-BY-NC')
     expect(nc.rights.licenseVersion).toBe('4.0')
@@ -162,7 +162,7 @@ describe('internetArchive search', () => {
       { text: 'arr', modalities: ['video', 'text'] },
       ctxResponding({ response: { numFound: 5, docs: DOCS } }),
     )
-    const arr = refs.find(r => r.canonicalUrl === 'https://archive.org/details/arr_doc')!
+    const arr = refs.find(r => r.sourceUrl === 'https://archive.org/details/arr_doc')!
     expect(arr).toBeDefined()
     expect(arr.title).toBe('Arr Title')
     expect(arr.rights.license).toBe('CC-BY')

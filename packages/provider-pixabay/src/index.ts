@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
-  type Reference, type RightsRecord, type NormalizedQuery, type ProviderContext,
+  defineProvider, okJson, setIfString, setIfNonNegativeInt, setIfPositiveInt, setIfBoolean,
+  type EmittedReference, type RightsRecord, type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
 export interface PixabayConfig { key: string }
@@ -80,25 +79,28 @@ function pixabayKind(t: string | undefined): string | undefined {
   return undefined
 }
 
-function toReference(h: PixabayHit): Reference {
+/** Pixabay ships `tags` as one comma-separated string; core wants a list. */
+function splitTags(tags: string | undefined): string[] {
+  return (tags ?? '').split(',').map(t => t.trim()).filter(Boolean)
+}
+
+function toReference(h: PixabayHit): EmittedReference {
   const rights: RightsRecord = {
     license: 'pixabay',
     author: h.user,
     rehostPolicy: 'cache-allowed', // Pixabay forbids hotlinking; webformatURL valid 24h → must cache
     raw: { sourceTerms: 'https://pixabay.com/service/license-summary/', sourceUrl: h.pageURL },
   }
+  const tags = splitTags(h.tags)
   return {
-    id: referenceId('pixabay', h.pageURL),
     modality: 'image',
     ...(pixabayKind(h.type) ? { kind: pixabayKind(h.type) } : {}),
     title: h.tags || undefined, // no title field; tags is the only descriptive text
-    source: { providerId: 'pixabay', sourceUrl: h.pageURL },
-    canonicalUrl: h.pageURL,
+    ...(tags.length > 0 ? { tags } : {}),
+    sourceUrl: h.pageURL,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: h.previewURL, width: h.previewWidth, height: h.previewHeight },
     visual: { width: h.imageWidth, height: h.imageHeight },
-    relevance: 0,
     raw: h,
   }
 }
@@ -110,7 +112,7 @@ export function pixabay(config: PixabayConfig) {
     kinds: ['photo', 'illustration', 'vector'],
     description: 'Free stock photos, illustrations and vectors (Pixabay)',
     capabilities: { controls: ['orientation', 'color', 'language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://pixabay.com/api/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
@@ -144,8 +146,7 @@ export function pixabay(config: PixabayConfig) {
       setIfPositiveInt(url, 'page', opts?.page)
       setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200, clamp: true })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`pixabay search failed: ${res.status}`)
-      const json = (await res.json()) as PixabayResponse
+      const json = await okJson<PixabayResponse>(res, 'pixabay search')
       return json.hits.map(toReference)
     },
   })
@@ -162,7 +163,7 @@ interface PixabayVideoHit {
 }
 interface PixabayVideoResponse { hits: PixabayVideoHit[] }
 
-function toVideoReference(h: PixabayVideoHit): Reference | null {
+function toVideoReference(h: PixabayVideoHit): EmittedReference | null {
   const v = h.videos.large ?? h.videos.medium ?? h.videos.small ?? h.videos.tiny
   if (!v) return null // no usable rendition → skip rather than emit a preview-less reference
   const rights: RightsRecord = {
@@ -171,18 +172,16 @@ function toVideoReference(h: PixabayVideoHit): Reference | null {
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://pixabay.com/service/license-summary/', sourceUrl: h.pageURL },
   }
+  const tags = splitTags(h.tags)
   return {
-    id: referenceId('pixabay-video', h.pageURL),
     modality: 'video',
     title: h.tags || undefined,
-    source: { providerId: 'pixabay-video', sourceUrl: h.pageURL },
-    canonicalUrl: h.pageURL,
+    ...(tags.length > 0 ? { tags } : {}),
+    sourceUrl: h.pageURL,
     rights,
-    verifiedAt: new Date().toISOString(),
     ...(v.thumbnail ? { thumbnail: { url: v.thumbnail } } : {}),
     preview: { url: v.url, mediaType: 'video/mp4', width: v.width, height: v.height },
     visual: { width: v.width, height: v.height },
-    relevance: 0,
     raw: h,
   }
 }
@@ -195,7 +194,7 @@ export function pixabayVideo(config: PixabayConfig) {
     kinds: ['film', 'animation'],
     description: 'Free stock videos and animations (Pixabay)',
     capabilities: { controls: ['language', 'sort', 'safety', 'media.kind', 'media.minWidth', 'media.minHeight', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://pixabay.com/api/videos/')
       url.searchParams.set('key', config.key)
       url.searchParams.set('q', q.text)
@@ -223,9 +222,8 @@ export function pixabayVideo(config: PixabayConfig) {
       setIfPositiveInt(url, 'page', opts?.page)
       setIfPositiveInt(url, 'per_page', opts?.perPage, { min: 3, max: 200, clamp: true })
       const res = await ctx.fetch(url.toString(), { signal: ctx.signal })
-      if (!res.ok) throw new Error(`pixabay video search failed: ${res.status}`)
-      const json = (await res.json()) as PixabayVideoResponse
-      return json.hits.map(toVideoReference).filter((r): r is Reference => r !== null)
+      const json = await okJson<PixabayVideoResponse>(res, 'pixabay video search')
+      return json.hits.map(toVideoReference).filter((r): r is EmittedReference => r !== null)
     },
   })
 }

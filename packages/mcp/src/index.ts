@@ -2,71 +2,13 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, lexicalReranker } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchFilters, SearchControls, SearchControlKey, ProviderOptionsById, SearchMeta, RightsRecord, Modality } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
 
-const MODALITIES = ['image', 'video', 'audio', 'text'] as const
-const ORIENTATIONS = ['landscape', 'portrait', 'square'] as const
 // Legacy media.kind control values — kept in the dynamic enum because they stay
 // meaningful as upstream filter translations for providers that support the
 // media.kind control without declaring kinds.
 const BASE_MEDIA_KINDS = ['photo', 'illustration', 'vector', 'film', 'animation'] as const
-const SEARCH_CONTROL_KEYS = [
-  'orientation',
-  'color',
-  'language',
-  'sort',
-  'safety',
-  'license.commercial',
-  'license.modification',
-  'license.allowUnknown',
-  'media.kind',
-  'media.size',
-  'media.minWidth',
-  'media.minHeight',
-  'media.duration',
-  'creator.id',
-  'creator.name',
-  'text.copyright',
-  'page',
-] as const satisfies readonly SearchControlKey[]
-
-const filtersSchema = z.object({
-  color: z.string().optional(),
-  orientation: z.enum(ORIENTATIONS).optional(),
-  language: z.string().optional(),
-})
-const searchControlKeySchema = z.enum(SEARCH_CONTROL_KEYS)
-
-function buildSearchControlsSchema(kindValues: [string, ...string[]]) {
-  return z.object({
-    orientation: z.enum(ORIENTATIONS).optional(),
-    color: z.string().optional(),
-    language: z.string().optional(),
-    sort: z.enum(['relevance', 'latest', 'popular', 'interesting']).optional(),
-    safety: z.enum(['strict', 'moderate', 'off']).optional(),
-    license: z.object({
-      commercial: z.boolean().optional(),
-      modification: z.boolean().optional(),
-      allowUnknown: z.boolean().optional(),
-    }).optional(),
-    media: z.object({
-      kind: z.enum(kindValues).optional(),
-      size: z.enum(['small', 'medium', 'large']).optional(),
-      minWidth: z.number().int().nonnegative().optional(),
-      minHeight: z.number().int().nonnegative().optional(),
-      duration: z.enum(['short', 'medium', 'long']).optional(),
-    }).optional(),
-    creator: z.object({
-      id: z.string().optional(),
-      name: z.string().optional(),
-    }).optional(),
-    text: z.object({
-      copyright: z.enum(['public-domain', 'copyrighted', 'any']).optional(),
-    }).optional(),
-    page: z.number().int().positive().optional(),
-  })
-}
 
 const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
 const providerOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
@@ -126,40 +68,6 @@ const agentRefSchema = z.object({
   attribution: z.string().optional().describe('ready-to-use credit line; present when the license requires attribution'),
 })
 
-const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
-  query: z.string(),
-  modalities: z.array(z.enum(MODALITIES)),
-  limit: z.number(),
-  poolFactor: z.number(),
-  fetchLimit: z.number(),
-  appliedFilters: filtersSchema.optional(),
-  controls: z.object({
-    requested: z.array(searchControlKeySchema),
-    appliedByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
-    ignoredByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
-  }).optional(),
-  providerOptions: z.array(z.string()).optional(),
-  providers: z.array(z.object({
-    providerId: z.string(),
-    status: z.enum(['fulfilled', 'failed', 'skipped']),
-    returned: z.number().optional(),
-    accepted: z.number().optional(),
-    rejected: z.number().optional(),
-    reason: z.enum(['unsupported-modality', 'unsupported-kind', 'not-selected']).optional(),
-    error: z.string().optional(),
-    latencyMs: z.number().optional(),
-    cached: z.boolean().optional(),
-  })),
-  gate: z.object({
-    intent: z.enum(INTENTS),
-    before: z.number(),
-    after: z.number(),
-    dropped: z.number(),
-  }).optional(),
-  nextCursor: z.string().optional().describe('opaque load-more cursor; pass back as `cursor` to fetch the next page with cross-page dedup'),
-  warnings: z.array(z.string()),
-})
-
 /** Wrap a configured RefkitClient as an MCP server exposing `search_references`. */
 export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
   const server = new McpServer({ name: 'refkit', version: VERSION })
@@ -195,13 +103,21 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
           'restrict the search to specific sources by id (omit to search every configured source — see "Configured sources" in this tool description). '
           + 'Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources\' queries.',
         ),
-        filters: filtersSchema.optional().describe('compatibility alias for controls.orientation, controls.color, and controls.language'),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
         providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
         explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
         cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
-        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK, resolution, source diversity) instead of raw cross-source rank fusion'),
+        rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, fused cross-source relevance, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion. true cannot re-enable reranking when the host built the client with rerank: false'),
+        minRelevance: z.number().min(0).max(1).optional().describe(
+          'drop results the ranker scored below this, after reranking. Graded against the reranker\'s blended score, where a result matching no query term lands around 0.3 under the stock weights — so 0.5 keeps only real matches. Off by default (a bar can empty the batch). Does NOT transfer to rerank: false, where raw fusion is max-normalised and the top result is always 1',
+        ),
+        deadlineMs: z.number().int().positive().optional().describe(
+          'whole-search deadline in ms, cursor page advances included (unlike the host\'s per-source timeout, which bounds one source search). Sources still in flight when it fires are reported as failed and the rest are returned; a hard bound while the host leaves per-source resilience on (the default), and otherwise only binding on sources that honour the abort signal',
+        ),
+        gateContext: z.object({
+          userJurisdiction: z.string().optional().describe('caller\'s jurisdiction; a mismatch with a source-declared one defaults to needs-review'),
+        }).optional().describe('context for the `gateFor` gate, matching the evaluate_use tool\'s jurisdiction inputs'),
         intent: z.enum(INTENTS).optional().describe('annotate each result with a use-verdict for this intended use (no filtering)'),
         gateFor: z.enum(INTENTS).optional().describe('only return results whose license allows this intended use'),
       },
@@ -211,18 +127,23 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         meta: searchMetaSchema.optional(),
       },
     },
-    async ({ query, modalities, filters, controls, providerOptions, explain, limit, cursor, rerank, intent, gateFor, sources }) => {
-      const searchInput = {
+    async ({ query, modalities, controls, providerOptions, explain, limit, cursor, rerank, minRelevance, deadlineMs, gateContext, intent, gateFor, sources }) => {
+      // Typed as core's SearchInput so every parameter above is checked against
+      // the contract it is forwarded into, not just against zod.
+      const searchInput: SearchInput = {
         query,
         modalities: modalities ?? ['image'],
         sources,
-        filters: filters as SearchFilters | undefined,
         controls: controls as SearchControls | undefined,
         providerOptions: providerOptions as ProviderOptionsById | undefined,
         limit,
         cursor,
-        ...(rerank ? { rerank: lexicalReranker() } : {}),
+        // Core reranks by default; only an explicit false turns it off.
+        ...(rerank === false ? { rerank: false as const } : {}),
+        minRelevance,
+        deadlineMs,
         gateFor,
+        gateContext,
       }
       // Always searchWithMeta: the continuation token (meta.nextCursor) must not
       // depend on the explain diagnostics flag — only the meta DUMP is gated.

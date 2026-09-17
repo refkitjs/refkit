@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeQuery } from '../query'
-import type { ReferenceProvider } from '../provider'
+import { defineProvider, type ReferenceProvider } from '../provider'
 
 const provider = (
   controls: NonNullable<ReferenceProvider['capabilities']>['controls'] = [],
@@ -8,52 +8,20 @@ const provider = (
 ): ReferenceProvider => ({ id: 'p', modalities, capabilities: { controls }, search: async () => [] })
 
 describe('normalizeQuery', () => {
-  it('routes legacy filters by capabilities.controls and mirrors them on both channels', () => {
-    const nq = normalizeQuery(
-      { query: 'cat', modalities: ['image'], filters: { color: 'red', orientation: 'landscape' } },
-      provider(['color']),
-    )
-    expect(nq.filters).toEqual({ color: 'red' }) // orientation dropped (not in capabilities)
-    expect(nq.controls).toEqual({ color: 'red' }) // derived channel stays consistent
+  it('routes only the controls a provider declares in capabilities.controls; a provider without capabilities gets none', () => {
+    const p = defineProvider({ id: 'p', modalities: ['image'], capabilities: { controls: ['color'] }, search: async () => [] })
+    const q = normalizeQuery({ query: 'x', modalities: ['image'], controls: { color: 'red', orientation: 'landscape' } }, p)
+    expect(q.controls).toEqual({ color: 'red' })
+    expect('filters' in q).toBe(false)
+    const bare = defineProvider({ id: 'b', modalities: ['image'], search: async () => [] })
+    expect(normalizeQuery({ query: 'x', modalities: ['image'], controls: { color: 'red' } }, bare).controls).toBeUndefined()
   })
 
-  it('legacy compat: a capabilities-less provider declaring only queryFeatures still receives its filters', () => {
-    const legacy: ReferenceProvider = {
-      id: 'p',
-      modalities: ['image'],
-      queryFeatures: ['keyword', 'orientation'], // pre-capabilities third-party shape
-      search: async () => [],
-    }
+  it('omits controls entirely when none survive', () => {
     const nq = normalizeQuery(
-      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape', color: 'red' } },
-      legacy,
-    )
-    expect(nq.filters).toEqual({ orientation: 'landscape' }) // color not declared → dropped
-    expect(nq.controls).toEqual({ orientation: 'landscape' })
-  })
-
-  it('capabilities, once declared, win over queryFeatures', () => {
-    const both: ReferenceProvider = {
-      id: 'p',
-      modalities: ['image'],
-      queryFeatures: ['keyword', 'orientation'],
-      capabilities: { controls: [] }, // explicit: supports nothing
-      search: async () => [],
-    }
-    const nq = normalizeQuery(
-      { query: 'cat', modalities: ['image'], filters: { orientation: 'landscape' } },
-      both,
-    )
-    expect(nq.filters).toBeUndefined()
-    expect(nq.controls).toBeUndefined()
-  })
-
-  it('omits filters entirely when none survive', () => {
-    const nq = normalizeQuery(
-      { query: 'cat', modalities: ['image'], filters: { color: 'red' } },
+      { query: 'cat', modalities: ['image'], controls: { color: 'red' } },
       provider([]),
     )
-    expect(nq.filters).toBeUndefined()
     expect(nq.controls).toBeUndefined()
   })
 
@@ -87,7 +55,6 @@ describe('normalizeQuery', () => {
     const p: ReferenceProvider = {
       id: 'p',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'media.minWidth'] },
       search: async () => [],
     }
@@ -106,11 +73,10 @@ describe('normalizeQuery', () => {
     expect(nq.controls).toEqual({ orientation: 'landscape', media: { minWidth: 1200 } })
   })
 
-  it('maps legacy filters into controls for compatibility', () => {
+  it('routes every declared control family into the provider query', () => {
     const p: ReferenceProvider = {
       id: 'p',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'color', 'language'] },
       search: async () => [],
     }
@@ -118,30 +84,10 @@ describe('normalizeQuery', () => {
       {
         query: 'cat',
         modalities: ['image'],
-        filters: { orientation: 'portrait', color: 'red', language: 'en-US' },
+        controls: { orientation: 'portrait', color: 'red', language: 'en-US' },
       },
       p,
     )
     expect(nq.controls).toEqual({ orientation: 'portrait', color: 'red', language: 'en-US' })
-  })
-
-  it('prefers primary controls over conflicting legacy filters when normalizing controls', () => {
-    const p: ReferenceProvider = {
-      id: 'p',
-      modalities: ['image'],
-      queryFeatures: ['keyword'],
-      capabilities: { controls: ['orientation', 'color', 'language'] },
-      search: async () => [],
-    }
-    const nq = normalizeQuery(
-      {
-        query: 'cat',
-        modalities: ['image'],
-        filters: { orientation: 'portrait', color: 'red', language: 'en-US' },
-        controls: { orientation: 'landscape', color: 'blue', language: 'fr' },
-      },
-      p,
-    )
-    expect(nq.controls).toEqual({ orientation: 'landscape', color: 'blue', language: 'fr' })
   })
 })

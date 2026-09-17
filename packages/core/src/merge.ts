@@ -1,6 +1,6 @@
 import type { Reference } from './reference'
-import type { RightsRecord } from './rights'
-import { factsFor, type LicenseId, type Tri } from './license'
+import { factsOf, type RightsRecord } from './rights'
+import { compareRestrictiveness, type LicenseFacts, type LicenseId } from './license'
 import { canonicalizeUrl } from './dedup-key'
 import { dedupeReferences, type DedupeOptions } from './dedup'
 
@@ -9,7 +9,8 @@ import { dedupeReferences, type DedupeOptions } from './dedup'
 export interface RightsConflict {
   canonicalUrl: string
   /** Every distinct SOURCE-DECLARED license id for this URL (never includes a
-   *  synthetic resolution value a source didn't claim). */
+   *  synthetic resolution value a source didn't claim). A single id when the
+   *  sources agreed on the label and only their facts disagreed. */
   licenses: LicenseId[]
   /** What the merge resolved to: the strictest comparable claim, or 'unknown'
    *  when claims are incomparable (strict-deny → needs-review). */
@@ -19,6 +20,11 @@ export interface RightsConflict {
 export interface MergeOptions extends DedupeOptions {
   /** RRF dampening constant. Standard default 60. */
   k?: number
+  /** Per-list multiplier on RRF contributions (parallel to `perSource`);
+   *  missing/invalid entries count as 1. The client feeds per-source lexical
+   *  confidence here, so a source whose batch ignores the query contributes a
+   *  fraction of its rank positions instead of its full share. */
+  weights?: readonly number[]
   /** Observe cross-source license conflicts (the client surfaces them as
    *  meta.warnings). Resolution itself is built in and always conservative. */
   onRightsConflict?: (conflict: RightsConflict) => void
@@ -26,50 +32,34 @@ export interface MergeOptions extends DedupeOptions {
 
 // — conservative rights resolution for cross-source URL conflicts —
 // Two sources describing the SAME canonical URL are making claims about the same
-// work; when their license ids disagree, believing the more permissive claim
-// would be fail-open. Rank every axis so smaller = stricter, then keep a license
-// only if it is no more permissive on EVERY axis; incomparable pairs collapse to
-// 'unknown' (→ needs-review), matching the strict-deny invariant.
-const triRank = (t: Tri): number => (t === true ? 2 : t === 'unknown' ? 1 : 0)
+// work; when their claims disagree, believing the more permissive one would be
+// fail-open. Disagreement is measured over FACTS, never over the license label:
+// the same id carrying narrower supplied facts IS a conflict, and two different
+// ids with identical facts (CC0-1.0 vs PD) are NOT — conflict iff facts
+// fingerprints differ. Once a conflict is open it resolves under
+// compareRestrictiveness's partial order; incomparable pairs — which include
+// every pair with an indeterminate side — collapse to 'unknown' (→ needs-review),
+// matching the strict-deny invariant.
 
-function permissivenessVector(license: LicenseId): number[] {
-  const f = factsFor(license)
-  return [
-    triRank(f.commercialUse),
-    triRank(f.derivatives),
-    triRank(f.redistribution),
-    f.attributionRequired ? 0 : 1, // carrying the obligation is stricter
-    f.shareAlike ? 0 : 1,
-  ]
+/** Fingerprint of a facts row: two records with the same key make the same claim. */
+function factsKey(f: LicenseFacts): string {
+  return `${f.commercialUse}|${f.derivatives}|${f.redistribution}|${f.attributionRequired}|${f.shareAlike}`
 }
 
-/** The stricter of two license ids when one dominates on every axis; undefined
- *  when they are incomparable (each grants something the other doesn't). */
-export function stricterLicense(a: LicenseId, b: LicenseId): LicenseId | undefined {
-  // 'unknown' grants nothing determinable — a conflict involving it can only
-  // resolve to it (its obligation axes are meaningless, not "no obligations").
-  if (a === 'unknown' || b === 'unknown') return 'unknown'
-  const va = permissivenessVector(a)
-  const vb = permissivenessVector(b)
-  let aNoMorePermissive = true
-  let bNoMorePermissive = true
-  for (let i = 0; i < va.length; i++) {
-    if (va[i] > vb[i]) aNoMorePermissive = false
-    if (vb[i] > va[i]) bNoMorePermissive = false
-  }
-  if (aNoMorePermissive) return a
-  if (bNoMorePermissive) return b
-  return undefined
+function unknownRecord(anchor: RightsRecord): RightsRecord {
+  // No honest single license exists for the conflict: strict-deny to 'unknown'.
+  // Keep the anchor's per-item data as the audit trail; drop facts/version that
+  // only made sense for the original id.
+  return { ...anchor, license: 'unknown', licenseVersion: undefined, facts: undefined }
 }
 
 function resolveRightsConflict(current: RightsRecord, incoming: RightsRecord): RightsRecord {
-  const winner = stricterLicense(current.license, incoming.license)
-  if (winner === current.license) return current
-  if (winner === incoming.license) return incoming
-  // Incomparable claims about the same work: no honest single license id exists,
-  // so strict-deny to 'unknown' (needs-review). Keep the current record's per-item
-  // data as the audit anchor; drop licenseVersion (meaningless off a CC family).
-  return { ...current, license: 'unknown', licenseVersion: undefined }
+  // 'incomparable' also covers an indeterminate side (see compareRestrictiveness):
+  // nothing determinable is granted, so the conflict can only resolve to unknown.
+  const cmp = compareRestrictiveness(factsOf(current), factsOf(incoming))
+  if (cmp === 'a' || cmp === 'equal') return current
+  if (cmp === 'b') return incoming
+  return unknownRecord(current)
 }
 
 // Reciprocal Rank Fusion across per-source ranked lists. Each list is assumed already
@@ -81,47 +71,61 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
   const score = new Map<string, number>() // dedup key -> accumulated RRF score
   const rep = new Map<string, Reference>() // dedup key -> best representative
   const rights = new Map<string, RightsRecord>() // dedup key -> conservatively-resolved rights
-  // Allocated only on an actual conflict: dedup key -> distinct SOURCE-DECLARED
-  // license ids. Comparing new refs against this set (not against the resolved
-  // record, which may already be a synthetic 'unknown') keeps a third source
-  // re-declaring an already-seen license from re-triggering a phantom conflict.
-  const conflictLicenses = new Map<string, Set<LicenseId>>()
+  // Both allocated only on an actual conflict, per dedup key. conflictFacts holds
+  // the distinct claims seen, as facts fingerprints; comparing a new ref against
+  // it (not against the resolved record, which may already be a synthetic
+  // 'unknown') keeps a third source repeating an already-seen claim from
+  // re-triggering a phantom conflict. conflictLabels holds the ids those claims
+  // were declared under — for the report only, never for detection.
+  const conflictFacts = new Map<string, Set<string>>()
+  const conflictLabels = new Map<string, Set<LicenseId>>()
 
-  for (const list of perSource) {
+  perSource.forEach((list, listIndex) => {
+    // A weight that isn't a non-negative finite number is not a trust signal —
+    // count it as 1 (full contribution) rather than erasing or inverting a list.
+    const w = opts.weights?.[listIndex]
+    const weight = typeof w === 'number' && Number.isFinite(w) && w >= 0 ? w : 1
     list.forEach((ref, rank) => {
       const key = canonicalizeUrl(ref.canonicalUrl)
-      score.set(key, (score.get(key) ?? 0) + 1 / (k + rank))
+      score.set(key, (score.get(key) ?? 0) + weight / (k + rank))
       const cur = rep.get(key)
       if (!cur || ref.relevance > cur.relevance) rep.set(key, ref)
-      // Cross-source license conflict: same canonical URL, different license id.
-      // Resolve conservatively (see resolveRightsConflict); the resolved record
-      // replaces the representative's rights below. Same-id records never
-      // conflict — differing versions/authors are per-source metadata, and the
-      // representative's own record stays authoritative for them.
+      // Cross-source rights conflict: same canonical URL, disagreeing FACTS (the
+      // license label is not the trigger — see the note above factsKey). Resolve
+      // conservatively; the resolved record replaces the representative's rights
+      // below. Records making the same claim never conflict — differing
+      // versions/authors are per-source metadata and the representative's own
+      // record stays authoritative for them.
       const known = rights.get(key)
       if (known === undefined) {
         rights.set(key, ref.rights)
         return
       }
-      const declared = conflictLicenses.get(key)
-      if (declared) {
-        if (!declared.has(ref.rights.license)) {
-          declared.add(ref.rights.license)
+      const incoming = factsKey(factsOf(ref.rights))
+      const claims = conflictFacts.get(key)
+      if (claims) {
+        if (!claims.has(incoming)) {
+          claims.add(incoming)
+          conflictLabels.get(key)!.add(ref.rights.license)
           rights.set(key, resolveRightsConflict(known, ref.rights))
         }
-      } else if (known.license !== ref.rights.license) {
-        conflictLicenses.set(key, new Set([known.license, ref.rights.license]))
+      } else if (factsKey(factsOf(known)) !== incoming) {
+        // conflict iff facts fingerprints differ — not compareRestrictiveness,
+        // which reports 'incomparable' (never 'equal') for any indeterminate
+        // side and would spuriously conflict two sources agreeing on 'unknown'.
+        conflictFacts.set(key, new Set([factsKey(factsOf(known)), incoming]))
+        conflictLabels.set(key, new Set([known.license, ref.rights.license]))
         rights.set(key, resolveRightsConflict(known, ref.rights))
       }
     })
-  }
+  })
 
-  // Report each conflicted URL once, with the full set of source-declared claims.
+  // Report each conflicted URL once, with every source-declared id involved.
   if (opts.onRightsConflict) {
-    for (const [key, declared] of conflictLicenses) {
+    for (const [key, labels] of conflictLabels) {
       opts.onRightsConflict({
         canonicalUrl: rep.get(key)!.canonicalUrl,
-        licenses: [...declared],
+        licenses: [...labels],
         resolvedLicense: rights.get(key)!.license,
       })
     }
@@ -130,17 +134,18 @@ export function mergeReferences(perSource: Reference[][], opts: MergeOptions = {
   // Normalize by the actual max so the top result's relevance is exactly 1.0.
   // Reduce, not Math.max(...score.values()) — the merged pool can be large and a
   // spread of that many args overflows the call stack. RRF scores are fractional
-  // (1/(k+rank) sums), so we keep the true max (no floor) to hit exactly 1.0. For
-  // empty input score has no entries, so the .map body never runs and the seed
-  // maxScore (-Infinity) is never used in the division.
+  // (1/(k+rank) sums), so we keep the true max (no floor) to hit exactly 1.0 —
+  // except when nothing scored above 0 (empty input, or every list weighted 0),
+  // where 1 keeps relevance an honest 0 instead of NaN.
   let maxScore = -Infinity
   for (const s of score.values()) if (s > maxScore) maxScore = s
+  if (!(maxScore > 0)) maxScore = 1
   const fused: Reference[] = [...score.entries()]
     .map(([key, s]) => ({
       ...rep.get(key)!,
       // A conflicted key carries the conservatively-resolved rights instead of
       // whichever source happened to supply the representative.
-      ...(conflictLicenses.has(key) ? { rights: rights.get(key)! } : {}),
+      ...(conflictFacts.has(key) ? { rights: rights.get(key)! } : {}),
       relevance: s / maxScore,
     }))
     .sort((a, b) => b.relevance - a.relevance)

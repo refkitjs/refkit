@@ -40,10 +40,9 @@ describe('brave provider', () => {
     expect(r.modality).toBe('image')
     expect(r.rights.license).toBe('unknown')
     expect(r.rights.rehostPolicy).toBe('thumbnail-only')
-    expect(r.canonicalUrl).toBe('https://stock.adobe.com/search?k=hammerhead+shark') // the source PAGE, not the image bytes
+    expect(r.sourceUrl).toBe('https://stock.adobe.com/search?k=hammerhead+shark') // the source PAGE, not the image bytes
     expect(r.title).toBe('Hammerhead Shark')
     expect(r.thumbnail?.url).toBe('https://imgs.search.brave.com/abc/rs:fit:500:0:0:0/g:ce/aHR0.jpg')
-    expect(r.id).toMatch(/^brave:/)
   })
 
   it('DISCOVERY moat: every web result is needs-review (never auto-allowed) for commercial use', async () => {

@@ -32,7 +32,7 @@ describe('freesound provider', () => {
   it('maps each license family to audio references', async () => {
     const refs = await freesound({ apiKey: 'k' }).search({ text: 'door', modalities: ['audio'], limit: 10 }, ctxJson(RESULTS))
     expect(refs).toHaveLength(4)
-    const byId = Object.fromEntries(refs.map(r => [r.canonicalUrl, r]))
+    const byId = Object.fromEntries(refs.map(r => [r.sourceUrl, r]))
 
     const cc = byId['https://freesound.org/people/alice/sounds/1/']
     expect(cc.modality).toBe('audio')
@@ -40,9 +40,11 @@ describe('freesound provider', () => {
     expect(cc.rights.author).toBe('alice')
     expect(cc.preview?.url).toBe('https://cdn.freesound.org/previews/1/1_hq.mp3')
     expect(cc.preview?.mediaType).toBe('audio/mpeg')
+    expect(cc.tags).toEqual(['door', 'creak'])
 
     const nc = byId['https://freesound.org/people/bob/sounds/2/']
     expect(nc.rights.license).toBe('CC-BY-NC')
+    expect(nc.tags).toBeUndefined() // empty upstream tag list → field omitted
     expect(evaluateUse(nc.rights, 'commercial-product').decision).toBe('denied')
 
     const cc0 = byId['https://freesound.org/people/carol/sounds/3/']
@@ -67,7 +69,7 @@ describe('freesound provider', () => {
     }
     const refs = await freesound({ apiKey: 'k' }).search({ text: 'x', modalities: ['audio'] }, ctxJson(MIXED))
     expect(refs).toHaveLength(1)
-    expect(refs[0].canonicalUrl).toBe('https://freesound.org/people/frank/sounds/11/')
+    expect(refs[0].sourceUrl).toBe('https://freesound.org/people/frank/sounds/11/')
   })
 
   it('forwards query, token, and fields; respects limit', async () => {

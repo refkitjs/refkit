@@ -19,6 +19,11 @@ const LIST = {
     authors: { 'Rob Tuytel': 'All' },
     thumbnail_url: 'https://cdn.polyhaven.com/asset_img/thumbs/aerial_asphalt_01.png?width=256&height=256',
   },
+  // Three more assets so a multi-word query can match per token and rank by how
+  // many of them a single asset covers.
+  forest_floor: { type: 1, name: 'Forest Floor', tags: ['forest', 'ground'] },
+  brick_wall: { type: 1, name: 'Brick Wall', tags: ['brick'] },
+  mossy_forest_rock: { type: 1, name: 'Mossy Forest Rock', tags: ['forest', 'rock', 'moss'] },
 }
 const FILES_TEX = {
   aerial_asphalt_01: {
@@ -29,6 +34,9 @@ const FILES_TEX = {
     blend: { '1k': { blend: { url: 'https://dl.polyhaven.org/x.blend' } } },
     gltf: { '1k': { gltf: { url: 'https://dl.polyhaven.org/x.gltf' } } },
   },
+  forest_floor: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/forest_floor_diff_1k.jpg' } } } },
+  brick_wall: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/brick_wall_diff_1k.jpg' } } } },
+  mossy_forest_rock: { Diffuse: { '1k': { jpg: { url: 'https://dl.polyhaven.org/mossy_forest_rock_diff_1k.jpg' } } } },
 }
 
 describe('polyhaven provider', () => {
@@ -41,6 +49,7 @@ describe('polyhaven provider', () => {
     const r = refs[0]
     expect(r.modality).toBe('image')
     expect(r.title).toBe('Aerial Asphalt 01')
+    expect(r.tags).toEqual(['asphalt', 'road', 'flat']) // categories then tags
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.author).toBe('Rob Tuytel')
     expect(r.rights.rehostPolicy).toBe('cache-allowed')
@@ -48,13 +57,26 @@ describe('polyhaven provider', () => {
     expect(r.preview?.url).toContain('aerial_asphalt_01_diff_1k.jpg')
     expect(r.preview?.mediaType).toBe('image/jpeg')
     expect(r.thumbnail?.url).toContain('thumbs/aerial_asphalt_01.png')
-    expect(r.canonicalUrl).toBe('https://polyhaven.com/a/aerial_asphalt_01')
+    expect(r.sourceUrl).toBe('https://polyhaven.com/a/aerial_asphalt_01')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
   })
 
   it('returns [] when the list is empty', async () => {
     const refs = await polyhaven().search({ text: 'zzz', modalities: ['image'] }, ctxRouting({}, {}))
     expect(refs).toEqual([])
+  })
+
+  it('matches each query token independently and ranks by matched tokens', async () => {
+    const refs = await polyhaven().search({ text: 'forest rock', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX))
+    expect(refs.map(r => r.sourceUrl)).toEqual(['https://polyhaven.com/a/mossy_forest_rock', 'https://polyhaven.com/a/forest_floor'])
+  })
+
+  it('tokenises on punctuation, not just whitespace — "forest, rock." matches the same assets as "forest rock"', async () => {
+    const [withPunctuation, withSpace] = await Promise.all([
+      polyhaven().search({ text: 'forest, rock.', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX)),
+      polyhaven().search({ text: 'forest rock', modalities: ['image'] }, ctxRouting(LIST, FILES_TEX)),
+    ])
+    expect(withPunctuation.map(r => r.sourceUrl)).toEqual(withSpace.map(r => r.sourceUrl))
   })
 
   it('declares kinds per assetType', () => {

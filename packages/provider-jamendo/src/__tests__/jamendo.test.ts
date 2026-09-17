@@ -55,7 +55,7 @@ describe('jamendo provider', () => {
     expect(r.rights.licenseVersion).toBe('4.0')
     expect(r.rights.author).toBe('fankel')
     expect(r.title).toBe('Sunrise')
-    expect(r.canonicalUrl).toBe('https://www.jamendo.com/track/1848357')
+    expect(r.sourceUrl).toBe('https://www.jamendo.com/track/1848357')
     expect(r.preview?.url).toContain('trackid=1848357')
     expect(r.preview?.mediaType).toBe('audio/mpeg')
     expect(r.thumbnail?.url).toContain('usercontent.jamendo.com')
@@ -106,7 +106,7 @@ describe('jamendo provider', () => {
     const { ctx } = ctxCapturing(envelope([TRACK_NO_SHAREURL, TRACK_BY]))
     const refs = await jamendo({ clientId: 'cid' }).search({ text: 'x', modalities: ['audio'] }, ctx)
     expect(refs).toHaveLength(1)
-    expect(refs[0].canonicalUrl).toBe('https://www.jamendo.com/track/1848357')
+    expect(refs[0].sourceUrl).toBe('https://www.jamendo.com/track/1848357')
   })
 
   it('forwards client_id, search, limit, format and documented options', async () => {

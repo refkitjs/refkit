@@ -28,7 +28,6 @@ describe('nailbook provider', () => {
   it('passes provider conformance on real API data', async () => {
     const refs = await searchConformant(nailbook(), okCtx().fetch, { query: 'マグネット' })
     expect(refs).toHaveLength(4)
-    expect(refs.every(r => r.id.startsWith('nailbook:'))).toBe(true)
     expect(refs.every(r => r.modality === 'image')).toBe(true)
   })
 
@@ -46,12 +45,12 @@ describe('nailbook provider', () => {
   it('maps a photo to a discovery-class image reference', async () => {
     const refs = await nailbook().search({ text: 'マグネット', modalities: ['image'] }, okCtx())
     const r = refs[0]
-    expect(r.canonicalUrl).toBe('https://nailbook.jp/design/10049726/')
-    expect(r.source).toEqual({ providerId: 'nailbook', sourceUrl: 'https://nailbook.jp/design/10049726/' })
+    expect(r.sourceUrl).toBe('https://nailbook.jp/design/10049726/')
     expect(r.thumbnail?.url).toBe('https://cnv.nailbook.jp/photo/35052322/320_lc')
     expect(r.preview).toEqual({ url: 'https://cnv.nailbook.jp/photo/35052322/1280_lc', mediaType: 'image/jpeg' })
     expect(r.visual).toEqual({ width: 2727, height: 2727 })
     expect(r.title).toContain('マグネット')
+    expect(r.tags).toEqual(['オールシーズン', 'オフィス', 'ハンド'])
     expect(r.rights.license).toBe('unknown')
     expect(r.rights.rehostPolicy).toBe('thumbnail-only')
     expect(r.rights.author).toBe('china')
@@ -86,9 +85,9 @@ describe('nailbook provider', () => {
     expect(refs).toEqual([])
   })
 
-  it('respects the requested limit', async () => {
+  it('emits the whole upstream page and leaves the limit to core', async () => {
     const refs = await nailbook().search({ text: 'x', modalities: ['image'], limit: 2 }, okCtx())
-    expect(refs).toHaveLength(2)
+    expect(refs).toHaveLength(4)
   })
 
   it('returns [] on an empty result set', async () => {
@@ -102,4 +101,19 @@ it('declares kinds and description', () => {
   const p = nailbook()
   expect(p.kinds).toEqual(['photo'])
   expect(p.description).toBeTruthy()
+})
+
+it('accepts only nail-art queries', () => {
+  const p = nailbook()
+  expect(p.accepts?.({ text: 'lion', modalities: ['image'] })).toBe(false)
+  expect(p.accepts?.({ text: 'spring nail art', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: '桜 ネイル', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: '法式美甲', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: 'マニキュア', modalities: ['image'] })).toBe(true)
+  expect(p.accepts?.({ text: 'gel polish', modalities: ['image'] })).toBe(true)
+  // 'nail' must not match inside 'snail' — a macro shot of a snail shell is
+  // exactly the generic image query this source has nothing for.
+  expect(p.accepts?.({ text: 'snail shell macro', modalities: ['image'] })).toBe(false)
+  // …while a real nail query next to one still lands.
+  expect(p.accepts?.({ text: 'snail slime nail art', modalities: ['image'] })).toBe(true)
 })

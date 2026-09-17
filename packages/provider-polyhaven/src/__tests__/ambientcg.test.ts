@@ -45,7 +45,7 @@ describe('ambientcg provider', () => {
     expect(r.rights.rehostPolicy).toBe('cache-allowed')
     expect(r.rights.raw.sourceTerms).toBe('https://ambientcg.com/license/')
     expect(r.preview?.url).toContain('512-PNG/Tiles141.png')
-    expect(r.canonicalUrl).toBe('https://ambientcg.com/view?id=Tiles141')
+    expect(r.sourceUrl).toBe('https://ambientcg.com/view?id=Tiles141')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
   })
 

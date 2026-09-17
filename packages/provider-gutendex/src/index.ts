@@ -1,7 +1,6 @@
 import {
-  defineProvider, referenceId,
-  setIfInt, setIfPositiveInt, setIfString, setIfStringList,
-  type Reference, type RightsRecord, type LicenseId,
+  defineProvider, okJson, setIfInt, setIfPositiveInt, setIfString, setIfStringList,
+  type EmittedReference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -48,31 +47,27 @@ export function copyrightToLicense(copyright: boolean | null): LicenseId {
   return 'unknown'
 }
 
-function toReference(r: GutendexResult): Reference {
-  const canonicalUrl = `https://www.gutenberg.org/ebooks/${r.id}`
+function toReference(r: GutendexResult): EmittedReference {
+  const sourceUrl = `https://www.gutenberg.org/ebooks/${r.id}`
   const rights: RightsRecord = {
     license: copyrightToLicense(r.copyright),
     author: r.authors[0]?.name,
     // PD/permission policy permits redistribution; note a book's cover image can be a separately-copyrighted work — host should treat covers conservatively (not legal advice).
     rehostPolicy: 'cache-allowed',
-    raw: { sourceTerms: 'https://www.gutenberg.org/policy/permission.html', sourceUrl: canonicalUrl },
+    raw: { sourceTerms: 'https://www.gutenberg.org/policy/permission.html', sourceUrl },
   }
   const cover = r.formats['image/jpeg']
   const summary = r.summaries[0]
   return {
-    id: referenceId('gutendex', canonicalUrl),
     modality: 'text',
     kind: 'ebook',
     title: r.title,
-    source: { providerId: 'gutendex', sourceUrl: canonicalUrl },
-    canonicalUrl,
+    sourceUrl,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: cover ? { url: cover } : undefined,
     // summaries[0] is an auto-generated synopsis (a structural description of the work),
     // not a verbatim passage — excerptKind 'structure'. Absent when summaries is empty.
-    text: summary ? { excerpt: summary, excerptKind: 'structure', locator: canonicalUrl } : undefined,
-    relevance: 0,
+    text: summary ? { excerpt: summary, excerptKind: 'structure', locator: sourceUrl } : undefined,
     raw: r,
   }
 }
@@ -84,7 +79,7 @@ export function gutendex(config: GutendexConfig = {}) {
     kinds: ['ebook'],
     description: 'Public-domain ebooks from Project Gutenberg (Gutendex)',
     capabilities: { controls: ['language', 'text.copyright', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const base = config.baseUrl ?? 'https://gutendex.com'
       const url = new URL('books/', base.endsWith('/') ? base : `${base}/`)
       url.searchParams.set('search', q.text)
@@ -114,8 +109,7 @@ export function gutendex(config: GutendexConfig = {}) {
         },
         signal: ctx.signal,
       })
-      if (!res.ok) throw new Error(`gutendex search failed: ${res.status}`)
-      const json = (await res.json()) as GutendexResponse
+      const json = await okJson<GutendexResponse>(res, 'gutendex search')
       // text satellite — drop Sound/audio records
       return json.results.filter(r => r.media_type === 'Text').map(toReference)
     },

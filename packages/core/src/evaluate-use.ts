@@ -1,5 +1,5 @@
-import { factsFor, type Tri } from './license'
-import type { RightsRecord } from './rights'
+import { isIndeterminate, type Tri } from './license'
+import { factsOf, type RightsRecord } from './rights'
 
 export const INTENTS = ['internal-moodboard', 'commercial-product', 'ai-generation-input', 'redistribution'] as const
 export type Intent = (typeof INTENTS)[number]
@@ -30,7 +30,7 @@ export interface EvaluateOptions {
   label?: string
 }
 
-/** Low-level, programmable strict-deny gate: unknown license → needs-review;
+/** Low-level, programmable strict-deny gate: indeterminate facts → needs-review;
  *  jurisdiction mismatch → needs-review; each required permission false → denied,
  *  'unknown' → needs-review; else allowed(-with-attribution). evaluateUse's four
  *  intents are presets over this. */
@@ -44,13 +44,14 @@ export function evaluatePermissions(
   const enforceAttribution = opts?.enforceAttribution ?? true
   const label = opts?.label ?? (required.join('+') || 'use')
 
-  const facts = factsFor(r.license)
+  const facts = factsOf(r)
   const reasons: string[] = []
-  const confidence: 'high' | 'low' = r.license === 'unknown' ? 'low' : 'high'
+  const indeterminate = isIndeterminate(facts)
+  const confidence: 'high' | 'low' = indeterminate ? 'low' : 'high'
   const base = { reasons, confidence, disclaimer: NOT_LEGAL_ADVICE }
 
-  // Unknown license: never allowed — needs-review regardless of required permissions.
-  if (r.license === 'unknown') {
+  // Indeterminate facts: never allowed — needs-review regardless of required permissions.
+  if (indeterminate) {
     reasons.push('license could not be determined (strict-deny)')
     return { decision: 'needs-review', ...base }
   }
@@ -104,7 +105,7 @@ function presetFor(intent: Intent): { required: PermissionKey[]; opts: EvaluateO
     case 'redistribution':
       return { required: ['redistribution'], opts: { denyEditorialOnly: false, enforceAttribution: true, label: intent } }
     case 'internal-moodboard':
-      // lenient; gated only by the unknown/jurisdiction checks in evaluatePermissions
+      // lenient; gated only by the indeterminate/jurisdiction checks in evaluatePermissions
       return { required: [], opts: { denyEditorialOnly: false, enforceAttribution: false, label: intent } }
   }
 }

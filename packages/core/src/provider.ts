@@ -1,100 +1,11 @@
 import type { Modality } from './modality'
-import type { Reference } from './reference'
-
-/** @deprecated Superseded by {@link ProviderCapabilities}`.controls` — declare
- *  supported {@link SearchControlKey}s instead. No longer read by core routing;
- *  will be removed in a future minor. */
-export type QueryFeature =
-  | 'keyword'
-  | 'color'
-  | 'orientation'
-  | 'license-filter'
-  | 'author'
-  | 'language'
-
-export type SearchSort = 'relevance' | 'latest' | 'popular' | 'interesting'
-export type SearchSafety = 'strict' | 'moderate' | 'off'
-
-/** Fine-grained resource kind. Open vocabulary: well-known values get
- *  autocomplete; any other string is a valid custom kind. Well-known values are
- *  hints, not validation — core never rejects unknown kinds. */
-export type WellKnownKind =
-  | 'photo' | 'illustration' | 'vector' | 'icon' | 'artwork'
-  | 'texture' | 'hdri' | '3d-model'
-  | 'film' | 'animation'
-  | 'music' | 'sound-effect'
-  | 'ebook' | 'poem'
-export type ResourceKind = WellKnownKind | (string & {})
-
-export interface SearchLicenseControls {
-  commercial?: boolean
-  modification?: boolean
-  allowUnknown?: boolean
-}
-
-export interface SearchMediaControls {
-  kind?: ResourceKind
-  size?: 'small' | 'medium' | 'large'
-  minWidth?: number
-  minHeight?: number
-  duration?: 'short' | 'medium' | 'long'
-}
-
-export interface SearchCreatorControls {
-  id?: string
-  name?: string
-}
-
-export interface SearchTextControls {
-  copyright?: 'public-domain' | 'copyrighted' | 'any'
-}
-
-export interface SearchControls {
-  orientation?: 'landscape' | 'portrait' | 'square'
-  color?: string
-  language?: string
-  sort?: SearchSort
-  safety?: SearchSafety
-  license?: SearchLicenseControls
-  media?: SearchMediaControls
-  creator?: SearchCreatorControls
-  text?: SearchTextControls
-  /** Provider-local page cursor: each provider paginates its own result stream;
-   *  after RRF merging, page N+1 may overlap or shift relative to page N. For
-   *  UI "load more", dedupe across pages by canonicalUrl (see README). */
-  page?: number
-}
-
-export type SearchControlKey =
-  | 'orientation'
-  | 'color'
-  | 'language'
-  | 'sort'
-  | 'safety'
-  | 'license.commercial'
-  | 'license.modification'
-  | 'license.allowUnknown'
-  | 'media.kind'
-  | 'media.size'
-  | 'media.minWidth'
-  | 'media.minHeight'
-  | 'media.duration'
-  | 'creator.id'
-  | 'creator.name'
-  | 'text.copyright'
-  | 'page'
+import type { EmittedReference } from './reference'
+// The control vocabulary (SearchControls and friends) lives in controls.ts —
+// one registry, one definition; provider.ts only consumes it.
+import type { ResourceKind, SearchControlKey, SearchControls } from './controls'
 
 export interface ProviderCapabilities {
   controls: readonly SearchControlKey[]
-}
-
-/** @deprecated Compatibility alias for {@link SearchControls} `color` /
- *  `orientation` / `language`. Values are merged into `controls` (controls win on
- *  conflict) and routed by `capabilities.controls`; use `controls` directly. */
-export interface SearchFilters {
-  color?: string
-  orientation?: 'landscape' | 'portrait' | 'square'
-  language?: string
 }
 
 export type ProviderOptionValue = string | number | boolean | readonly string[] | undefined
@@ -104,10 +15,6 @@ export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
 export interface NormalizedQuery {
   text: string
   modalities: Modality[]
-  /** @deprecated Mirror of the routed `controls` color/orientation/language, kept
-   *  for providers still reading the legacy channel — always consistent with
-   *  `controls`. Read `controls` instead. */
-  filters?: SearchFilters
   controls?: SearchControls
   providerOptions?: ProviderOptions
   limit?: number
@@ -145,10 +52,12 @@ export interface ReferenceProvider {
   /** One-line content-domain summary, surfaced in the MCP tool's source list
    *  so an agent can judge topical fit (e.g. "CC0 PBR textures for 3D work"). */
   description?: string
-  /** @deprecated Not read by core anymore — declare `capabilities.controls`. */
-  queryFeatures?: QueryFeature[]
   capabilities?: ProviderCapabilities
-  search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]>
+  /** Decline queries this source cannot answer (e.g. a nail-art site for "lion").
+   *  Skipped with reason 'declined'; an explicit `sources` whitelist bypasses it.
+   *  MUST be a pure, dependency-free predicate — it runs before any fetch. */
+  accepts?(query: { text: string; modalities: Modality[] }): boolean
+  search(query: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]>
 }
 
 /** Identity helper for type inference when authoring a provider factory. */

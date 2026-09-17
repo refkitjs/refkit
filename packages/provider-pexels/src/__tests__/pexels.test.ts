@@ -21,15 +21,14 @@ describe('pexels provider', () => {
     const r = refs[0]
     expect(r.rights.license).toBe('pexels')
     expect(r.rights.rehostPolicy).toBe('hotlink-required')
-    expect(r.id).toMatch(/^pexels:/)
-    expect(r.canonicalUrl).toBe('https://www.pexels.com/photo/trees-3573351/')
+    expect(r.sourceUrl).toBe('https://www.pexels.com/photo/trees-3573351/')
     expect(r.rights.author).toBe('Lukas Rodriguez')
     expect(r.title).toBe('Brown Rocks During Golden Hour')
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/photos/3573351/x?h=200')
     expect(r.visual).toEqual({ width: 3066, height: 3968, dominantColors: ['#374824'] })
   })
 
-  it('forwards documented photo search filters and Pexels-specific options', async () => {
+  it('forwards documented photo search controls and Pexels-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => {
@@ -40,7 +39,7 @@ describe('pexels provider', () => {
     await pexels({ apiKey: 'k' }).search({
       text: 'trees',
       modalities: ['image'],
-      filters: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
+      controls: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
       providerOptions: { orientation: 'landscape', color: 'red', size: 'large', locale: 'fr-FR', page: 2, perPage: 11 },
     }, ctx)
     const url = new URL(calledUrl)
@@ -72,26 +71,6 @@ describe('pexels provider', () => {
     expect(url.searchParams.get('size')).toBe('large')
     expect(url.searchParams.get('page')).toBe('2')
   })
-
-  it('keeps primary controls ahead of conflicting legacy filters in mixed migration calls', async () => {
-    let calledUrl = ''
-    const ctx: ProviderContext = {
-      fetch: (async (input: Parameters<typeof fetch>[0]) => {
-        calledUrl = String(input)
-        return new Response(JSON.stringify(FIXTURE), { status: 200 })
-      }) as typeof fetch,
-    }
-    await pexels({ apiKey: 'k' }).search({
-      text: 'trees',
-      modalities: ['image'],
-      filters: { orientation: 'landscape', color: '#000000', language: 'en-US' },
-      controls: { orientation: 'portrait', color: '#ffffff', language: 'zh-CN' },
-    }, ctx)
-    const url = new URL(calledUrl)
-    expect(url.searchParams.get('orientation')).toBe('portrait')
-    expect(url.searchParams.get('color')).toBe('#ffffff')
-    expect(url.searchParams.get('locale')).toBe('zh-CN')
-  })
 })
 
 describe('pexelsVideo provider', () => {
@@ -113,9 +92,8 @@ describe('pexelsVideo provider', () => {
     expect(refs).toHaveLength(1)
     const r = refs[0]
     expect(r.modality).toBe('video')
-    expect(r.source.providerId).toBe('pexels-video')
     expect(r.rights.license).toBe('pexels')
-    expect(r.canonicalUrl).toBe('https://www.pexels.com/video/a-cat-6394054/')
+    expect(r.sourceUrl).toBe('https://www.pexels.com/video/a-cat-6394054/')
     expect(r.rights.author).toBe('Cottonbro')
     expect(r.preview?.url).toBe('https://player.vimeo.com/x-hd.mp4') // HD preferred over SD
     expect(r.preview?.mediaType).toBe('video/mp4')
@@ -124,7 +102,7 @@ describe('pexelsVideo provider', () => {
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pexels license is commercial-OK
   })
 
-  it('forwards documented video search filters and Pexels-specific options', async () => {
+  it('forwards documented video search controls and Pexels-specific options', async () => {
     let calledUrl = ''
     const ctx: ProviderContext = {
       fetch: (async (input: Parameters<typeof fetch>[0]) => {
@@ -135,7 +113,7 @@ describe('pexelsVideo provider', () => {
     await pexelsVideo({ apiKey: 'k' }).search({
       text: 'cat',
       modalities: ['video'],
-      filters: { orientation: 'landscape', language: 'en-US' },
+      controls: { orientation: 'landscape', language: 'en-US' },
       providerOptions: { orientation: 'portrait', size: 'medium', locale: 'fr-FR', page: 3, perPage: 12, color: 'red' },
     }, ctx)
     const url = new URL(calledUrl)
@@ -189,7 +167,9 @@ describe('pexelsVideo provider', () => {
   })
 
   it('declares kinds and description (image + video factories)', () => {
+    expect(pexels({ apiKey: 'k' }).id).toBe('pexels')
     expect(pexels({ apiKey: 'k' }).kinds).toEqual(['photo'])
+    expect(pexelsVideo({ apiKey: 'k' }).id).toBe('pexels-video')
     expect(pexelsVideo({ apiKey: 'k' }).kinds).toEqual(['film'])
   })
 })

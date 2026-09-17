@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { defineProvider, type ProviderContext, type NormalizedQuery } from '../provider'
-import type { Reference } from '../reference'
+import type { EmittedReference } from '../reference'
 
 // Factory pattern: key in the closure, NOT the interface. Proves the provider is
 // implementable and that it uses the injected ctx.fetch (core stays zero-network).
 const fakeUnsplash = (cfg: { accessKey: string }) => defineProvider({
   id: 'fake-unsplash',
   modalities: ['image'],
-  queryFeatures: ['keyword', 'orientation'],
-  async search(query: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+  capabilities: { controls: ['orientation'] },
+  async search(query: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
     await ctx.fetch('https://example.test/search?key=' + cfg.accessKey + '&q=' + encodeURIComponent(query.text))
     return []
   },
@@ -31,7 +31,7 @@ describe('ReferenceProvider / defineProvider', () => {
   })
 
   it('defineProvider returns its input unchanged (identity helper)', () => {
-    const p = defineProvider({ id: 'x', modalities: ['text'], queryFeatures: [], search: async () => [] })
+    const p = defineProvider({ id: 'x', modalities: ['text'], search: async () => [] })
     expect(p.id).toBe('x')
   })
 
@@ -39,11 +39,22 @@ describe('ReferenceProvider / defineProvider', () => {
     const p = defineProvider({
       id: 'x',
       modalities: ['image'],
-      queryFeatures: ['keyword'],
       capabilities: { controls: ['orientation', 'color', 'safety'] },
       search: async () => [],
     })
     expect(p.capabilities?.controls).toEqual(['orientation', 'color', 'safety'])
+  })
+
+  it('carries an optional accepts predicate; omitting it leaves the provider open', () => {
+    const picky = defineProvider({
+      id: 'x',
+      modalities: ['image'],
+      accepts: ({ text, modalities }) => /nail/i.test(text) && modalities.includes('image'),
+      search: async () => [],
+    })
+    expect(picky.accepts?.({ text: 'nail art', modalities: ['image'] })).toBe(true)
+    expect(picky.accepts?.({ text: 'lion', modalities: ['image'] })).toBe(false)
+    expect(defineProvider({ id: 'y', modalities: ['image'], search: async () => [] }).accepts).toBeUndefined()
   })
 })
 

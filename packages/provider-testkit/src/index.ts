@@ -1,11 +1,7 @@
 import {
-  parseReference, isLikelyImageUrl, CC_VERSIONED_FAMILIES,
+  completeReference, parseEmitted, isLikelyImageUrl,
   type Reference, type ReferenceProvider, type NormalizedQuery, type ProviderContext, type LicenseId,
 } from '@refkit/core'
-
-/** Licenses allowed to carry rights.licenseVersion (the six versioned CC families) —
- *  core's canonical membership set, kept in sync with `ccVersionFor`. */
-const VERSIONED: ReadonlySet<LicenseId> = CC_VERSIONED_FAMILIES
 
 export interface ConformanceOptions {
   /** Text query for the search. Default 'landscape'. */
@@ -35,36 +31,22 @@ export async function searchConformant(
   const ctx: ProviderContext = { fetch: fetchImpl }
   const raw = await provider.search(query, ctx)
   const enforceImages = opts.enforceImageUrls ?? provider.modalities.includes('image')
+  // Provenance (id, source, verifiedAt, relevance) is core's to stamp, so the
+  // testkit completes each emitted item exactly as runProviderSearch would and
+  // then asserts the rules that remain the SATELLITE's responsibility.
+  const now = new Date().toISOString()
   return raw.map((item, i) => {
     let ref: Reference
     try {
-      ref = parseReference(item) // schema validity incl. provenance trio + rights record
+      ref = completeReference(provider.id, parseEmitted(item), now) // schema validity incl. sourceUrl + rights record
     } catch (e) {
-      throw new Error(`[${provider.id}] result #${i} failed referenceSchema: ${(e as Error).message}`)
-    }
-    // Every satellite factory in this repo stamps referenceId(provider.id, …) as
-    // `${provider.id}:${hash}` and sets `provider.id` to that exact same string —
-    // verified across all current providers, including the dual-factory cases
-    // where one package exports two distinct provider ids for two modalities/kinds
-    // (openverse/openverse-audio, pexels/pexels-video, pixabay/pixabay-video,
-    // polyhaven/ambientcg). None of those share a provider.id across prefixes, so
-    // an exact `${provider.id}:` prefix match is sufficient and catches a provider
-    // stamping the WRONG provider's id (e.g. openverse-audio results carrying an
-    // 'openverse:' id) without needing a looser fallback.
-    if (!ref.id.startsWith(`${provider.id}:`)) {
-      throw new Error(`[${provider.id}] result #${i} id does not identify the provider (id=${ref.id}, provider.id=${provider.id})`)
-    }
-    if (ref.source.providerId !== provider.id) {
-      throw new Error(`[${provider.id}] result #${i} source.providerId does not match the provider (source.providerId=${ref.source.providerId}, provider.id=${provider.id})`)
+      throw new Error(`[${provider.id}] result #${i} failed emittedReferenceSchema: ${(e as Error).message}`)
     }
     // Declared-kinds consistency: a provider stating what it offers must not
     // emit results outside that set. Missing kind is allowed (annotation is
     // optional); only a contradicting value is a violation.
     if (provider.kinds && provider.kinds.length > 0 && ref.kind !== undefined && !provider.kinds.includes(ref.kind)) {
       throw new Error(`[${provider.id}] result #${i} kind "${ref.kind}" is not in the provider's declared kinds [${provider.kinds.join(', ')}]`)
-    }
-    if (ref.rights.licenseVersion !== undefined && !VERSIONED.has(ref.rights.license)) {
-      throw new Error(`[${provider.id}] result #${i} carries licenseVersion on non-CC-family license ${ref.rights.license}`)
     }
     if (enforceImages) {
       // D8 thumbnail rule, calibrated for real providers: legitimate thumbnails are

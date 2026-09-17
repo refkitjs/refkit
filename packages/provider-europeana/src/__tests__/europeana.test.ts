@@ -96,7 +96,7 @@ describe('europeana toReference', () => {
     expect(r.title).toBe('A Painted Fan')
     expect(r.rights.license).toBe('CC0-1.0')
     expect(r.rights.rehostPolicy).toBe('hotlink-required')
-    expect(r.canonicalUrl).toBe('https://www.europeana.eu/item/2048128/europeana_fashion_12345')
+    expect(r.sourceUrl).toBe('https://www.europeana.eu/item/2048128/europeana_fashion_12345')
     expect(r.preview?.url).toBe('https://images.example.org/cc0-full.jpg') // from edmIsShownBy
     expect(r.thumbnail?.url).toBe('https://api.europeana.eu/thumbnail/v3/200/cc0thumb.jpg') // from edmPreview
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed')
@@ -143,7 +143,7 @@ describe('europeana toReference', () => {
     const noMedia = { ...ITEM_CC0, id: '/x/nomedia', edmIsShownBy: [], edmIsShownAt: [], edmPreview: [] }
     const refs = await europeana({ apiKey: 'k' }).search({ text: 'x', modalities: ['image'] }, okCtx([sound, noMedia, ITEM_CC0]))
     expect(refs).toHaveLength(1)
-    expect(refs[0].canonicalUrl).toBe('https://www.europeana.eu/item/2048128/europeana_fashion_12345')
+    expect(refs[0].sourceUrl).toBe('https://www.europeana.eu/item/2048128/europeana_fashion_12345')
   })
 
   it('never uses edmIsShownAt (a landing page) as preview; keeps the item via its thumbnail', async () => {

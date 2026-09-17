@@ -20,6 +20,8 @@ const FIXTURE = {
           thumbwidth: 1024, thumbheight: 576,
           extmetadata: {
             ObjectName: { value: 'Cat playing with a lizard' },
+            ImageDescription: { value: '<a href="x">Forest</a> path in <b>spring</b>' },
+            Categories: { value: 'Forests|Paths|Spring' },
             License: { value: 'cc-by-sa-4.0' },
             LicenseShortName: { value: 'CC BY-SA 4.0' },
             Artist: { value: '<a href="//commons.wikimedia.org/wiki/User:Basile_Morin">Basile Morin</a>' },
@@ -77,11 +79,16 @@ describe('wikimedia-commons provider', () => {
     expect(a.rights.license).toBe('CC-BY-SA')
     expect(a.rights.licenseVersion).toBe('4.0')
     expect(a.rights.author).toBe('Basile Morin') // HTML stripped from the Artist field
-    expect(a.canonicalUrl).toBe('https://commons.wikimedia.org/wiki/File:Cat_playing_with_a_lizard.jpg')
+    expect(a.sourceUrl).toBe('https://commons.wikimedia.org/wiki/File:Cat_playing_with_a_lizard.jpg')
     expect(a.title).toBe('Cat playing with a lizard')
     expect(a.thumbnail?.url).toContain('1024px')
     expect(a.preview?.url).toBe('https://upload.wikimedia.org/wikipedia/commons/7/72/Cat_playing_with_a_lizard.jpg')
     expect(a.visual).toEqual({ width: 5557, height: 3125 })
+    expect(a.description).toBe('Forest path in spring') // HTML stripped from ImageDescription
+    expect(a.tags).toEqual(['Forests', 'Paths', 'Spring']) // pipe-separated Categories
+    // the second item carries neither field — both stay absent rather than empty
+    expect(refs[1].description).toBeUndefined()
+    expect(refs[1].tags).toBeUndefined()
     // second item is CC BY-SA 3.0 — version preserved, still allowed-with-attribution (Phase-1 fix)
     expect(refs[1].rights.licenseVersion).toBe('3.0')
     expect(evaluateUse(refs[1].rights, 'commercial-product').decision).toBe('allowed-with-attribution')

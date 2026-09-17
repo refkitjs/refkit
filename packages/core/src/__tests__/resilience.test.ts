@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { retryingFetch, withTimeout } from '../resilience'
+import { retryingFetch, withDefaultUserAgent, withTimeout } from '../resilience'
 
 const okResponse = () => new Response('ok', { status: 200 })
 const status = (s: number) => new Response('x', { status: s })
@@ -155,5 +155,16 @@ describe('retryingFetch', () => {
     const f = retryingFetch(impl as unknown as typeof fetch, { retries: 3 })
     await expect(f(req)).rejects.toBe(plainErr)
     expect(impl).toHaveBeenCalledTimes(1) // aborted Request signal → no retry
+  })
+})
+
+describe('withDefaultUserAgent', () => {
+  it('adds a UA only when the request has none', async () => {
+    const seen: string[] = []
+    const inner = (async (_i: unknown, init?: RequestInit) => { seen.push(new Headers(init?.headers).get('user-agent') ?? '(none)'); return new Response('') }) as typeof fetch
+    const f = withDefaultUserAgent(inner, 'refkit-client/1')
+    await f('https://x.test/')
+    await f('https://x.test/', { headers: { 'User-Agent': 'custom/2' } })
+    expect(seen).toEqual(['refkit-client/1', 'custom/2'])
   })
 })

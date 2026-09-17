@@ -1,8 +1,8 @@
 import {
-  defineProvider, referenceId, ccVersionFor,
+  defineProvider, okJson, ccVersionFor,
   setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
   CC_FAMILY_BY_TOKEN,
-  type Reference, type RightsRecord, type LicenseId,
+  type EmittedReference, type RightsRecord, type LicenseId,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -122,7 +122,7 @@ function applyOpenverseSearchOptions(url: URL, opts: OpenverseSearchOptions | un
   setIfStringList(url, 'category', opts.category)
 }
 
-function toReference(r: OpenverseResult): Reference {
+function toReference(r: OpenverseResult): EmittedReference {
   const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
     license,
@@ -134,16 +134,12 @@ function toReference(r: OpenverseResult): Reference {
     raw: { sourceTerms: r.license_url, sourceUrl: r.foreign_landing_url },
   }
   return {
-    id: referenceId('openverse', r.foreign_landing_url),
     modality: 'image',
     title: r.title ?? undefined,
-    source: { providerId: 'openverse', sourceUrl: r.foreign_landing_url },
-    canonicalUrl: r.foreign_landing_url,
+    sourceUrl: r.foreign_landing_url,
     rights,
-    verifiedAt: new Date().toISOString(),
     thumbnail: { url: r.thumbnail },
     visual: { width: r.width, height: r.height },
-    relevance: 0, // per-source order; mergeReferences assigns the final RRF relevance
     raw: r,
   }
 }
@@ -154,7 +150,7 @@ export function openverse(config: OpenverseConfig = {}) {
     modalities: ['image'],
     description: 'Aggregated openly licensed images from many sources (Openverse)',
     capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.openverse.org/v1/images/')
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // performance/relevance hint only — the AUTHORITATIVE rights gate is mapOpenverseLicense below, not this filter
@@ -167,8 +163,7 @@ export function openverse(config: OpenverseConfig = {}) {
       const headers: Record<string, string> = {}
       if (config.token) headers.Authorization = `Bearer ${config.token}`
       const res = await ctx.fetch(url.toString(), { headers, signal: ctx.signal })
-      if (!res.ok) throw new Error(`openverse search failed: ${res.status}`)
-      const json = (await res.json()) as OpenverseResponse
+      const json = await okJson<OpenverseResponse>(res, 'openverse search')
       return json.results.map(toReference)
     },
   })
@@ -193,7 +188,7 @@ interface OpenverseAudioResult {
 }
 interface OpenverseAudioResponse { results: OpenverseAudioResult[] }
 
-function toAudioReference(r: OpenverseAudioResult): Reference {
+function toAudioReference(r: OpenverseAudioResult): EmittedReference {
   const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
     license,
@@ -204,17 +199,13 @@ function toAudioReference(r: OpenverseAudioResult): Reference {
     raw: { sourceTerms: r.license_url, sourceUrl: r.foreign_landing_url },
   }
   return {
-    id: referenceId('openverse-audio', r.foreign_landing_url),
     modality: 'audio',
     title: r.title ?? undefined,
-    source: { providerId: 'openverse-audio', sourceUrl: r.foreign_landing_url },
-    canonicalUrl: r.foreign_landing_url,
+    sourceUrl: r.foreign_landing_url,
     rights,
-    verifiedAt: new Date().toISOString(),
     // audio has no image; the waveform render is the closest visual handle
     ...(r.waveform ? { thumbnail: { url: r.waveform } } : {}),
     preview: { url: r.url, mediaType: AUDIO_MIME[r.filetype ?? ''] ?? 'audio/mpeg' },
-    relevance: 0,
     raw: r,
   }
 }
@@ -227,7 +218,7 @@ export function openverseAudio(config: OpenverseConfig = {}) {
     kinds: ['music', 'sound-effect'],
     description: 'Aggregated openly licensed music and sound effects (Openverse)',
     capabilities: { controls: ['license.commercial', 'license.modification', 'license.allowUnknown', 'page'] },
-    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<Reference[]> {
+    async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
       const url = new URL('https://api.openverse.org/v1/audio/')
       url.searchParams.set('q', q.text)
       url.searchParams.set('license_type', openverseLicenseType(q.controls?.license)) // relevance hint; mapOpenverseLicense authoritative
@@ -239,8 +230,7 @@ export function openverseAudio(config: OpenverseConfig = {}) {
       const headers: Record<string, string> = {}
       if (config.token) headers.Authorization = `Bearer ${config.token}`
       const res = await ctx.fetch(url.toString(), { headers, signal: ctx.signal })
-      if (!res.ok) throw new Error(`openverse audio search failed: ${res.status}`)
-      const json = (await res.json()) as OpenverseAudioResponse
+      const json = await okJson<OpenverseAudioResponse>(res, 'openverse audio search')
       return json.results.map(toAudioReference)
     },
   })
