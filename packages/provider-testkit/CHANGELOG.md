@@ -1,5 +1,12 @@
 # @refkit/provider-testkit
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [4dfd41a]
+  - @refkit/core@0.9.0
+
 ## 0.1.0
 
 ### Minor Changes

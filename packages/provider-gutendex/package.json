@@ -1,6 +1,6 @@
 {
   "name": "@refkit/provider-gutendex",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Gutendex (Project Gutenberg) provider satellite for refkit — public-domain book references, per-item copyright→license.",
   "type": "module",
   "license": "Apache-2.0",
