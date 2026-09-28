@@ -1,5 +1,13 @@
 # @refkit/mcp
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [9b5b053]
+  - @refkit/provider-openverse@0.5.1
+  - @refkit/provider-artic@0.4.1
+
 ## 0.8.0
 
 ### Minor Changes
