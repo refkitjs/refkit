@@ -7,9 +7,13 @@ import {
 } from '@refkit/core'
 
 export interface OpenverseConfig {
-  /** Optional OAuth2 bearer token; anonymous works (lower rate limits). */
+  /** Optional OAuth2 bearer token; anonymous works, but is limited to 20 results per request. */
   token?: string
 }
+
+// api.openverse.org rejects anonymous requests above this with 401:
+// {"detail":"page_size may not exceed 20 for anonymous requests"}
+const ANONYMOUS_MAX_PAGE_SIZE = 20
 
 export interface OpenverseSearchOptions {
   page?: number
@@ -122,6 +126,14 @@ function applyOpenverseSearchOptions(url: URL, opts: OpenverseSearchOptions | un
   setIfStringList(url, 'category', opts.category)
 }
 
+// Applied last, after provider options are set, so `providerOptions.pageSize` can't
+// re-exceed the anonymous ceiling. No-op when a token is configured.
+function capAnonymousPageSize(url: URL, config: OpenverseConfig): void {
+  if (config.token) return
+  const requested = Number(url.searchParams.get('page_size'))
+  url.searchParams.set('page_size', String(Math.min(requested, ANONYMOUS_MAX_PAGE_SIZE)))
+}
+
 function toReference(r: OpenverseResult): EmittedReference {
   const license = mapOpenverseLicense(r.license)
   const rights: RightsRecord = {
@@ -160,6 +172,7 @@ export function openverse(config: OpenverseConfig = {}) {
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'aspect_ratio', opts?.aspectRatio)
       setIfStringList(url, 'size', opts?.size)
+      capAnonymousPageSize(url, config)
       const headers: Record<string, string> = {}
       if (config.token) headers.Authorization = `Bearer ${config.token}`
       const res = await ctx.fetch(url.toString(), { headers, signal: ctx.signal })
@@ -227,6 +240,7 @@ export function openverseAudio(config: OpenverseConfig = {}) {
       const opts = q.providerOptions as OpenverseAudioSearchOptions | undefined
       applyOpenverseSearchOptions(url, opts)
       setIfStringList(url, 'length', opts?.length)
+      capAnonymousPageSize(url, config)
       const headers: Record<string, string> = {}
       if (config.token) headers.Authorization = `Bearer ${config.token}`
       const res = await ctx.fetch(url.toString(), { headers, signal: ctx.signal })

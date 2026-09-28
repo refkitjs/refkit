@@ -88,3 +88,31 @@ describe('artic provider', () => {
     expect(p.description).toBeTruthy()
   })
 })
+
+describe('artic limit ceiling', () => {
+  it('caps limit at 100 when the caller requests more (403 above it)', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ data: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await artic().search({ text: 'lion', modalities: ['image'], limit: 150 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('limit')).toBe('100')
+  })
+
+  it('passes the requested limit through unchanged when under the ceiling', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ data: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await artic().search({ text: 'lion', modalities: ['image'], limit: 12 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('limit')).toBe('12')
+  })
+})

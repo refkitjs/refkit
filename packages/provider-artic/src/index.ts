@@ -23,6 +23,9 @@ interface ArticResponse {
   config?: { iiif_url?: string }
 }
 
+// api.artic.edu returns 403 {"error":"Invalid limit"} when `limit` exceeds this.
+const MAX_LIMIT = 100
+
 export interface ArticSearchOptions {
   sort?: string
   from?: number
@@ -102,7 +105,7 @@ export function artic() {
       // relevance hint — toReference is authoritative on is_public_domain
       url.searchParams.set('query[term][is_public_domain]', 'true')
       url.searchParams.set('fields', articFields(opts?.fields))
-      url.searchParams.set('limit', String(q.limit ?? 20))
+      url.searchParams.set('limit', String(Math.min(q.limit ?? 20, MAX_LIMIT)))
       setIfPositiveInt(url, 'page', q.controls?.page)
       setIfString(url, 'sort', opts?.sort)
       setIfNonNegativeInt(url, 'from', opts?.from)
