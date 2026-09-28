@@ -200,6 +200,64 @@ describe('openverse provider', () => {
   })
 })
 
+describe('openverse anonymous page_size cap', () => {
+  it('caps page_size at 20 for anonymous requests when limit exceeds it', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await openverse().search({ text: 'sky', modalities: ['image'], limit: 24 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('page_size')).toBe('20')
+  })
+
+  it('passes the requested limit through unchanged when under the anonymous cap', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await openverse().search({ text: 'sky', modalities: ['image'], limit: 12 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('page_size')).toBe('12')
+  })
+
+  it('caps page_size at 20 even when providerOptions.pageSize requests more, for anonymous requests', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await openverse().search({
+      text: 'sky',
+      modalities: ['image'],
+      providerOptions: { pageSize: 50 },
+    }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('page_size')).toBe('20')
+  })
+
+  it('does not cap page_size when a token is configured', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await openverse({ token: 't' }).search({ text: 'sky', modalities: ['image'], limit: 24 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('page_size')).toBe('24')
+  })
+})
+
 describe('openverseAudio provider', () => {
   const AUDIO = { results: [{
     id: 'a1', title: 'Piano Melody', creator: 'benpm',
@@ -289,5 +347,18 @@ describe('openverseAudio provider', () => {
   it('declares kinds and description for audio', () => {
     expect(openverseAudio().id).toBe('openverse-audio')
     expect(openverseAudio().kinds).toEqual(['music', 'sound-effect'])
+  })
+
+  it('caps page_size at 20 for anonymous audio requests when limit exceeds it', async () => {
+    let calledUrl = ''
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0]) => {
+        calledUrl = String(input)
+        return new Response(JSON.stringify({ results: [] }), { status: 200 })
+      }) as typeof fetch,
+    }
+    await openverseAudio().search({ text: 'piano', modalities: ['audio'], limit: 24 }, ctx)
+    const url = new URL(calledUrl)
+    expect(url.searchParams.get('page_size')).toBe('20')
   })
 })
