@@ -68,6 +68,58 @@ describe('met provider', () => {
     expect(refs).toEqual([])
   })
 
+  // /v1/search was retired on 2026-10-01 (410 Gone). /v1.1/search takes the same filters but
+  // returns one page of ids per request (offset/limit); object records stay on /v1/objects.
+  it('asks the paginated v1.1 search for one page and reads objects from v1', async () => {
+    const urls: string[] = []
+    const inner = ctxRouting(SEARCH, { '436535': OBJ_PD, '999999': OBJ_COPYRIGHT })
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        urls.push(String(input))
+        return inner.fetch(input, init)
+      }) as typeof fetch,
+    }
+    await met().search({ text: 'wheat', modalities: ['image'], limit: 5 }, ctx)
+    const search = new URL(urls[0])
+    expect(search.pathname).toBe('/public/collection/v1.1/search')
+    expect(search.searchParams.get('offset')).toBe('0')
+    expect(search.searchParams.get('limit')).toBe('5')
+    expect(urls.slice(1).map(u => new URL(u).pathname).sort()).toEqual([
+      '/public/collection/v1/objects/436535',
+      '/public/collection/v1/objects/999999',
+    ])
+  })
+
+  it('pages upstream with offset and maps every id the page returns', async () => {
+    let searchUrl = ''
+    const inner = ctxRouting({ total: 40, objectIDs: [436535, 1] }, { '436535': OBJ_PD, '1': { ...OBJ_PD, objectID: 1, title: 'Second' } })
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).includes('/search')) searchUrl = String(input)
+        return inner.fetch(input, init)
+      }) as typeof fetch,
+    }
+    const refs = await met().search({ text: 'wheat', modalities: ['image'], limit: 2, controls: { page: 3 } }, ctx)
+    expect(new URL(searchUrl).searchParams.get('offset')).toBe('4')
+    expect(new URL(searchUrl).searchParams.get('limit')).toBe('2')
+    expect(refs.map(r => r.title)).toEqual(['Wheat Field with Cypresses', 'Second'])
+  })
+
+  it('never fetches more objects than one page even if upstream returns extra ids', async () => {
+    let objectFetches = 0
+    const ids = [436535, 2, 3, 4, 5, 6]
+    const inner = ctxRouting({ total: 6, objectIDs: ids }, Object.fromEntries(ids.map(id => [String(id), { ...OBJ_PD, objectID: id }])))
+    const ctx: ProviderContext = {
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).includes('/objects/')) objectFetches++
+        return inner.fetch(input, init)
+      }) as typeof fetch,
+    }
+    const refs = await met().search({ text: 'wheat', modalities: ['image'], limit: 3 }, ctx)
+    expect(objectFetches).toBe(3)
+    expect(refs).toHaveLength(3)
+  })
+
   it('forwards documented Met search options', async () => {
     let searchUrl = ''
     const ctx: ProviderContext = {

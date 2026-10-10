@@ -24,6 +24,10 @@ export interface MetSearchOptions {
 }
 
 const BASE = 'https://collectionapi.metmuseum.org/public/collection/v1'
+// /v1/search (every matching id in one response) was retired on 2026-10-01 and now answers
+// 410. /v1.1/search takes the same filters plus offset/limit and returns one page of ids;
+// upstream caps limit at 500 and serves only the first 10,000 results of a query.
+const SEARCH = 'https://collectionapi.metmuseum.org/public/collection/v1.1/search'
 
 interface MetSearchResponse { total: number; objectIDs: number[] | null }
 interface MetObject {
@@ -81,9 +85,12 @@ export function met(config: MetConfig = {}) {
     description: 'Open Access artworks from the Metropolitan Museum of Art',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
-      const searchUrl = new URL(`${BASE}/search`)
+      const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
+      const searchUrl = new URL(SEARCH)
       searchUrl.searchParams.set('q', q.text)
       searchUrl.searchParams.set('hasImages', 'true')
+      searchUrl.searchParams.set('offset', String(offsetForPage(q.controls?.page, n) ?? 0))
+      searchUrl.searchParams.set('limit', String(n))
       const opts = q.providerOptions as MetSearchOptions | undefined
       setIfBoolean(searchUrl, 'isHighlight', opts?.isHighlight)
       setIfBoolean(searchUrl, 'title', opts?.title)
@@ -98,10 +105,8 @@ export function met(config: MetConfig = {}) {
       const res = await ctx.fetch(searchUrl.toString(), { signal: ctx.signal })
       const { objectIDs } = await okJson<MetSearchResponse>(res, 'met search')
       if (!objectIDs || objectIDs.length === 0) return []
-      const n = Math.min(config.maxObjects ?? q.limit ?? 12, 30)
-      // the search endpoint returns every matching id — page = a window over that list
-      const from = offsetForPage(q.controls?.page, n) ?? 0
-      const objects = await Promise.all(objectIDs.slice(from, from + n).map(async (id) => {
+      // objectIDs is already the requested page; the slice only bounds the N+1 object fan-out
+      const objects = await Promise.all(objectIDs.slice(0, n).map(async (id) => {
         try {
           const r = await ctx.fetch(`${BASE}/objects/${id}`, { signal: ctx.signal })
           if (!r.ok) return null
