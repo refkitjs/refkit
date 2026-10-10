@@ -1,5 +1,12 @@
 # @refkit/mcp
 
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [9f3985b]
+  - @refkit/provider-met@0.4.1
+
 ## 0.8.1
 
 ### Patch Changes
