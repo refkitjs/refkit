@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { createRefkit, INTENTS } from '@refkit/core'
+import { openverse } from '@refkit/provider-openverse'
+import { createRefkitMcpServer } from '../index'
 
 // The agent plugin (plugins/refkit) launches this package by exact version, so its
 // manifests are checked here, next to the package they pin.
@@ -75,5 +80,94 @@ describe('agent plugin manifests', () => {
     const entries = walk(PLUGIN)
     expect(entries.filter(e => e.symlink).map(e => e.path)).toEqual([])
     expect(entries.filter(e => FORBIDDEN_FILES.has(e.name)).map(e => e.path)).toEqual([])
+  })
+})
+
+const SKILLS = join(PLUGIN, 'skills')
+const SKILL_NAMES = ['check-usage-rights', 'find-references']
+const skillText = (name: string) => readFileSync(join(SKILLS, name, 'SKILL.md'), 'utf8')
+
+// Parameters each skill teaches, per tool. Checked against the live tool schema so a
+// renamed parameter fails here instead of leaving the skill teaching a dead name.
+const SKILL_TOOL_PARAMS: Record<string, Record<string, string[]>> = {
+  'find-references': {
+    search_references: ['intent', 'gateFor', 'modalities', 'sources', 'minRelevance', 'limit', 'cursor', 'explain', 'deadlineMs'],
+  },
+  'check-usage-rights': {
+    evaluate_use: ['license', 'licenseVersion', 'canonicalUrl', 'author', 'title', 'editorialOnly', 'jurisdiction', 'userJurisdiction', 'intent'],
+    build_attribution: ['license', 'licenseVersion', 'canonicalUrl', 'author', 'title'],
+  },
+}
+
+/** `key: value` lines between the leading `---` fences. A folded or multi-line value
+ *  shows up as extra keys, which the tests reject. */
+function frontMatter(markdown: string): Record<string, string> {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(markdown)
+  if (!match) throw new Error('SKILL.md has no front matter')
+  return Object.fromEntries(match[1].split('\n').map(line => {
+    const colon = line.indexOf(':')
+    return [line.slice(0, colon).trim(), line.slice(colon + 1).trim()]
+  }))
+}
+
+async function listTools() {
+  const refkit = createRefkit({ providers: [openverse()], fetch: (async () => new Response('{}')) as typeof fetch })
+  const server = createRefkitMcpServer(refkit)
+  const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+  const client = new Client({ name: 'plugin-manifest-test', version: '1.0.0' })
+  await Promise.all([client.connect(clientT), server.connect(serverT)])
+  const { tools } = await client.listTools()
+  await client.close()
+  return tools
+}
+
+describe('agent plugin skills', () => {
+  it('ships exactly the two skills, where the Codex manifest looks for them', () => {
+    expect(resolve(PLUGIN, codexManifest.skills)).toBe(SKILLS)
+    const dirs = readdirSync(SKILLS, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name)
+    expect(dirs.sort()).toEqual(SKILL_NAMES)
+  })
+
+  it.each(SKILL_NAMES)('%s has name + a one-line, YAML-safe description', name => {
+    const fm = frontMatter(skillText(name))
+    expect(Object.keys(fm)).toEqual(['name', 'description'])
+    expect(fm.name).toBe(name)
+    expect(fm.description.length).toBeGreaterThan(20)
+    expect(fm.description.length).toBeLessThanOrEqual(1024)
+    // An unquoted YAML scalar breaks on ": " or " #", and on a leading indicator.
+    expect(fm.description).not.toMatch(/: | #/)
+    expect(fm.description).not.toMatch(/^[|>[{&*!%@`'"-]/)
+  })
+
+  it.each(SKILL_NAMES)('%s stays provider-neutral', name => {
+    expect(skillText(name)).not.toMatch(/claude|codex|anthropic|openai/i)
+  })
+
+  it.each(SKILL_NAMES)('%s names every intent the tools accept', name => {
+    for (const intent of INTENTS) expect(skillText(name)).toContain(`\`${intent}\``)
+  })
+
+  it('teaches only tool parameters that exist, and names each tool it relies on', async () => {
+    const tools = await listTools()
+    for (const [skill, byTool] of Object.entries(SKILL_TOOL_PARAMS)) {
+      const text = skillText(skill)
+      for (const [toolName, params] of Object.entries(byTool)) {
+        const tool = tools.find(t => t.name === toolName)
+        expect(tool, `${skill} relies on missing tool ${toolName}`).toBeDefined()
+        expect(text).toContain(`\`${toolName}\``)
+        const accepted = Object.keys(tool!.inputSchema.properties ?? {})
+        for (const param of params) {
+          expect(accepted, `${toolName} no longer accepts ${param} (${skill})`).toContain(param)
+          expect(text, `${skill} should mention \`${param}\``).toContain(`\`${param}\``)
+        }
+      }
+    }
+  })
+
+  it('find-references explains every verdict decision the tools return', async () => {
+    const evaluate = (await listTools()).find(t => t.name === 'evaluate_use')!
+    const decisions = (evaluate.outputSchema!.properties!.decision as { enum: string[] }).enum
+    expect(decisions.length).toBeGreaterThan(0)
+    for (const decision of decisions) expect(skillText('find-references')).toContain(`\`${decision}\``)
   })
 })
