@@ -171,3 +171,22 @@ describe('agent plugin skills', () => {
     for (const decision of decisions) expect(skillText('find-references')).toContain(`\`${decision}\``)
   })
 })
+
+describe('agent plugin README', () => {
+  const readme = () => readFileSync(join(PLUGIN, 'README.md'), 'utf8')
+  // The directory refuses a README under 40 words, not counting code blocks.
+  const proseWords = (markdown: string) => markdown.replace(/```[\s\S]*?```/g, ' ').split(/\s+/).filter(Boolean).length
+
+  it('has at least 40 words of prose', () => {
+    expect(proseWords(readme())).toBeGreaterThanOrEqual(40)
+  })
+
+  it('discloses what it runs and contacts, and asks for no credentials', () => {
+    const text = readme()
+    expect(text).toContain('@refkit/mcp')
+    expect(text).toMatch(/npm registry/)
+    expect(text).toMatch(/not legal advice/i)
+    // The directory holds plugins that tell users to export credentials.
+    expect(text).not.toMatch(/export\s+[A-Z_]*KEY/)
+  })
+})
