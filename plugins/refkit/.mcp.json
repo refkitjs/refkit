@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "refkit": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@refkit/mcp@0.8.2"
+      ]
+    }
+  }
+}

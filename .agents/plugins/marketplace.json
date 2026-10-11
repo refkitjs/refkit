@@ -1,0 +1,21 @@
+{
+  "name": "refkit",
+  "interface": {
+    "displayName": "refkit"
+  },
+  "plugins": [
+    {
+      "name": "refkit",
+      "description": "License-aware reference search for creative work: find images, art, textures, audio and text across open sources, with a use verdict and attribution line per result.",
+      "source": {
+        "source": "local",
+        "path": "./plugins/refkit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
