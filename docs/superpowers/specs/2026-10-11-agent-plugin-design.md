@@ -158,9 +158,11 @@ only, not the parameter list.
 
 ### `find-references`
 
-Triggers: the user wants reference or source material. That means images, artworks,
-photos, textures, HDRIs, 3D models, video, music, sound effects, poems, public-domain
-books, moodboards, or "something I can use for X".
+Triggers: the user wants creative reference or source material. That means images,
+artworks, photos, textures, video, music, sound effects, poems, public-domain books,
+moodboards, or "something I can use for X". Not code references or software
+dependencies: both host agents are coding agents. HDRIs and 3D models stay out until a
+default keyless source returns them (Poly Haven ships with `assetType: 'textures'`).
 
 Content:
 
@@ -189,8 +191,9 @@ Content:
 
 ### `check-usage-rights`
 
-Triggers: the user has a specific work (a URL, a license, an author) and asks whether
-they may use it for something, or how to credit it.
+Triggers: the user has a specific creative work (a URL, a license, an author) and asks
+whether they may use it for something, or how to credit it. Not software or code
+licenses: refkit's license ids don't cover them.
 
 Content:
 

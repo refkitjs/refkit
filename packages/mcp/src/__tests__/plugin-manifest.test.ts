@@ -4,9 +4,10 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit, INTENTS } from '@refkit/core'
+import { createRefkit, INTENTS, LICENSE_IDS } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { createRefkitMcpServer } from '../index'
+import { BYOK_SOURCES, defaultProviders } from '../cli'
 
 // The agent plugin (plugins/refkit) launches this package by exact version, so its
 // manifests are checked here, next to the package they pin.
@@ -110,16 +111,22 @@ function frontMatter(markdown: string): Record<string, string> {
   }))
 }
 
-async function listTools() {
+async function withClient<T>(use: (client: Client) => Promise<T>): Promise<T> {
   const refkit = createRefkit({ providers: [openverse()], fetch: (async () => new Response('{}')) as typeof fetch })
   const server = createRefkitMcpServer(refkit)
   const [clientT, serverT] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'plugin-manifest-test', version: '1.0.0' })
   await Promise.all([client.connect(clientT), server.connect(serverT)])
-  const { tools } = await client.listTools()
-  await client.close()
-  return tools
+  try {
+    return await use(client)
+  } finally {
+    await client.close()
+  }
 }
+
+const listTools = () => withClient(async client => (await client.listTools()).tools)
+const callTool = (name: string, args: Record<string, unknown>) =>
+  withClient(async client => (await client.callTool({ name, arguments: args })).structuredContent as Record<string, unknown>)
 
 describe('agent plugin skills', () => {
   it('ships exactly the two skills, where the Codex manifest looks for them', () => {
@@ -188,5 +195,71 @@ describe('agent plugin README', () => {
     expect(text).toMatch(/not legal advice/i)
     // The directory holds plugins that tell users to export credentials.
     expect(text).not.toMatch(/export\s+[A-Z_]*KEY/)
+  })
+})
+
+/** The first line of `text` that starts with `prefix` ('' when none does). */
+const lineStartingWith = (text: string, prefix: string) => text.split('\n').find(l => l.startsWith(prefix)) ?? ''
+const licenseIdsIn = (line: string) =>
+  [...line.matchAll(/`([^`]+)`/g)].map(m => m[1]).filter(t => (LICENSE_IDS as readonly string[]).includes(t))
+
+// The skills and README describe what the shipped server does; these tests ask the
+// server rather than restating its behavior, so a change in core shows up here.
+describe('agent plugin text matches what the server does', () => {
+  const canonicalUrl = 'https://example.org/work'
+
+  it('check-usage-rights says which licenses need no credit, and which only lack a credit line', async () => {
+    const creditFree: string[] = []
+    const noCreditLine: string[] = []
+    for (const license of LICENSE_IDS) {
+      if ((await callTool('build_attribution', { license, canonicalUrl })).required) continue
+      const verdict = await callTool('evaluate_use', { license, canonicalUrl, intent: 'commercial-product' })
+      ;(verdict.decision === 'allowed' ? creditFree : noCreditLine).push(license)
+    }
+    expect(noCreditLine.length).toBeGreaterThan(0)
+    const text = skillText('check-usage-rights')
+    expect(licenseIdsIn(lineStartingWith(text, '`required: false` means no credit is needed only for')).sort()).toEqual(creditFree.sort())
+    expect(licenseIdsIn(lineStartingWith(text, '`required: false` for ')).sort()).toEqual(noCreditLine.sort())
+  })
+
+  it('check-usage-rights files editorial-only under denied, and names the real needs-review causes', async () => {
+    const editorial = await callTool('evaluate_use', { license: 'CC0-1.0', canonicalUrl, intent: 'commercial-product', editorialOnly: true })
+    expect(editorial.decision).toBe('denied')
+    const ncRedistribution = await callTool('evaluate_use', { license: 'CC-BY-NC', canonicalUrl, intent: 'redistribution' })
+    expect(ncRedistribution.decision).toBe('needs-review')
+    const text = skillText('check-usage-rights')
+    expect(lineStartingWith(text, 'On `denied`')).toMatch(/editorial-only/)
+    const needsReview = lineStartingWith(text, 'On `needs-review`')
+    expect(needsReview).not.toMatch(/editorial/)
+    expect(needsReview).toMatch(/jurisdiction/)
+    expect(needsReview).toMatch(/NonCommercial/)
+  })
+
+  it('promises only resource kinds the keyless server can return', async () => {
+    const kinds = new Set((await defaultProviders({})).flatMap(p => p.kinds ?? []))
+    const texts: Record<string, string> = {
+      ...Object.fromEntries(SKILL_NAMES.map(name => [name, skillText(name)])),
+      'README.md': readFileSync(join(PLUGIN, 'README.md'), 'utf8'),
+      'codex interface': JSON.stringify(codexManifest.interface),
+    }
+    for (const [kind, pattern] of [['hdri', /hdri/i], ['3d-model', /3d model/i]] as const) {
+      if (kinds.has(kind)) continue
+      for (const [where, text] of Object.entries(texts)) expect(text, `${where} promises ${kind}`).not.toMatch(pattern)
+    }
+  })
+
+  it.each(SKILL_NAMES)('%s scopes its trigger away from software and code', name => {
+    expect(frontMatter(skillText(name)).description).toMatch(/not for (software|code)/i)
+  })
+
+  it('README names every key variable the server reads', () => {
+    const names = BYOK_SOURCES.flatMap(source => {
+      const read: string[] = []
+      source.key(new Proxy({}, { get: (_, prop) => { read.push(String(prop)); return undefined } }) as NodeJS.ProcessEnv)
+      return read
+    })
+    expect(names.length).toBeGreaterThanOrEqual(BYOK_SOURCES.length * 2)
+    const readme = readFileSync(join(PLUGIN, 'README.md'), 'utf8')
+    for (const name of names) expect(readme, `README should name ${name}`).toContain(`\`${name}\``)
   })
 })

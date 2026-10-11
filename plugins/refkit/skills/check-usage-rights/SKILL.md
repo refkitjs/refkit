@@ -1,6 +1,6 @@
 ---
 name: check-usage-rights
-description: Use when the user has a specific work (a link, a license, an author) and asks whether they may use it for a purpose such as a product, an ad, AI generation or republishing, or how to credit it.
+description: Use when the user has a specific creative work (an image, artwork, recording or text, given as a link, a license or an author) and asks whether they may use it for a product, an ad, AI generation or republishing, or how to credit it. Not for software or code licenses.
 ---
 
 # Check usage rights with refkit
@@ -47,11 +47,19 @@ Call `evaluate_use`, then report:
 - the `disclaimer`, once
 - on `allowed-with-attribution`, the returned `attribution.text` (or `attribution.html` for a web page), and where it must appear: next to the work, or in the credits
 
-When the user only needs the credit line, call `build_attribution` instead. If it returns `required: false` (for example for `CC0-1.0` or `PD`), say no credit is needed, and that crediting anyway is good practice.
+When the user only needs the credit line, call `build_attribution` instead, and read `required` carefully:
+
+`required: false` means no credit is needed only for `CC0-1.0`, `PD`, `pexels`, `pixabay` and `unsplash`. Say so, and that crediting anyway is good practice.
+
+`required: false` for `proprietary` or `unknown` only means refkit has no credit line to build, not that the work is free to use. Say the terms must be checked at the source, and run `evaluate_use` for the actual use.
 
 ## 4. When the answer is no
 
-On `denied`, explain which license term blocks the use (the `reasons` say). On `needs-review`, say exactly what to verify at the source: the license itself, an editorial-only restriction, or the jurisdiction. In both cases, offer to find usable alternatives with `search_references` and `gateFor` set to the same intent (the `find-references` skill).
+On `denied`, explain which license term blocks the use (the `reasons` say). A work the source marks editorial-only is denied for `commercial-product` and `ai-generation-input`.
+
+On `needs-review`, say exactly what to verify at the source: a license that couldn't be determined, a jurisdiction mismatch, or a permission the license leaves open (for example redistributing a NonCommercial work).
+
+In both cases, offer to find usable alternatives with `search_references` and `gateFor` set to the same intent (the `find-references` skill).
 
 ## Not legal advice
 

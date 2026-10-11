@@ -1,6 +1,6 @@
 ---
 name: find-references
-description: Use when the user wants reference or source material (images, artworks, photos, textures, HDRIs, 3D models, video, music, sound effects, poems or public-domain books) for a moodboard or a project, and needs to know whether each result may be used for their purpose.
+description: Use when the user wants creative reference or source material (images, artworks, photos, textures, video, music, sound effects, poems or public-domain books) for a moodboard or a project, and needs to know whether each result may be used for their purpose. Not for code references or software dependencies.
 ---
 
 # Find references with refkit
@@ -31,7 +31,7 @@ Pass one of the two on every search the user will act on. A bare license id with
 
 - Use short, concrete nouns and adjectives ("storm at sea oil painting", "mossy rock texture"), not full sentences.
 - `modalities` defaults to images. Set it for other media: `["audio"]` for music and sound effects, `["text"]` for poems and books, `["video"]` for footage.
-- The tool description lists the configured sources and what each covers. Use `sources` to target one when the ask is domain-specific, for example Poly Haven for HDRIs and textures. Naming a source also makes a narrow source answer queries it would otherwise decline. Nailbook (Japanese nail art) declines off-topic queries unless named, and works best with Japanese tag words.
+- The tool description lists the configured sources and what each covers. Use `sources` to target one when the ask is domain-specific, for example Poly Haven or ambientCG for PBR textures. Naming a source also makes a narrow source answer queries it would otherwise decline. Nailbook (Japanese nail art) declines off-topic queries unless named, and works best with Japanese tag words.
 - Add `minRelevance` (0.5 keeps only real matches) when the user wants only close matches. Leave it off for broad exploration, because it can empty a batch.
 - `limit` sets how many results come back.
 
