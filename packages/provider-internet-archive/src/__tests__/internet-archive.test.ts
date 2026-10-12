@@ -46,6 +46,7 @@ describe('mediatypeToModality (D1)', () => {
 })
 
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { internetArchive } from '../index'
 
 const DOCS = [
@@ -195,7 +196,47 @@ describe('internetArchive search', () => {
       ctxResponding({ response: { numFound: 0, docs: [] } }, u => { seen = u }),
     )
     const q = new URL(seen).searchParams.get('q')!
-    expect(q).toBe('(x\\) OR \\(mediatype\\:audio) AND mediatype:(movies OR texts)')
+    expect(q).toBe('(x\\) OR \\(mediatype\\:audio) AND mediatype:(movies)')
+  })
+
+  it('asks only for the mediatypes of the requested modalities (video → movies, text → texts)', async () => {
+    const clauseFor = async (modalities: ('video' | 'text')[]) => {
+      let seen = ''
+      await internetArchive().search(
+        { text: 'jazz', modalities },
+        ctxResponding({ response: { numFound: 0, docs: [] } }, u => { seen = u }),
+      )
+      return new URL(seen).searchParams.get('q')
+    }
+    expect(await clauseFor(['video'])).toBe('(jazz) AND mediatype:(movies)')
+    expect(await clauseFor(['text'])).toBe('(jazz) AND mediatype:(texts)')
+    expect(await clauseFor(['text', 'video'])).toBe('(jazz) AND mediatype:(movies OR texts)')
+  })
+
+  it('returns [] without a request when neither video nor text is requested', async () => {
+    let calls = 0
+    const refs = await internetArchive().search(
+      { text: 'jazz', modalities: ['image'] },
+      ctxResponding({ response: { numFound: 1, docs: DOCS } }, () => { calls++ }),
+    )
+    expect(refs).toEqual([])
+    expect(calls).toBe(0)
+  })
+
+  it('passes provider conformance (testkit) on a text-only query', async () => {
+    // Behaves like advancedsearch: returns only the docs whose mediatype the
+    // query's `mediatype:(…)` clause names, so a clause that still asks for
+    // movies on a text-only query leaks films, which the testkit rejects.
+    const archive: ProviderContext = {
+      fetch: (async (input: string) => {
+        const clause = /mediatype:\(([^)]*)\)$/.exec(new URL(String(input)).searchParams.get('q') ?? '')
+        const wanted = new Set((clause?.[1] ?? '').split(' OR '))
+        const docs = DOCS.filter(d => wanted.has(d.mediatype))
+        return new Response(JSON.stringify({ response: { numFound: docs.length, docs } }), { status: 200 })
+      }) as typeof fetch,
+    }
+    const refs = await searchConformant(internetArchive(), archive.fetch, { queryExtras: { modalities: ['text'] } })
+    expect(refs.map(r => r.source.url)).toEqual(['https://archive.org/details/alices_adventures'])
   })
 
   it('declares kinds and description', () => {

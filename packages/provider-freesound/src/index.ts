@@ -56,7 +56,8 @@ interface FreesoundResult {
   username?: string
   url: string
   previews?: Record<string, string>
-  duration?: number
+  /** Seconds, as a float. */
+  duration?: number | null
   filesize?: number
   tags?: string[]
 }
@@ -75,6 +76,8 @@ function toAudioReference(r: FreesoundResult): EmittedReference | null {
     raw: { sourceTerms: 'https://freesound.org/help/tos_api/', sourceUrl },
   }
   const previewUrl = r.previews?.['preview-hq-mp3'] ?? r.previews?.['preview-lq-mp3']
+  const duration = r.duration
+  const hasDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
   return {
     modality: 'audio',
     kind: 'sound-effect',
@@ -83,6 +86,7 @@ function toAudioReference(r: FreesoundResult): EmittedReference | null {
     sourceUrl,
     rights,
     ...(previewUrl ? { preview: { url: previewUrl, mediaType: 'audio/mpeg' } } : {}),
+    ...(hasDuration ? { audio: { durationSec: duration } } : {}),
     raw: r,
   }
 }

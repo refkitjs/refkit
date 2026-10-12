@@ -21,9 +21,9 @@ describe('P2 integration: createRefkit + gutendex + poetrydb (offline)', () => {
   it('merges text references across both sources', async () => {
     const rk = createRefkit({ providers: [gutendex(), poetrydb()], fetch: routedFetch })
     const refs = await rk.search({ query: 'great', modalities: ['text'] })
-    const providers = new Set(refs.map(r => r.source.providerId))
-    expect(providers.has('gutendex')).toBe(true)
-    expect(providers.has('poetrydb')).toBe(true)
+    const sources = new Set(refs.map(r => r.source.id))
+    expect(sources.has('gutendex')).toBe(true)
+    expect(sources.has('poetrydb')).toBe(true)
     expect(refs.every(r => r.modality === 'text')).toBe(true)
   })
 

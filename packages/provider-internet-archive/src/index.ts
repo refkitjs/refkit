@@ -37,6 +37,14 @@ export function mediatypeToModality(mt: string): Modality | null {
   return MEDIATYPE_MODALITY[mt] ?? null
 }
 
+/** The mediatypes to ask advancedsearch for: only those of the requested
+ *  modalities (movies for video, texts for text), in a fixed order. */
+function mediatypesFor(modalities: readonly Modality[]): string[] {
+  return Object.entries(MEDIATYPE_MODALITY)
+    .filter(([, modality]) => modalities.includes(modality))
+    .map(([mediatype]) => mediatype)
+}
+
 interface IaDoc {
   identifier: string
   title?: string | string[]
@@ -93,8 +101,11 @@ export function internetArchive(config: InternetArchiveConfig = {}) {
     description: 'Public-domain and CC films and texts from the Internet Archive',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
+      // Ask only for what the query wants: a text-only search must not get films.
+      const mediatypes = mediatypesFor(q.modalities)
+      if (mediatypes.length === 0) return []
       const url = new URL(BASE)
-      url.searchParams.set('q', `(${escapeLucene(q.text)}) AND mediatype:(movies OR texts)`)
+      url.searchParams.set('q', `(${escapeLucene(q.text)}) AND mediatype:(${mediatypes.join(' OR ')})`)
       for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'mediatype']) {
         url.searchParams.append('fl[]', f)
       }

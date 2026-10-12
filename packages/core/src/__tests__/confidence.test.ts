@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { lexicalHit, sourceConfidence } from '../confidence'
 import { tokenize } from '../rerank'
-import type { Reference } from '../reference'
+import type { ImageReference, Reference } from '../reference'
 import * as refkit from '../index'
 
-const ref = (id: string, title: string, opts: Partial<Reference> = {}): Reference => ({
+const ref = (id: string, title: string, opts: Partial<ImageReference> = {}): Reference => ({
   id,
   modality: 'image',
   title,
-  source: { providerId: 'p', sourceUrl: `https://x/${id}` },
+  source: { id: 'p', url: `https://x/${id}` },
   canonicalUrl: `https://x/${id}`,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } },
   verifiedAt: '2026-06-24T00:00:00.000Z',
@@ -43,7 +43,7 @@ describe('lexicalHit', () => {
     const q = tokenize('lion')
     expect(lexicalHit(q, ref('a', 'Untitled', { tags: ['lion', 'cub'] }))).toBe(true)
     expect(lexicalHit(q, ref('b', 'Untitled', { description: 'a sleeping lion' }))).toBe(true)
-    expect(lexicalHit(q, ref('c', 'Untitled', { text: { excerpt: 'the lion sleeps', excerptKind: 'passage' } }))).toBe(true)
+    expect(lexicalHit(q, { title: 'Untitled', text: { excerpt: 'the lion sleeps', excerptKind: 'passage' } })).toBe(true)
     expect(lexicalHit(q, ref('d', 'Untitled'))).toBe(false)
   })
 

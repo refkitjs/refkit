@@ -9,26 +9,27 @@ import { sourceConfidence } from './confidence'
 import type { Modality } from './modality'
 import type { Intent } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
-import type { ProviderOptionsById, ReferenceProvider } from './provider'
+import type { ReferenceProvider, SourceOptionsById } from './provider'
 import type { SearchControls } from './controls'
 import { mergeReferences, type MergeOptions, type RightsConflict } from './merge'
 import { normalizeQuery, requestedControlKeys, supportedControlKeys, unsupportedControlKeys } from './query'
 import { runProviderSearch, type ProviderRun, type ProviderRunDeps } from './provider-run'
 import { cursorSeenKey } from './cursor'
-import type { ProviderSkipReason } from './select'
+import type { SourceSkipReason } from './select'
 // Types only — the client imports this module, never the other way round.
-import type { ProviderSearchStatus, SearchControlsMeta, SearchGateMeta, SearchThresholdMeta } from './client'
+import type { SourceStatus, SearchControlsMeta, SearchGateMeta, SearchThresholdMeta } from './client'
 
 export interface PassDeps {
   /** Every configured provider — statuses are reported for all of them. */
   providers: readonly ReferenceProvider[]
   /** The subset this search fans out to (from selectProviders). */
   chosen: readonly ReferenceProvider[]
-  skipReasons: Map<string, ProviderSkipReason>
+  skipReasons: Map<string, SourceSkipReason>
   query: string
   modalities: Modality[]
   controls?: SearchControls
-  providerOptions?: ProviderOptionsById
+  /** Per-source options keyed by source id; each provider gets only its own entry. */
+  sourceOptions?: SourceOptionsById
   /** Per-provider candidate budget (the overfetched pool, ≥ the caller's limit). */
   fetchLimit: number
   run: ProviderRunDeps
@@ -48,13 +49,13 @@ export interface PassDeps {
   /** Already-returned cursor keys to filter out (load-more). */
   seen?: Set<number>
   signal?: AbortSignal
-  onProviderError?: (providerId: string, error: unknown) => void
+  onSourceError?: (sourceId: string, error: unknown) => void
 }
 
 export interface PassOutcome {
   refs: Reference[] // post merge/rerank/threshold/gate/seen-filter, best-first
   controlsMeta?: SearchControlsMeta
-  statusByProvider: Map<string, ProviderSearchStatus>
+  statusBySource: Map<string, SourceStatus>
   gate?: SearchGateMeta
   threshold?: SearchThresholdMeta
   rightsConflicts: RightsConflict[]
@@ -81,15 +82,15 @@ async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T
   return results
 }
 
-/** What each provider was asked for vs. what it declares it can honour. */
+/** What each source was asked for vs. what its provider declares it can honour. */
 export function controlsMetaFor(providers: readonly ReferenceProvider[], controls: SearchControls | undefined): SearchControlsMeta | undefined {
   const asked = controls ?? {}
   const requested = requestedControlKeys(asked)
   if (requested.length === 0) return undefined
   return {
     requested,
-    appliedByProvider: Object.fromEntries(providers.map(p => [p.id, supportedControlKeys(p, asked)])),
-    ignoredByProvider: Object.fromEntries(providers.map(p => [p.id, unsupportedControlKeys(p, asked)])),
+    appliedBySource: Object.fromEntries(providers.map(p => [p.id, supportedControlKeys(p, asked)])),
+    ignoredBySource: Object.fromEntries(providers.map(p => [p.id, unsupportedControlKeys(p, asked)])),
   }
 }
 
@@ -101,31 +102,31 @@ export async function fanOut(deps: PassDeps, controls: SearchControls | undefine
       query: deps.query,
       modalities: deps.modalities,
       controls,
-      providerOptions: deps.providerOptions,
+      sourceOptions: deps.sourceOptions,
       limit: deps.fetchLimit,
     }, p)
-    return runProviderSearch(p, query, { ...deps.run, onError: error => deps.onProviderError?.(p.id, error) })
+    return runProviderSearch(p, query, { ...deps.run, onError: error => deps.onSourceError?.(p.id, error) })
   }
   return deps.concurrency
     ? mapBounded(deps.chosen, deps.concurrency, runProvider)
     : Promise.all(deps.chosen.map(runProvider))
 }
 
-/** Per-provider diagnostics for this pass, plus the ranked lists to merge.
- *  `perSourceIds` is parallel to `perSource` (a failed provider contributes no
+/** Per-source diagnostics for this pass, plus the ranked lists to merge.
+ *  `perSourceIds` is parallel to `perSource` (a failed source contributes no
  *  list, so index i of `perSource` is not index i of `chosen`). */
 export function collectStatuses(deps: PassDeps, runs: readonly ProviderRun[]): {
-  statusByProvider: Map<string, ProviderSearchStatus>
+  statusBySource: Map<string, SourceStatus>
   perSource: Reference[][]
   perSourceIds: string[]
   totalReturned: number
 } {
-  const statusByProvider = new Map<string, ProviderSearchStatus>()
+  const statusBySource = new Map<string, SourceStatus>()
   for (const p of deps.providers) {
-    // skipReasons explains WHY a provider sat this search out (sources filter vs
+    // skipReasons explains WHY a source sat this search out (sources filter vs
     // wrong modality vs undeclared kind).
     const reason = deps.skipReasons.get(p.id)
-    if (reason) statusByProvider.set(p.id, { providerId: p.id, status: 'skipped', reason })
+    if (reason) statusBySource.set(p.id, { sourceId: p.id, status: 'skipped', reason })
   }
   const perSource: Reference[][] = []
   const perSourceIds: string[] = []
@@ -134,8 +135,8 @@ export function collectStatuses(deps: PassDeps, runs: readonly ProviderRun[]): {
     const provider = deps.chosen[i]
     if (run.ok) {
       totalReturned += run.returned
-      statusByProvider.set(provider.id, {
-        providerId: provider.id,
+      statusBySource.set(provider.id, {
+        sourceId: provider.id,
         status: 'fulfilled',
         returned: run.returned,
         accepted: run.valid.length,
@@ -146,10 +147,10 @@ export function collectStatuses(deps: PassDeps, runs: readonly ProviderRun[]): {
       perSource.push(run.valid)
       perSourceIds.push(provider.id)
     } else {
-      statusByProvider.set(provider.id, { providerId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
+      statusBySource.set(provider.id, { sourceId: provider.id, status: 'failed', error: errorSummary(run.error), latencyMs: run.latencyMs })
     }
   })
-  return { statusByProvider, perSource, perSourceIds, totalReturned }
+  return { statusBySource, perSource, perSourceIds, totalReturned }
 }
 
 /** Per-source merge weights from lexical confidence, stamped onto each fulfilled
@@ -166,15 +167,15 @@ export function confidenceStage(
   deps: PassDeps,
   perSource: readonly Reference[][],
   perSourceIds: readonly string[],
-  statusByProvider: Map<string, ProviderSearchStatus>,
+  statusBySource: Map<string, SourceStatus>,
 ): number[] | undefined {
   if (!deps.confidence) return undefined
   const { floor } = deps.confidence
   const qTokens = [...new Set(tokenize(deps.query))]
   const weights = perSource.map(list => sourceConfidence(qTokens, list, floor))
   perSourceIds.forEach((id, i) => {
-    const status = statusByProvider.get(id)
-    if (status && perSource[i].length > 0) statusByProvider.set(id, { ...status, confidence: weights[i] })
+    const status = statusBySource.get(id)
+    if (status && perSource[i].length > 0) statusBySource.set(id, { ...status, confidence: weights[i] })
   })
   return weights
 }
@@ -233,16 +234,16 @@ export async function runPass(deps: PassDeps, page: number | undefined): Promise
   const controls = page !== undefined ? { ...deps.controls, page } : deps.controls
   const controlsMeta = controlsMetaFor(deps.providers, controls)
   const runs = await fanOut(deps, controls)
-  const { statusByProvider, perSource, perSourceIds, totalReturned } = collectStatuses(deps, runs)
+  const { statusBySource, perSource, perSourceIds, totalReturned } = collectStatuses(deps, runs)
   if (deps.chosen.length > 0 && !runs.some(r => r.ok)) {
-    throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all providers failed')
+    throw new AggregateError(runs.filter(r => !r.ok).map(r => (r as { error: unknown }).error), 'refkit.search: all sources failed')
   }
   const rightsConflicts: RightsConflict[] = []
-  const weights = confidenceStage(deps, perSource, perSourceIds, statusByProvider)
+  const weights = confidenceStage(deps, perSource, perSourceIds, statusBySource)
   const merged = mergeStage(deps, perSource, weights, rightsConflicts)
   const ranked = await rerankStage(deps, merged)
   const thresholded = applyThreshold(ranked, deps.minRelevance)
   const gated = applyGate(thresholded.refs, deps.gateFor, deps.gateContext)
   const refs = filterSeen(gated.refs, deps.seen)
-  return { refs, controlsMeta, statusByProvider, gate: gated.gate, threshold: thresholded.threshold, rightsConflicts, totalReturned }
+  return { refs, controlsMeta, statusBySource, gate: gated.gate, threshold: thresholded.threshold, rightsConflicts, totalReturned }
 }

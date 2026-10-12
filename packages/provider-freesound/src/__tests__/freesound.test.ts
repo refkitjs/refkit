@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { freesound, mapFreesoundLicense } from '../index'
 
 const ctxJson = (body: unknown, capture?: (url: string) => void): ProviderContext => ({
@@ -70,6 +71,30 @@ describe('freesound provider', () => {
     const refs = await freesound({ apiKey: 'k' }).search({ text: 'x', modalities: ['audio'] }, ctxJson(MIXED))
     expect(refs).toHaveLength(1)
     expect(refs[0].sourceUrl).toBe('https://freesound.org/people/frank/sounds/11/')
+  })
+
+  it('fills audio.durationSec from the requested duration field (float seconds)', async () => {
+    const refs = await freesound({ apiKey: 'k' }).search({ text: 'door', modalities: ['audio'] }, ctxJson(RESULTS))
+    expect(refs.map(r => r.audio)).toEqual([{ durationSec: 2.5 }, { durationSec: 5 }, { durationSec: 1 }, { durationSec: 3 }])
+  })
+
+  it('leaves audio unset when duration is missing, null, zero or negative', async () => {
+    const NO_DURATION = {
+      count: 4, next: null, previous: null,
+      results: [
+        { ...RESULTS.results[0], duration: undefined },
+        { ...RESULTS.results[1], duration: null },
+        { ...RESULTS.results[2], duration: 0 },
+        { ...RESULTS.results[3], duration: -2.5 },
+      ],
+    }
+    const refs = await freesound({ apiKey: 'k' }).search({ text: 'door', modalities: ['audio'] }, ctxJson(NO_DURATION))
+    expect(refs.map(r => r.audio)).toEqual([undefined, undefined, undefined, undefined])
+  })
+
+  it('passes provider conformance (testkit) on the fixture', async () => {
+    const refs = await searchConformant(freesound({ apiKey: 'k' }), ctxJson(RESULTS).fetch)
+    expect(refs).toHaveLength(4)
   })
 
   it('forwards query, token, and fields; respects limit', async () => {

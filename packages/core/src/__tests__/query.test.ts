@@ -36,12 +36,12 @@ describe('normalizeQuery', () => {
     expect(nq.limit).toBe(10)
   })
 
-  it('passes only the matching providerOptions entry to the provider query', () => {
+  it('passes only the matching sourceOptions entry to the provider query', () => {
     const nq = normalizeQuery(
       {
         query: 'cat',
         modalities: ['image'],
-        providerOptions: {
+        sourceOptions: {
           p: { orderBy: 'latest' },
           other: { orderBy: 'relevant' },
         },

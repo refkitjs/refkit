@@ -6,6 +6,8 @@ The neutral brain of **refkit** — a dependency-light reference-retrieval toolk
 pnpm add @refkit/core @refkit/provider-openverse @refkit/provider-met
 ```
 
+**Providers and sources.** A *provider* is adapter code (a `ReferenceProvider` from a `@refkit/provider-*` package). Each provider instance serves one *source*, whose id (`provider.id`) is what `sources`, `sourceOptions` and `meta.sources` speak.
+
 ## Quickstart
 
 ```ts
@@ -56,14 +58,14 @@ await refkit.search({
 })
 ```
 
-Provider-specific escape hatches go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers own typed whitelists for the practical official search parameters they translate:
+Provider-specific escape hatches go under `sourceOptions`, keyed by source id. Core routes only the matching entry to that source's provider (which reads it as `NormalizedQuery.providerOptions`); providers own typed whitelists for the practical official search parameters they translate:
 
 ```ts
 await refkit.search({
   query: 'mountain trail',
   modalities: ['image'],
   controls: { orientation: 'landscape', safety: 'strict' },
-  providerOptions: {
+  sourceOptions: {
     unsplash: { collections: ['abc', 'def'], page: 2 },
     flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
     openverse: { source: ['flickr'], category: 'photograph', aspectRatio: 'wide' },
@@ -72,11 +74,13 @@ await refkit.search({
 })
 ```
 
-`providerOptions` is not a raw upstream passthrough. Each provider package exports its own `*SearchOptions` interface and keeps response-format/debug/auth-only parameters out when they would conflict with normalized references or provider credentials.
+An id in `sourceOptions` that matches no configured source is reported in `meta.warnings` (`unknown sourceOptions id(s) ignored: …`), worded like an unknown id in `sources`.
+
+`sourceOptions` is not a raw upstream passthrough. Each provider package exports its own `*SearchOptions` interface and keeps response-format/debug/auth-only parameters out when they would conflict with normalized references or provider credentials.
 
 Currently supported unified controls:
 
-| Provider id | Unified controls |
+| Source id | Unified controls |
 |---|---|
 | `unsplash` | `orientation`, `color`, `language`, `sort`, `safety`, `page` |
 | `pexels` | `orientation`, `color`, `language`, `media.size`, `page` |
@@ -87,7 +91,7 @@ Currently supported unified controls:
 | `openverse`, `openverse-audio` | `license.commercial`, `license.modification`, `license.allowUnknown`, `page` |
 | `gutendex` | `language`, `text.copyright`, `page` |
 | `brave` | `safety` |
-| `artic`, `ambientcg`, `europeana`, `freesound`, `internet-archive`, `jamendo`, `met`, `polyhaven`, `smithsonian`, `wikimedia-commons` | `page` |
+| `artic`, `ambientcg`, `europeana`, `freesound`, `internet-archive`, `jamendo`, `met`, `polyhaven`, `polyhaven-hdri`, `smithsonian`, `wikimedia-commons` | `page` |
 | `nailbook`, `poetrydb`, `rijksmuseum` | none — their endpoints expose no stateless control refkit can translate |
 
 A control reaches a provider only if that provider declares it in `capabilities.controls`; everything else is reported as ignored instead of silently dropped.
@@ -102,21 +106,45 @@ const { references, meta } = await refkit.searchWithMeta({
   gateFor: 'commercial-product',
 })
 
-meta.controls?.appliedByProvider
-meta.controls?.ignoredByProvider
-meta.providers  // per-source status: fulfilled / failed / skipped (+ reason), latencyMs, confidence
+meta.controls?.appliedBySource
+meta.controls?.ignoredBySource
+meta.sources    // per-source status: fulfilled / failed / skipped (+ reason), latencyMs, confidence
 meta.gate       // before/after/dropped counts when gateFor is used
 meta.threshold  // { minRelevance, dropped } when minRelevance is set
 meta.passes     // fan-out passes this call ran (> 1 only when a cursor advanced pages)
 meta.nextCursor // opaque "load more" token; absent = exhausted
-meta.warnings   // partial-result, rights-conflict and gate/threshold-drop notes
+meta.warnings   // unknown sources / sourceOptions ids, partial-result, rights-conflict and gate/threshold-drop notes
 ```
+
+## Errors a host can branch on
+
+- **Duplicate source ids.** `createRefkit` throws when two providers serve the same source id (`createRefkit: duplicate source id(s) [polyhaven] — …`). Configure each source once; Poly Haven's textures (`polyhaven()`) and HDRIs (`polyhaven({ assetType: 'hdris' })`, id `polyhaven-hdri`) are separate sources and can sit side by side.
+- **No source to search.** `search` / `searchWithMeta` throw a `SourceSelectionError` when nothing is left to fan out to. Branch on its fields, never its message:
+  - `code: 'no-matching-source'` — `sources` was given and none of it can serve the search: an unknown id, a known id lacking the modality or the kind, or `sources: []`. A caller mistake, to report back with the valid ids.
+  - `code: 'no-source-for-query'` — no `sources`, and no configured source supports the modalities (and kind) asked for.
+  - `requested` (the `sources` as passed; absent on an unscoped search), `unknown` (ids that match no configured source), `modalities`, and `kind` (when the search narrowed by `controls.media.kind`).
+
+  When nothing is left but at least one source *declined* the query through its own `accepts` predicate, the search returns an empty result instead of throwing: that source judged the query outside its domain, which is not a caller mistake.
+
+```ts
+import { isSourceSelectionError } from '@refkit/core'
+
+try {
+  await refkit.search({ query: 'lion', modalities: ['image'], sources: ['unsplsh'] })
+} catch (e) {
+  if (isSourceSelectionError(e) && e.code === 'no-matching-source') {
+    console.warn(`unknown source id(s): ${e.unknown.join(', ')}`)
+  } else throw e
+}
+```
+
+`isSourceSelectionError(e)` is true for an instance of this copy's class, and also for one thrown by another copy of `@refkit/core` (a client built against a different install, or core bundled twice), where `instanceof` fails: it then checks `name === 'SourceSelectionError'`, a `code` from `SOURCE_SELECTION_ERROR_CODES`, and the `unknown` and `modalities` arrays. `SourceSelectionErrorCode` is the type of `code`.
 
 ## Ranking & rerank
 
 Results are fused across sources with **Reciprocal Rank Fusion**, weighted per source by how well that source's batch matched the query, and then reranked for the query. Both are defaults:
 
-- **Source confidence** (`RefkitOptions.sourceConfidence`, default on) weights each source's RRF contribution by `floor + (1 − floor) × hitRate`, where `hitRate` is the fraction of its refs whose text mentions any query token and `floor` is `0.1` — a source is dampened, never erased. `sourceConfidence: false` for unweighted fusion, `{ floor: 0.3 }` to dampen less. Every fulfilled source reports its weight as `meta.providers[].confidence`; a source that returned nothing reports none.
+- **Source confidence** (`RefkitOptions.sourceConfidence`, default on) weights each source's RRF contribution by `floor + (1 − floor) × hitRate`, where `hitRate` is the fraction of its refs whose text mentions any query token and `floor` is `0.1` — a source is dampened, never erased. `sourceConfidence: false` for unweighted fusion, `{ floor: 0.3 }` to dampen less. Every fulfilled source reports its weight as `meta.sources[].confidence`; a source that returned nothing reports none.
 - **`lexicalReranker(opts?)`** is the default reranker: no model, no network. It scores each result over `title + description + tags + text.excerpt` (CJK via character bigrams), blends in the incoming fused relevance (`fusionWeight`, default `0.5`), adds a resolution boost (`qualityWeight` `0.15`) and optionally license permissiveness (`licenseWeight`, default `0`) or the source's own `sourceScore` (`sourceScoreWeight`, default `0`), then emits greedily with a per-source diversity penalty (`sourceDiversity` `0.1`) and a same-source near-duplicate-title penalty (`nearDuplicatePenalty` `0.25` above a title-token Jaccard of `nearDuplicateThreshold` `0.7`). The greedy penalties steer order only; the reported `relevance` is the normalised blend.
 - **Replace or disable it** — `RefkitOptions.rerank` sets the client default, `SearchInput.rerank` overrides per call; `false` on either returns raw cross-source fusion order.
 - **Bring your own** — the `Reranker` hook receives `{ query, refs, signal }` and returns reordered refs, so you can wire a CLIP/embedding/LLM reranker to your own API. `core` ships no model; this is the only seam. `refText(ref)` and `tokenize(text)` are exported so a custom reranker can read the same text with the same tokenizer.
@@ -177,9 +205,44 @@ export const example = () => defineProvider({
 })
 ```
 
-Core validates each item against `emittedReferenceSchema` at the boundary, then `completeReference` stamps the fields that are core's concern — `id` (content-addressed from `providerId` + `sourceUrl`), `source`, `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, and a `relevance` of zero until the merge scores it — and truncates to the requested `limit`. A provider never computes an id, never writes provenance or a score, and never post-truncates. A single malformed item is reported and dropped (`meta.providers[].rejected`), not fatal.
+Core validates each item against `emittedReferenceSchema` at the boundary, then `completeReference` stamps the fields that are core's concern — `id` (content-addressed from the source id + `sourceUrl`), `source` (`{ id, url }`), `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, and a `relevance` of zero until the merge scores it — and truncates to the requested `limit`. A provider never computes an id, never writes provenance or a score, and never post-truncates. A single malformed item — or one whose `modality` is outside what this source was asked for (the requested modalities it declares) — is dropped, counted in `meta.sources[].rejected` and passed to `onSourceError`; it is not fatal to the batch. (`runProviderSearch`, which this builds on, is exported and applies the same rule to the `modalities` of the query it is given.)
 
 `LicenseId` is an **open** string. Known ids carry a row in `LICENSE_FACTS`; anything else resolves to the `unknown` row, which grants nothing. A source whose terms are narrower than the label it declares ships its own `rights.facts` row, and every consumer — the use-gate, the merge's conflict resolution, attribution, the reranker's license boost — reads facts via `factsOf(rights)`, never the id string.
+
+## Reference variants
+
+`EmittedReference` and `Reference` are unions keyed by `modality`; each variant is exported (`EmittedImageReference` … `EmittedTextReference`, `ImageReference` … `TextReference`). Every variant carries the common fields — `modality`, `kind?`, `title?`, `description?`, `tags?`, `rights`, `thumbnail?`, `sourceScore?`, `raw?` — plus `sourceUrl` and `canonicalUrl?` when emitted, or the core-stamped `id`, `source` (`{ id, url }`), `canonicalUrl`, `verifiedAt` and `relevance` when complete. `thumbnail` is always an image a UI can show: the picture itself, a video poster, audio cover art or a book cover, never a landing page, JSON or an audio file. The other fields belong to one modality:
+
+| `modality` | Its own fields |
+|---|---|
+| `image` | `preview?` (`mediaType` `image/*`), `visual?`, `perceptualHash?` |
+| `video` | `preview?` (`mediaType` `video/*`), `visual?`, `video?: VideoMeta` |
+| `audio` | `preview?` (`mediaType` `audio/*`), `audio?: AudioMeta` |
+| `text` | `text?: TextMeta` (`excerpt`, `excerptKind`, `locator?`) |
+
+- **`visual`** (`VisualMeta`: `width`, `height` in pixels, `dominantColors?`) is the size of the original image or video. A provider that only knows a rendition's size leaves `visual` unset and puts that size on `preview.width` / `preview.height`.
+- **`VideoMeta`**: `durationSec?` (seconds, a float) and `fps?`.
+- **`AudioMeta`**: `durationSec?` (seconds, a float), `bitrateKbps?` (kilobits per second, bits/s ÷ 1000), `sampleRateHz?` (hertz), `channels?`, and `format?` (a short container/codec name such as `mp3` or `flac`).
+
+The bundled sources fill the audio and video metadata from what their search responses already carry (no extra requests):
+
+| Source | Fills |
+|---|---|
+| `openverse-audio` | `audio.durationSec`, `audio.bitrateKbps` and `audio.sampleRateHz` when Openverse reports them; `audio.format` when the filetype is a known audio format |
+| `freesound`, `jamendo` | `audio.durationSec` |
+| `pexels-video` | `video.durationSec`, and `visual` (the source video's size) |
+| `pixabay-video` | `video.durationSec`; only a rendition's size is known, so it stays on `preview` |
+
+A missing, non-finite, zero or negative upstream duration, bitrate or sample rate leaves that field unset. No bundled source fills `fps` or `channels` yet.
+
+Each variant declares the other variants' fields as `?: never`: a provider that writes, say, `visual` on an audio item gets a compile error, while code reading the union still sees `r.visual` as `VisualMeta | undefined` without narrowing first. At runtime `emittedReferenceSchema` (a discriminated union on `modality`) rejects an item whose `preview.mediaType` lacks its variant's prefix and strips any field that belongs to another modality.
+
+`Reference` is a type alias of a union, so it cannot be augmented by declaration merging, an interface cannot `extend` it, and `Omit<Reference, K>` loses the link between `modality` and its fields. Use a distributive omit:
+
+```ts
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+type Tile = DistributiveOmit<Reference, 'raw'>
+```
 
 ## Dedupe hooks
 
@@ -203,7 +266,7 @@ The hook compares `Reference` objects only. Core still never fetches, decodes, o
 - **Zero network** — no `fetch` call, no hard-coded endpoint in this package. Hosts inject `ProviderContext.fetch`.
 - **Substrate-agnostic** — no import of any host or orchestration framework.
 - **Only `zod`** as a non-relative dependency.
-- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits and is validated on every record, but core never acts on it: it is metadata for the host binding to honour.
+- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits (`REHOST_POLICIES`) and is validated on every record, but core never acts on it: it is metadata for the host binding to honour, and `@refkit/mcp` passes it to agents on every result.
 - **Core stamps its own fields** — `id`, `source`, `canonicalUrl`, `verifiedAt`, `relevance` and the per-provider `limit` come from core, never from a provider.
 - **strict-deny** — when rights can't be determined, deny / `needs-review` (never fail-open). Unknown, NonCommercial, NoDerivatives, and "no known copyright restrictions" never map to a usable license. Indeterminate facts (all three axes `'unknown'`) can never be allowed, and a cross-source conflict whose claims are incomparable resolves to `unknown`.
 

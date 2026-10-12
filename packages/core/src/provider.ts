@@ -10,12 +10,14 @@ export interface ProviderCapabilities {
 
 export type ProviderOptionValue = string | number | boolean | readonly string[] | undefined
 export type ProviderOptions = Record<string, ProviderOptionValue>
-export type ProviderOptionsById = Record<string, ProviderOptions | undefined>
+/** Per-source options, keyed by source id (`provider.id`). */
+export type SourceOptionsById = Record<string, ProviderOptions | undefined>
 
 export interface NormalizedQuery {
   text: string
   modalities: Modality[]
   controls?: SearchControls
+  /** This provider's own options: the caller's `sourceOptions` entry for its source id. */
   providerOptions?: ProviderOptions
   limit?: number
 }

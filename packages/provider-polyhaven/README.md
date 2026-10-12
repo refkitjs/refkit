@@ -21,6 +21,15 @@ const refkit = createRefkit({ providers: [polyhaven(/* config */)] })
 const refs = await refkit.search({ query: 'asphalt', modalities: ['image'] })
 ```
 
+### Textures and HDRIs are separate sources
+
+`polyhaven()` searches textures under the source id `polyhaven`. `polyhaven({ assetType: 'hdris' })` searches HDRIs under its own id, `polyhaven-hdri`, so both can be configured side by side (refkit rejects two sources with the same id). Use that id in `sources` and `sourceOptions`; reference ids and cache keys for HDRIs carry it too.
+
+```ts
+const refkit = createRefkit({ providers: [polyhaven(), polyhaven({ assetType: 'hdris' })] })
+const hdris = await refkit.search({ query: 'sunset', modalities: ['image'], sources: ['polyhaven-hdri'] })
+```
+
 ### ambientCG sibling factory
 
 `ambientcg()` lives in the same package and returns the same CC0-normalized image references, hitting ambientCG's API instead:

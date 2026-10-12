@@ -25,7 +25,7 @@ describe('canonicalizeUrl', () => {
 })
 
 describe('referenceId', () => {
-  it('is stable for the same provider+sourceUrl', () => {
+  it('is stable for the same source id + sourceUrl', () => {
     expect(referenceId('unsplash', 'https://x/1')).toBe(referenceId('unsplash', 'https://x/1'))
   })
 

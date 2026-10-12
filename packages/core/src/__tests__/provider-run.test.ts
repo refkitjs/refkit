@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { providerCacheKey, runProviderSearch } from '../provider-run'
+import { describe, expect, it, vi } from 'vitest'
+import { providerCacheKey, runProviderSearch, stableStringify } from '../provider-run'
 import { defineProvider, type KeyValueCache, type ReferenceProvider } from '../provider'
 import type { EmittedReference } from '../reference'
 
@@ -30,7 +30,7 @@ describe('providerCacheKey', () => {
     const a = providerCacheKey('p', { text: 'lion cub  "quoted" \n spaced', modalities: ['image'] })
     const b = providerCacheKey('p', { text: 'tiger', modalities: ['image'] })
     expect(a).not.toBe(b)
-    expect(a).toMatch(/^refkit:v3:p:[a-z0-9]+$/) // no spaces/quotes → safe for strict KV backends
+    expect(a).toMatch(/^refkit:v4:p:[a-z0-9]+$/) // no spaces/quotes → safe for strict KV backends
     expect(a.length).toBeLessThan(64)
   })
 
@@ -38,6 +38,18 @@ describe('providerCacheKey', () => {
     const a = providerCacheKey('p', { text: 'x', modalities: ['image'], providerOptions: { a: 1, b: 2 } })
     const b = providerCacheKey('p', { modalities: ['image'], providerOptions: { b: 2, a: 1 }, text: 'x' })
     expect(a).toBe(b)
+  })
+
+  it('is version 4: an entry cached in the pre-union shape (v3) is missed, not parsed', async () => {
+    const q = { text: 'q', modalities: ['image' as const] }
+    const key = providerCacheKey('p', q)
+    expect(key.startsWith('refkit:v4:p:')).toBe(true)
+    const cache = memoryCache()
+    const old = { id: 'p:old', modality: 'image', source: { id: 'p', url: 'https://x.test/old' }, canonicalUrl: 'https://x.test/old', rights: ref('https://x.test/old').rights, verifiedAt: '2026-01-01T00:00:00.000Z', relevance: 0 }
+    cache.store.set(key.replace(/^refkit:v4:/, 'refkit:v3:'), JSON.stringify({ q: stableStringify(q), refs: [old] }))
+    const run = await runProviderSearch(provider([ref('https://x.test/live')]), q, { fetch: (async () => new Response('')) as typeof fetch, cache, cacheTtlMs: 60_000, cacheRaw: true })
+    expect(run.ok && run.cached).toBeUndefined()
+    expect(run.ok && run.valid.map(r => r.canonicalUrl)).toEqual(['https://x.test/live'])
   })
 })
 
@@ -74,7 +86,39 @@ describe('runProviderSearch completion', () => {
     const run = await runProviderSearch(provider, { text: 'q', modalities: ['image'], limit: 3 }, { fetch: (async () => new Response('')) as typeof fetch, cacheTtlMs: 0, cacheRaw: true })
     expect(run.ok && run.valid.length).toBe(3)
     expect(run.ok && run.returned).toBe(5)
-    expect(run.ok && run.valid[0].source.providerId).toBe('p')
+    expect(run.ok && run.valid[0].source.id).toBe('p')
     expect(run.ok && run.valid[0].id.startsWith('p:')).toBe(true)
+  })
+})
+
+describe('runProviderSearch modality boundary', () => {
+  // Declares image only, so whatever the caller asked for, its share of the
+  // query (query.modalities) is ['image']: a video item is a modality leak.
+  const leaky = defineProvider({
+    id: 'p', modalities: ['image'],
+    search: async () => [
+      ref('https://x.test/1'),
+      { modality: 'video', sourceUrl: 'https://x.test/2', rights: ref('https://x.test/2').rights },
+    ],
+  })
+  const fetchStub = (async () => new Response('')) as typeof fetch
+
+  it('counts an item outside query.modalities as rejected and reports it, like a malformed item', async () => {
+    const onError = vi.fn()
+    const run = await runProviderSearch(leaky, { text: 'q', modalities: ['image'] }, { fetch: fetchStub, cacheTtlMs: 0, cacheRaw: true, onError })
+    expect(run.ok && run.valid.map(r => r.canonicalUrl)).toEqual(['https://x.test/1'])
+    expect(run.ok && run.returned).toBe(2)
+    expect(run.ok && run.rejected).toBe(1)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+    expect((onError.mock.calls[0][0] as Error).message).toMatch(/modality "video".*\[image\]/)
+  })
+
+  it('never caches the rejected item', async () => {
+    const cache = memoryCache()
+    await runProviderSearch(leaky, { text: 'q', modalities: ['image'] }, { fetch: fetchStub, cache, cacheTtlMs: 60_000, cacheRaw: true })
+    await new Promise(r => setTimeout(r)) // cache write is fire-and-forget
+    const [payload] = [...cache.store.values()]
+    expect(JSON.parse(payload).refs.map((r: { modality: string }) => r.modality)).toEqual(['image'])
   })
 })

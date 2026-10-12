@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { jamendo, mapJamendoLicense } from '../index'
 
 // Jamendo wraps results in { headers, results }. This ctx captures the request URL
@@ -20,9 +21,12 @@ const envelope = (results: unknown[]) => ({
   results,
 })
 
+// Fields as in Jamendo's documented /v3.0/tracks response (developer.jamendo.com,
+// whose example is this same track: `"duration":272`, integer seconds).
 const TRACK_BY = {
   id: '1848357',
   name: 'Sunrise',
+  duration: 272,
   artist_name: 'fankel',
   audio: 'https://prod-1.storage.jamendo.com/?trackid=1848357&format=mp31&from=app-devsite',
   audiodownload: 'https://prod-1.storage.jamendo.com/download/track/1848357/mp32/',
@@ -128,6 +132,30 @@ describe('jamendo provider', () => {
     expect(u.searchParams.get('tags')).toBe('ambient chill')
     expect(u.searchParams.get('artist_name')).toBe('fankel')
     expect(u.searchParams.get('offset')).toBe('20')
+  })
+
+  it('fills audio.durationSec from the track duration (integer seconds)', async () => {
+    const { ctx } = ctxCapturing(envelope([TRACK_BY]))
+    const [r] = await jamendo({ clientId: 'cid' }).search({ text: 'sunrise', modalities: ['audio'] }, ctx)
+    expect(r.audio).toEqual({ durationSec: 272 })
+  })
+
+  it('leaves audio unset when the duration is missing, null, zero or negative', async () => {
+    const { duration: _omit, ...noDuration } = TRACK_BY
+    const { ctx } = ctxCapturing(envelope([
+      noDuration,
+      { ...TRACK_NC, duration: null },
+      { ...TRACK_NO_LICENSE, duration: 0 },
+      { ...TRACK_BY, shareurl: 'https://www.jamendo.com/track/5000004', duration: -272 },
+    ]))
+    const refs = await jamendo({ clientId: 'cid' }).search({ text: 'x', modalities: ['audio'] }, ctx)
+    expect(refs.map(r => r.audio)).toEqual([undefined, undefined, undefined, undefined])
+  })
+
+  it('passes provider conformance (testkit) on the fixture', async () => {
+    const { ctx } = ctxCapturing(envelope([TRACK_BY, TRACK_NC, TRACK_NO_LICENSE]))
+    const refs = await searchConformant(jamendo({ clientId: 'cid' }), ctx.fetch)
+    expect(refs).toHaveLength(3)
   })
 
   it('returns [] when Jamendo finds nothing', async () => {

@@ -2,21 +2,21 @@ import { z } from 'zod'
 import { MODALITIES } from './modality'
 import { SEARCH_CONTROL_KEYS, type SearchControlKey } from './controls'
 import { INTENTS } from './evaluate-use'
-import { PROVIDER_SKIP_REASONS } from './select'
-import type { ProviderSearchStatus, SearchMeta } from './client'
+import { SOURCE_SKIP_REASONS } from './select'
+import type { SourceStatus, SearchMeta } from './client'
 
 // Runtime validation for the search-result metadata core produces, derived from
 // the same registries the orchestrator routes on — hosts (e.g. the MCP server's
 // tool outputSchema) describe `meta` without re-typing any vocabulary.
 export const searchControlKeySchema = z.enum(SEARCH_CONTROL_KEYS as [SearchControlKey, ...SearchControlKey[]])
 
-export const providerSearchStatusSchema: z.ZodType<ProviderSearchStatus> = z.object({
-  providerId: z.string(),
+export const sourceStatusSchema: z.ZodType<SourceStatus> = z.object({
+  sourceId: z.string(),
   status: z.enum(['fulfilled', 'failed', 'skipped']),
   returned: z.number().optional(),
   accepted: z.number().optional(),
   rejected: z.number().optional(),
-  reason: z.enum(PROVIDER_SKIP_REASONS).optional(),
+  reason: z.enum(SOURCE_SKIP_REASONS).optional(),
   error: z.string().optional(),
   latencyMs: z.number().optional(),
   cached: z.boolean().optional(),
@@ -32,11 +32,11 @@ export const searchMetaSchema: z.ZodType<SearchMeta> = z.object({
   passes: z.number(),
   controls: z.object({
     requested: z.array(searchControlKeySchema),
-    appliedByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
-    ignoredByProvider: z.record(z.string(), z.array(searchControlKeySchema)),
+    appliedBySource: z.record(z.string(), z.array(searchControlKeySchema)),
+    ignoredBySource: z.record(z.string(), z.array(searchControlKeySchema)),
   }).optional(),
-  providerOptions: z.array(z.string()).optional(),
-  providers: z.array(providerSearchStatusSchema),
+  sourceOptions: z.array(z.string()).optional(),
+  sources: z.array(sourceStatusSchema),
   gate: z.object({ intent: z.enum(INTENTS), before: z.number(), after: z.number(), dropped: z.number() }).optional(),
   threshold: z.object({ minRelevance: z.number(), dropped: z.number() }).optional(),
   nextCursor: z.string().optional().describe('opaque load-more cursor; pass back as `cursor` to fetch the next page with cross-page dedup'),

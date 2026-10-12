@@ -39,7 +39,7 @@ Pass one of the two on every search the user will act on. A bare license id with
 
 For each result worth showing, give:
 
-- the title and the source (`provider`)
+- the title and the source (`source`)
 - the license id
 - the verdict (`useVerdict.decision`) and its reason, in plain words
 - the `attribution` line when present (the user must reproduce it wherever the work appears)
