@@ -182,13 +182,18 @@ export function openverse(config: OpenverseConfig = {}) {
   })
 }
 
+// The one table that decides both `audio.format` and `preview.mediaType`, so the
+// two never disagree. Every type has the `audio/` prefix the audio variant's schema
+// requires (an audio-only WebM is `audio/webm`, not `video/webm`).
 const AUDIO_MIME: Record<string, string> = {
   mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', flac: 'audio/flac', opus: 'audio/opus',
+  mid: 'audio/midi', midi: 'audio/midi', webm: 'audio/webm',
 }
 
-// Jamendo's own format codes (mp31 = 96 kbps mp3, mp32 = VBR mp3), which Openverse
-// passes through as `filetype` for Jamendo-sourced items.
-const JAMENDO_MP3_CODES = new Set(['mp31', 'mp32'])
+// Source-specific `filetype` codes that name a format in AUDIO_MIME: Jamendo's
+// mp31 (96 kbps mp3) and mp32 (VBR mp3), and Wikimedia's ogx (an Ogg Vorbis
+// stream, served as application/ogg from a .ogg/.oga/.opus URL).
+const FILETYPE_ALIASES: Record<string, string> = { mp31: 'mp3', mp32: 'mp3', ogx: 'ogg' }
 
 interface OpenverseAudioResult {
   id: string
@@ -217,11 +222,11 @@ interface OpenverseAudioResponse { results: OpenverseAudioResult[] }
 const positive = (v: number | null | undefined): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0
 
-/** `filetype` as a file format: Jamendo's mp31/mp32 codes normalised to mp3; a
- *  value that is not a known audio format yields undefined. */
+/** `filetype` as a file format, case-insensitive, with the aliases above
+ *  resolved; a value that is not a key of AUDIO_MIME yields undefined. */
 function audioFormat(filetype: string | null | undefined): string | undefined {
   const t = (filetype ?? '').toLowerCase()
-  const format = JAMENDO_MP3_CODES.has(t) ? 'mp3' : t
+  const format = Object.hasOwn(FILETYPE_ALIASES, t) ? FILETYPE_ALIASES[t] : t
   return Object.hasOwn(AUDIO_MIME, format) ? format : undefined
 }
 
@@ -264,7 +269,10 @@ function toAudioReference(r: OpenverseAudioResult): EmittedReference {
     // The album art. The `waveform` URL is JSON peak data, not an image, so it is
     // never a thumbnail.
     ...(r.thumbnail ? { thumbnail: { url: r.thumbnail } } : {}),
-    preview: { url: r.url, mediaType: format ? AUDIO_MIME[format] : 'audio/mpeg' },
+    // A filetype outside AUDIO_MIME gets no preview rather than a guessed type: a
+    // host may re-serve this cache-allowed file under preview.mediaType. (Every
+    // filetype seen live in 2026-10 is in the table.)
+    ...(format ? { preview: { url: r.url, mediaType: AUDIO_MIME[format] } } : {}),
     ...(audio ? { audio } : {}),
     raw: r,
   }

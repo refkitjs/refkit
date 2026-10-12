@@ -140,11 +140,16 @@ describe('jamendo provider', () => {
     expect(r.audio).toEqual({ durationSec: 272 })
   })
 
-  it('leaves audio unset when the duration is missing or null', async () => {
+  it('leaves audio unset when the duration is missing, null, zero or negative', async () => {
     const { duration: _omit, ...noDuration } = TRACK_BY
-    const { ctx } = ctxCapturing(envelope([noDuration, { ...TRACK_NC, duration: null }]))
+    const { ctx } = ctxCapturing(envelope([
+      noDuration,
+      { ...TRACK_NC, duration: null },
+      { ...TRACK_NO_LICENSE, duration: 0 },
+      { ...TRACK_BY, shareurl: 'https://www.jamendo.com/track/5000004', duration: -272 },
+    ]))
     const refs = await jamendo({ clientId: 'cid' }).search({ text: 'x', modalities: ['audio'] }, ctx)
-    expect(refs.map(r => r.audio)).toEqual([undefined, undefined])
+    expect(refs.map(r => r.audio)).toEqual([undefined, undefined, undefined, undefined])
   })
 
   it('passes provider conformance (testkit) on the fixture', async () => {

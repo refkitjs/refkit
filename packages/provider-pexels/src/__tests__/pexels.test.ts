@@ -108,10 +108,10 @@ describe('pexelsVideo provider', () => {
     expect(r.video).toEqual({ durationSec: 12 })
   })
 
-  it('leaves video unset when the duration is null', async () => {
-    const NO_DURATION = { videos: [{ ...VIDEO_FIXTURE.videos[0], duration: null }] }
-    const [r] = await pexelsVideo({ apiKey: 'k' }).search({ text: 'cat', modalities: ['video'] }, ctxWith(NO_DURATION))
-    expect(r.video).toBeUndefined()
+  it('leaves video unset when the duration is null, zero or negative', async () => {
+    const NO_DURATION = { videos: [null, 0, -12].map(duration => ({ ...VIDEO_FIXTURE.videos[0], duration })) }
+    const refs = await pexelsVideo({ apiKey: 'k' }).search({ text: 'cat', modalities: ['video'] }, ctxWith(NO_DURATION))
+    expect(refs.map(r => r.video)).toEqual([undefined, undefined, undefined])
   })
 
   it('passes provider conformance (testkit) on the video fixture', async () => {

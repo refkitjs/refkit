@@ -142,11 +142,14 @@ describe('pixabayVideo provider', () => {
   })
   const HIT = VIDEO_FIXTURE.hits[0]
 
-  it('fills video.durationSec from the upstream duration; unset when null', async () => {
+  it('fills video.durationSec from the upstream duration; unset when null, zero or negative', async () => {
     const [r] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([HIT]))
     expect(r.video).toEqual({ durationSec: 13 })
-    const [noDuration] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([{ ...HIT, duration: null }]))
-    expect(noDuration.video).toBeUndefined()
+    const unset = await pixabayVideo({ key: 'k' }).search(
+      { text: 'flowers', modalities: ['video'] },
+      videoCtx([null, 0, -13].map((duration, i) => ({ ...HIT, id: 200 + i, pageURL: `https://pixabay.com/videos/id-${200 + i}/`, duration }))),
+    )
+    expect(unset.map(x => x.video)).toEqual([undefined, undefined, undefined])
   })
 
   it('maps the upstream type (film / animation) to kind; any other value leaves kind unset', async () => {
@@ -173,6 +176,18 @@ describe('pixabayVideo provider', () => {
     const [r] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([NO_LARGE]))
     expect(r.preview).toEqual({ url: 'https://cdn.pixabay.com/vimeo/125/small.mp4', mediaType: 'video/mp4', width: 960, height: 540 })
     expect(r.thumbnail?.url).toBe('https://cdn.pixabay.com/vimeo/125/small.jpg')
+  })
+
+  it('skips a rendition whose url is empty even when its size is not 0', async () => {
+    const EMPTY_URL = {
+      ...HIT,
+      videos: {
+        large: { url: '', width: 3840, height: 2160, size: 5000000, thumbnail: 'https://cdn.pixabay.com/vimeo/125/large.jpg' },
+        medium: { url: 'https://cdn.pixabay.com/vimeo/125/medium.mp4', width: 1920, height: 1080, size: 3000000, thumbnail: 'https://cdn.pixabay.com/vimeo/125/medium.jpg' },
+      },
+    }
+    const [r] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([EMPTY_URL]))
+    expect(r.preview).toEqual({ url: 'https://cdn.pixabay.com/vimeo/125/medium.mp4', mediaType: 'video/mp4', width: 1920, height: 1080 })
   })
 
   it('drops a hit whose every rendition is empty', async () => {

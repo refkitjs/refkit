@@ -264,8 +264,10 @@ describe('openverseAudio provider', () => {
   // sample_rate null and filetype mp3; Jamendo-sourced items carry category
   // "music", album art at /thumb/ (image/jpeg), bit_rate null and Jamendo's own
   // format code (mp32); Wikimedia-sourced items carry a sample rate, sometimes
-  // category "pronunciation" and filetypes such as ogx. `duration` is in ms and
-  // `waveform` (on every item) is JSON peak data, never an image.
+  // category "pronunciation" and filetypes such as ogx (an Ogg Vorbis stream whose
+  // URL ends in .ogg), mid (with `duration: 0`: never measured), webm and "OGG".
+  // `duration` is in ms and `waveform` (on every item) is JSON peak data, never an
+  // image.
   const FREESOUND_SOURCED = {
     id: 'a1', title: 'Piano Melody', creator: 'benpm',
     foreign_landing_url: 'https://freesound.org/people/benpm/sounds/186942',
@@ -289,7 +291,7 @@ describe('openverseAudio provider', () => {
   const WIKIMEDIA_SOURCED = {
     id: 'a3', title: 'De-Hallo.ogg', creator: 'Someone',
     foreign_landing_url: 'https://commons.wikimedia.org/w/index.php?curid=1',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/De-Hallo.ogx',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/De-Hallo.ogg',
     thumbnail: null, license: 'by-sa', license_version: '4.0',
     license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
     provider: 'wikimedia_audio', source: 'wikimedia_audio', category: 'pronunciation', genres: null,
@@ -324,9 +326,60 @@ describe('openverseAudio provider', () => {
     expect(mp31.audio?.format).toBe('mp3')
   })
 
-  it('keeps a sample rate when present; a filetype that is not a known audio format sets no format', async () => {
+  it('keeps a sample rate when present', async () => {
     const [, , wikimediaItem] = await openverseAudio().search({ text: 'hallo', modalities: ['audio'] }, ctxWith(AUDIO))
-    expect(wikimediaItem.audio).toEqual({ durationSec: 1.234, bitrateKbps: 112, sampleRateHz: 44100 })
+    expect(wikimediaItem.audio).toEqual({ durationSec: 1.234, bitrateKbps: 112, sampleRateHz: 44100, format: 'ogg' })
+  })
+
+  // filetype → [format, preview.mediaType]: one table decides both, so they never
+  // disagree. Aliases: Jamendo's mp31/mp32 → mp3, Wikimedia's ogx → ogg; case is
+  // ignored (live data has "OGG").
+  const FILETYPES: [string, string, string][] = [
+    ['mp3', 'mp3', 'audio/mpeg'],
+    ['mp31', 'mp3', 'audio/mpeg'],
+    ['mp32', 'mp3', 'audio/mpeg'],
+    ['ogg', 'ogg', 'audio/ogg'],
+    ['ogx', 'ogg', 'audio/ogg'],
+    ['OGG', 'ogg', 'audio/ogg'],
+    ['oga', 'oga', 'audio/ogg'],
+    ['opus', 'opus', 'audio/opus'],
+    ['wav', 'wav', 'audio/wav'],
+    ['flac', 'flac', 'audio/flac'],
+    ['mid', 'mid', 'audio/midi'],
+    ['midi', 'midi', 'audio/midi'],
+    ['webm', 'webm', 'audio/webm'],
+  ]
+
+  it.each(FILETYPES)('filetype %s → format %s, preview %s', async (filetype, format, mediaType) => {
+    const ONE = { results: [{ ...WIKIMEDIA_SOURCED, filetype }] }
+    const [r] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(ONE))
+    expect(r.audio?.format).toBe(format)
+    expect(r.preview).toEqual({ url: WIKIMEDIA_SOURCED.url, mediaType })
+  })
+
+  it('every filetype in the table passes conformance (the audio/ prefix check included)', async () => {
+    const ALL = { results: FILETYPES.map(([filetype], i) => ({ ...WIKIMEDIA_SOURCED, id: `f${i}`, foreign_landing_url: `https://commons.wikimedia.org/w/index.php?curid=${i}`, filetype })) }
+    const refs = await searchConformant(openverseAudio(), ctxWith(ALL).fetch)
+    expect(refs.map(r => r.preview?.mediaType)).toEqual(FILETYPES.map(([, , mediaType]) => mediaType))
+  })
+
+  it('a filetype outside the table sets neither a format nor a guessed preview type', async () => {
+    const UNKNOWN = { results: [{ ...WIKIMEDIA_SOURCED, filetype: 'xyz' }, { ...WIKIMEDIA_SOURCED, filetype: null }] }
+    const refs = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(UNKNOWN))
+    expect(refs.map(r => r.audio?.format)).toEqual([undefined, undefined])
+    expect(refs.map(r => r.preview)).toEqual([undefined, undefined])
+  })
+
+  it('leaves a zero or negative duration, bit rate or sample rate unset (live MIDI items report duration 0)', async () => {
+    const MIDI = { results: [{ ...WIKIMEDIA_SOURCED, filetype: 'mid', duration: 0, bit_rate: null, sample_rate: null }] }
+    const [midi] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(MIDI))
+    expect(midi.audio).toEqual({ format: 'mid' })
+    const ZERO = { results: [{ ...WIKIMEDIA_SOURCED, duration: 0, bit_rate: 0, sample_rate: 0 }] }
+    const [zero] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(ZERO))
+    expect(zero.audio).toEqual({ format: 'ogg' })
+    const NEGATIVE = { results: [{ ...WIKIMEDIA_SOURCED, duration: -1000, bit_rate: -128000, sample_rate: -44100 }] }
+    const [negative] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(NEGATIVE))
+    expect(negative.audio).toEqual({ format: 'ogg' })
   })
 
   it('leaves audio unset when every upstream field is null', async () => {

@@ -78,16 +78,18 @@ describe('freesound provider', () => {
     expect(refs.map(r => r.audio)).toEqual([{ durationSec: 2.5 }, { durationSec: 5 }, { durationSec: 1 }, { durationSec: 3 }])
   })
 
-  it('leaves audio unset when duration is missing or null', async () => {
+  it('leaves audio unset when duration is missing, null, zero or negative', async () => {
     const NO_DURATION = {
-      count: 2, next: null, previous: null,
+      count: 4, next: null, previous: null,
       results: [
         { ...RESULTS.results[0], duration: undefined },
         { ...RESULTS.results[1], duration: null },
+        { ...RESULTS.results[2], duration: 0 },
+        { ...RESULTS.results[3], duration: -2.5 },
       ],
     }
     const refs = await freesound({ apiKey: 'k' }).search({ text: 'door', modalities: ['audio'] }, ctxJson(NO_DURATION))
-    expect(refs.map(r => r.audio)).toEqual([undefined, undefined])
+    expect(refs.map(r => r.audio)).toEqual([undefined, undefined, undefined, undefined])
   })
 
   it('passes provider conformance (testkit) on the fixture', async () => {
