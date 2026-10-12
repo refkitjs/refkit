@@ -77,8 +77,11 @@ export {
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
 export type { ProviderRun, ProviderRunDeps } from './provider-run'
-export { selectProviders, SOURCE_SKIP_REASONS, SourceSelectionError } from './select'
-export type { SourceSkipReason, ProviderSelection } from './select'
+export {
+  selectProviders, SOURCE_SKIP_REASONS,
+  SourceSelectionError, isSourceSelectionError, SOURCE_SELECTION_ERROR_CODES,
+} from './select'
+export type { SourceSkipReason, SourceSelectionErrorCode, ProviderSelection } from './select'
 export { runPass } from './pipeline'
 export type { PassDeps, PassOutcome } from './pipeline'
 export { createRefkit } from './client'

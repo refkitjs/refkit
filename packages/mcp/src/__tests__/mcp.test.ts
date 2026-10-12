@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit, defineProvider, SOURCE_SKIP_REASONS, SEARCH_CONTROL_KEYS } from '@refkit/core'
+import { createRefkit, defineProvider, SOURCE_SKIP_REASONS, SEARCH_CONTROL_KEYS, type RefkitClient } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
@@ -259,6 +259,52 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('does not dress up a no-source-for-query miss (no sources given) with the configured ids', async () => {
+    // Every image source declares a kind other than the one asked for, and no
+    // `sources` was passed: core throws code 'no-source-for-query'.
+    const tex = defineProvider({ id: 'tex', modalities: ['image'], kinds: ['texture'], search: async () => [] })
+    const server = createRefkitMcpServer(createRefkit({ providers: [tex] }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], controls: { media: { kind: 'photo' } } } })
+    expect(res.isError).toBe(true)
+    const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
+    expect(text).toContain('no configured source supports modalities [image] with kind "photo"')
+    expect(text).not.toContain('Enabled source ids')
+    await client.close()
+  })
+
+  it('recognises a selection miss thrown by another copy of @refkit/core (structurally, not by instanceof)', async () => {
+    // A host can hand this server a client built with its own copy of core; that
+    // copy's SourceSelectionError is a different class with the same fields.
+    const lookAlike = (code: string) => Object.assign(
+      new Error(code === 'no-matching-source'
+        ? 'refkit.search: no configured source matches id(s) [nope] for modalities [image]'
+        : 'refkit.search: no configured source supports modalities [image]'),
+      { name: 'SourceSelectionError', code, ...(code === 'no-matching-source' ? { requested: ['nope'], unknown: ['nope'] } : { unknown: [] }), modalities: ['image'] },
+    )
+    const callWith = async (thrown: Error) => {
+      const real = createRefkit({ providers: [openverse()], fetch: (async () => new Response('{}')) as typeof fetch })
+      const otherCopy: RefkitClient = { ...real, searchWithMeta: async () => { throw thrown } }
+      const server = createRefkitMcpServer(otherCopy)
+      const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+      const client = new Client({ name: 'test', version: '1.0.0' })
+      await Promise.all([client.connect(clientT), server.connect(serverT)])
+      const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['nope'] } })
+      await client.close()
+      return { isError: res.isError, text: (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n') }
+    }
+    const miss = await callWith(lookAlike('no-matching-source'))
+    expect(miss.isError).toBe(true)
+    expect(miss.text).toContain('[nope]')
+    expect(miss.text).toContain('Enabled source ids: openverse.')
+    // The other code from the other copy still gets no hint.
+    const none = await callWith(lookAlike('no-source-for-query'))
+    expect(none.isError).toBe(true)
+    expect(none.text).not.toContain('Enabled source ids')
+  })
+
   it('does not dress up other errors raised while sources is set as a source miss', async () => {
     const client = await connectedClient() // openverse-only server
     // `sources` resolves; the cursor is what is wrong.
@@ -317,6 +363,71 @@ describe('@refkit/mcp', () => {
     expect(cape.relevance as number).toBeGreaterThan(0)
     expect(cape.relevance as number).toBeLessThanOrEqual(1)
     expect(cape).not.toHaveProperty('sourceScore')
+    await client.close()
+  })
+
+  it('projects durationSec from audio/video and width/height from visual, else from the preview', async () => {
+    const rights = (url: string) => ({ license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: url } })
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image', 'video', 'audio', 'text'],
+      search: async () => [
+        { modality: 'audio' as const, title: 'rain audio', sourceUrl: 'https://p/a', rights: rights('https://p/a'),
+          preview: { url: 'https://p/a.mp3', mediaType: 'audio/mpeg' }, audio: { durationSec: 60.116, bitrateKbps: 128 } },
+        // The original's size is known: it wins over the rendition's.
+        { modality: 'video' as const, title: 'rain video original', sourceUrl: 'https://p/v1', rights: rights('https://p/v1'),
+          preview: { url: 'https://p/v1.mp4', mediaType: 'video/mp4', width: 640, height: 360 },
+          visual: { width: 1920, height: 1080 }, video: { durationSec: 12 } },
+        // Only a rendition's size (pixabay-video): the preview supplies it.
+        { modality: 'video' as const, title: 'rain video rendition', sourceUrl: 'https://p/v2', rights: rights('https://p/v2'),
+          preview: { url: 'https://p/v2.mp4', mediaType: 'video/mp4', width: 960, height: 540 }, video: { durationSec: 13 } },
+        { modality: 'image' as const, title: 'rain image original', sourceUrl: 'https://p/i1', rights: rights('https://p/i1'),
+          visual: { width: 4000, height: 3000 } },
+        // Only a rendition's size (Flickr): the preview supplies it.
+        { modality: 'image' as const, title: 'rain image rendition', sourceUrl: 'https://p/i2', rights: rights('https://p/i2'),
+          preview: { url: 'https://p/i2.jpg', mediaType: 'image/jpeg', width: 1024, height: 683 } },
+        { modality: 'image' as const, title: 'rain image bare', sourceUrl: 'https://p/i3', rights: rights('https://p/i3') },
+        { modality: 'text' as const, title: 'rain text', sourceUrl: 'https://p/t', rights: rights('https://p/t'),
+          text: { excerpt: 'Rain fell.', excerptKind: 'passage' as const } },
+      ],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'rain', modalities: ['image', 'video', 'audio', 'text'] } })
+    expect(res.isError).toBeFalsy()
+    const refs = (res.structuredContent as { references: Array<Record<string, unknown>> }).references
+    const pick = (title: string) => {
+      const r = refs.find(x => x.title === title)!
+      return { durationSec: r.durationSec, width: r.width, height: r.height }
+    }
+    expect(pick('rain audio')).toEqual({ durationSec: 60.116, width: undefined, height: undefined })
+    expect(pick('rain video original')).toEqual({ durationSec: 12, width: 1920, height: 1080 })
+    expect(pick('rain video rendition')).toEqual({ durationSec: 13, width: 960, height: 540 })
+    expect(pick('rain image original')).toEqual({ durationSec: undefined, width: 4000, height: 3000 })
+    expect(pick('rain image rendition')).toEqual({ durationSec: undefined, width: 1024, height: 683 })
+    // (The in-memory transport keeps undefined-valued keys; JSON drops them.)
+    expect(pick('rain image bare')).toEqual({ durationSec: undefined, width: undefined, height: undefined })
+    expect(pick('rain text')).toEqual({ durationSec: undefined, width: undefined, height: undefined })
+    await client.close()
+  })
+
+  it('describes durationSec, width and height in the output schema, all optional', async () => {
+    const client = await connectedClient()
+    const { tools } = await client.listTools()
+    const ref = (tools.find(t => t.name === 'search_references')!.outputSchema as Record<string, any>).properties.references.items
+    for (const key of ['durationSec', 'width', 'height']) {
+      expect(ref.properties[key].type).toBe('number')
+      expect(ref.required).not.toContain(key)
+    }
+    expect(ref.properties.durationSec.description).toMatch(/seconds/)
+    expect(ref.properties.durationSec.description).toMatch(/audio/)
+    expect(ref.properties.durationSec.description).toMatch(/video/)
+    for (const key of ['width', 'height']) {
+      expect(ref.properties[key].description).toMatch(/pixels/)
+      expect(ref.properties[key].description).toMatch(/preview/)
+    }
     await client.close()
   })
 

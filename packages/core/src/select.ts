@@ -10,15 +10,20 @@ import type { ReferenceProvider } from './provider'
 export const SOURCE_SKIP_REASONS = ['unsupported-modality', 'not-selected', 'unsupported-kind', 'declined'] as const
 export type SourceSkipReason = (typeof SOURCE_SKIP_REASONS)[number]
 
+/** The `code` values of a {@link SourceSelectionError}. */
+export const SOURCE_SELECTION_ERROR_CODES = ['no-matching-source', 'no-source-for-query'] as const
+export type SourceSelectionErrorCode = (typeof SOURCE_SELECTION_ERROR_CODES)[number]
+
 /** Thrown when a search has no source to fan out to. A host branches on `code`
- *  and the fields, never on the message:
+ *  and the fields, never on the message, and recognises the error with
+ *  {@link isSourceSelectionError} rather than `instanceof`:
  *  - `'no-matching-source'`: `sources` was given and none of it can serve this
  *    search (an unknown id, a known id lacking the modality or the kind, or
  *    `sources: []`) — a caller mistake to report back with the valid ids;
  *  - `'no-source-for-query'`: no `sources`, and no configured source supports
  *    the modalities (and kind) asked for. */
 export class SourceSelectionError extends Error {
-  readonly code: 'no-matching-source' | 'no-source-for-query'
+  readonly code: SourceSelectionErrorCode
   /** The `sources` as passed; absent when the search was unscoped. */
   readonly requested?: string[]
   /** Ids in `sources` that match no configured source. */
@@ -46,6 +51,22 @@ export class SourceSelectionError extends Error {
     this.modalities = fields.modalities
     if (fields.kind !== undefined) this.kind = fields.kind
   }
+}
+
+/** True for a {@link SourceSelectionError} thrown by any copy of `@refkit/core`.
+ *  `instanceof` only recognises this copy's class, and a host can load two (a
+ *  client built with its own core handed to `@refkit/mcp`, or core bundled
+ *  twice). So past `instanceof` this reads the stable fields — `name`, a known
+ *  `code`, and the `unknown` and `modalities` arrays — and never the message. */
+export function isSourceSelectionError(e: unknown): e is SourceSelectionError {
+  if (e instanceof SourceSelectionError) return true
+  if (typeof e !== 'object' || e === null) return false
+  const x = e as Record<string, unknown>
+  return x.name === 'SourceSelectionError'
+    && typeof x.code === 'string'
+    && (SOURCE_SELECTION_ERROR_CODES as readonly string[]).includes(x.code)
+    && Array.isArray(x.unknown)
+    && Array.isArray(x.modalities)
 }
 
 export interface ProviderSelection {

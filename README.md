@@ -20,6 +20,8 @@ pnpm add @refkit/core @refkit/provider-openverse @refkit/provider-met
 
 `@refkit/core` is the brain; each source is a thin `@refkit/provider-*` satellite you add as needed.
 
+**Providers and sources.** A *provider* is adapter code (a `ReferenceProvider` from a `@refkit/provider-*` package). Each provider instance serves one *source*, whose id (`provider.id`) is what `sources`, `sourceOptions` and `meta.sources` speak, and what each result names in `source.id`.
+
 ## Quickstart
 
 ```ts
@@ -57,7 +59,7 @@ const safe = await refkit.search({ query: 'forest', modalities: ['image'], gateF
 
 ## Search controls
 
-Use provider-neutral `controls` for the main path. refkit routes each control only to providers that declare support, and `searchWithMeta()` explains which providers applied or ignored each control:
+Use provider-neutral `controls` for the main path. refkit routes each control only to providers that declare support, and `searchWithMeta()` explains which sources applied or ignored each control (`meta.controls.appliedBySource` / `ignoredBySource`):
 
 ```ts
 await refkit.search({
@@ -92,6 +94,8 @@ await refkit.search({
 })
 ```
 
+An id in `sourceOptions` that matches no configured source is reported in `meta.warnings` (`unknown sourceOptions id(s) ignored: …`) instead of being dropped silently.
+
 The provider package owns its native options surface, e.g. `UnsplashSearchOptions`, `FlickrSearchOptions`, `OpenverseImageSearchOptions`, `MetSearchOptions`, and `PoetryDbSearchOptions`. Response-format/debug parameters and auth-only knobs are intentionally omitted when they would break refkit's normalized `Reference` contract.
 
 ### Site-scoped discovery
@@ -108,7 +112,7 @@ const notes = await refkit.search({
 })
 ```
 
-A `sources` list that matches nothing for the requested modalities throws (a source typo fails loudly instead of reading as "no results"); an id that resolves to nothing while others still match is reported in `meta.warnings`, and every excluded source appears in `meta.sources` with `reason: 'not-selected'`.
+A `sources` list that matches nothing for the requested modalities throws a `SourceSelectionError` with `code: 'no-matching-source'` (a source typo fails loudly instead of reading as "no results"). The error carries `requested` (the `sources` as passed), `unknown` (the ids that match no configured source), `modalities` and, when the search narrowed by kind, `kind`. Recognise it with `isSourceSelectionError(e)`, which also works when the error comes from another copy of `@refkit/core`, and branch on `code`, not the message; a search that names no `sources` and that no configured source supports throws the same error with `code: 'no-source-for-query'`. An id that resolves to nothing while others still match is reported in `meta.warnings`, and every excluded source appears in `meta.sources` with `reason: 'not-selected'`.
 
 ### Source routing & acceptance
 
@@ -286,7 +290,7 @@ createRefkit({ providers, resilience: false }) // raw fan-out, no timeout/retry
 await refkit.searchWithMeta({ query: 'forest', modalities: ['image'], deadlineMs: 3000 })
 ```
 
-That is a hard bound while per-provider resilience is on (its deadline race abandons a provider that ignores the signal). With `resilience: false` there is no race left, so `deadlineMs` only binds providers that honour `ctx.signal` — refkit's own satellites all forward it into `fetch`. If the deadline fires while *every* provider is still in flight, the call rejects with an `AggregateError` (same as an all-providers-failed fan-out) rather than reporting an empty success.
+That is a hard bound while per-provider resilience is on (its deadline race abandons a provider that ignores the signal). With `resilience: false` there is no race left, so `deadlineMs` only binds providers that honour `ctx.signal` — refkit's own satellites all forward it into `fetch`. If the deadline fires while *every* provider is still in flight, the call rejects with an `AggregateError` (the same error as a fan-out in which every source failed) rather than reporting an empty success.
 
 With many sources registered, bound the fan-out with `concurrency` — at most N provider searches run at once (a queued provider's timeout only starts when its slot starts):
 
@@ -326,7 +330,7 @@ createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false 
 
 ¹ gutendex's default host (`gutendex.com`) is the upstream maintainer's **test instance** — its docs say "You should run your own server", and its Cloudflare front blocks datacenter IPs. Desktop/local use works out of the box; for production or server-side traffic, [self-host Gutendex](https://github.com/garethbjohnson/gutendex) and pass `gutendex({ baseUrl: 'https://your-instance' })`. When blocked, the source degrades gracefully (a `failed` entry in `meta.sources`; other sources still return).
 
-Audio/video are extra factories on existing packages: `openverseAudio()`, `pexelsVideo()`, `pixabayVideo()`. Modality routing is automatic — an `['audio']` search only hits audio-capable providers.
+Audio/video are extra factories on existing packages: `openverseAudio()` (source id `openverse-audio`), `pexelsVideo()` (`pexels-video`), `pixabayVideo()` (`pixabay-video`). Modality routing is automatic — an `['audio']` search only hits audio-capable providers. Poly Haven's HDRIs are their own source too: `polyhaven({ assetType: 'hdris' })` has the id `polyhaven-hdri`, next to the textures' `polyhaven`. Every source id in one client must be unique — `createRefkit` throws on a duplicate.
 
 ## Architecture
 
@@ -350,7 +354,37 @@ One search pass is a fixed pipeline: **select** (modality → `sources` → `kin
 
 ### Providers describe, core completes
 
-A provider's `search` returns `EmittedReference[]` — only what the **source** knows: `modality, kind?, title?, description?, tags?, sourceUrl, canonicalUrl?, rights, thumbnail?, preview?, perceptualHash?, visual?, text?, sourceScore?, raw?`. Core validates each item against `emittedReferenceSchema` at the boundary and then stamps everything that is its own concern — `id` (content-addressed from the source id + sourceUrl), `source` (`{ id, url }`), `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, `relevance` — and applies the per-provider `limit`. Providers never compute ids, never write provenance or scores, and never post-truncate; a satellite is a mapper plus a rights mapping.
+A provider's `search` returns `EmittedReference[]` — only what the **source** knows, each item as the variant of its modality (see [Reference variants](#reference-variants)). Core validates each item against `emittedReferenceSchema` at the boundary and then stamps everything that is its own concern — `id` (content-addressed from the source id + sourceUrl), `source` (`{ id, url }`), `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, `relevance` — and applies the per-provider `limit`. Providers never compute ids, never write provenance or scores, and never post-truncate; a satellite is a mapper plus a rights mapping.
+
+An item that fails the schema, or whose modality is outside what that source was asked for (the requested modalities it declares), is dropped, counted in `meta.sources[].rejected` and passed to `onSourceError` (`{ sourceId, error }`); the rest of the batch survives.
+
+### Reference variants
+
+`EmittedReference` and `Reference` are unions keyed by `modality`. Every variant carries the common fields — `modality`, `kind?`, `title?`, `description?`, `tags?`, `rights`, `thumbnail?`, `sourceScore?`, `raw?` — plus `sourceUrl` and `canonicalUrl?` when emitted, or the core-stamped `id`, `source` (`{ id, url }`), `canonicalUrl`, `verifiedAt` and `relevance` when complete. `thumbnail` is always an image a UI can show: the picture itself, a video poster, audio cover art or a book cover. The other fields belong to one modality:
+
+| `modality` | Its own fields |
+|---|---|
+| `image` | `preview?` (`mediaType` `image/*`), `visual?`, `perceptualHash?` |
+| `video` | `preview?` (`mediaType` `video/*`), `visual?`, `video?: VideoMeta` |
+| `audio` | `preview?` (`mediaType` `audio/*`), `audio?: AudioMeta` |
+| `text` | `text?: TextMeta` (`excerpt`, `excerptKind`, `locator?`) |
+
+- **`visual`** (`VisualMeta`: `width`, `height` in pixels, `dominantColors?`) is the size of the original image or video. A source that only knows a rendition's size leaves `visual` unset and puts that size on `preview.width` / `preview.height`.
+- **`VideoMeta`**: `durationSec?` (seconds, a float) and `fps?`.
+- **`AudioMeta`**: `durationSec?` (seconds, a float), `bitrateKbps?` (kilobits per second, bits/s ÷ 1000), `sampleRateHz?` (hertz), `channels?`, and `format?` (a short container/codec name such as `mp3` or `flac`).
+
+The bundled sources fill the audio and video metadata from what their search responses already carry:
+
+| Source | Fills |
+|---|---|
+| `openverse-audio` | `audio.durationSec`, `audio.bitrateKbps` and `audio.sampleRateHz` when Openverse reports them; `audio.format` when the filetype is a known audio format (`mp3`, `ogg`, `oga`, `opus`, `wav`, `flac`, `mid`, `midi`, `webm`) |
+| `freesound`, `jamendo` | `audio.durationSec` |
+| `pexels-video` | `video.durationSec`, and `visual` (the source video's size) |
+| `pixabay-video` | `video.durationSec`; only a rendition's size is known, so it stays on `preview` |
+
+A missing, non-finite, zero or negative upstream duration, bitrate or sample rate leaves that field unset. No bundled source fills `fps` or `channels` yet.
+
+Each variant declares the other variants' fields as `?: never`, so a provider that writes, say, `visual` on an audio item gets a compile error, while code reading the union still sees `r.visual` as `VisualMeta | undefined` without narrowing first. At runtime `emittedReferenceSchema` rejects an item whose `preview.mediaType` lacks its variant's prefix and strips any field that belongs to another modality. Because `Reference` is a type alias of a union, `Omit<Reference, K>` loses the link between `modality` and its fields (use a distributive omit), and an interface cannot `extend` it.
 
 ## Core invariants (enforced by tests in `@refkit/core`)
 
@@ -378,7 +412,7 @@ Agents can use refkit in three ways:
 npx -y @refkit/mcp
 ```
 
-It boots with the keyless sources (Met, Art Institute, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive, Nailbook) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results, with `gateContext: { userJurisdiction }` when the caller's jurisdiction matters; `minRelevance` to drop weak matches (calibrated against the reranker's blend — see [Relevance threshold](#relevance-threshold)); `rerank: false` for raw cross-source fusion order (reranking is **on by default**); `deadlineMs` to bound the whole call; `cursor` (from the previous result's top-level `nextCursor` — always returned, no `explain` needed) to page through results without repeats; `REFKIT_MAX_CURSOR_SEEN` shrinks the cursor for hosts that clamp tool-output strings. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
+It boots with the keyless sources (Met, Art Institute, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive, Nailbook) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results, with `gateContext: { userJurisdiction }` when the caller's jurisdiction matters; `minRelevance` to drop weak matches (calibrated against the reranker's blend — see [Relevance threshold](#relevance-threshold)); `rerank: false` for raw cross-source fusion order (reranking is **on by default**); `deadlineMs` to bound the whole call; `cursor` (from the previous result's top-level `nextCursor` — always returned, no `explain` needed) to page through results without repeats; `REFKIT_MAX_CURSOR_SEEN` shrinks the cursor for hosts that clamp tool-output strings. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Each result is a flat projection sized for agent context — among other fields `source` (the source id), `license`, `rehostPolicy`, `relevance`, and `durationSec` (audio and video) and `width` / `height` (the original's size, else the preview rendition's) when known. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
 
 ## Agent plugin (Claude Code, Codex)
 

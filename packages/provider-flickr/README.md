@@ -18,4 +18,6 @@ const refs = await refkit.search({ query: 'lion', modalities: ['image'] })
 // every result carries source + license + attribution + canonicalUrl
 ```
 
+Each result's `preview` is a Flickr rendition up to 1024px (`url_l`, else `url_m`) with that rendition's `width` / `height`. `visual` is left unset: it means the original's size, which the search response does not carry.
+
 Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.

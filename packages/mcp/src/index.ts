@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, REHOST_POLICIES, SourceSelectionError, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, REHOST_POLICIES, isSourceSelectionError, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
 import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, SourceOptionsById, RightsRecord, Modality } from '@refkit/core'
 
 // Legacy media.kind control values — kept in the dynamic enum because they stay
@@ -38,7 +38,11 @@ function capText(text: string | undefined, max: number): string | undefined {
 // sees *whether it may use* each result — not just a bare license id it ignores.
 // `sourceScore` stays out on purpose: it is in each source's own scale and only orders
 // results within one source; `relevance` is the cross-source score an agent can compare.
+// It stays a flat projection of the Reference union: `durationSec` from the audio or
+// video metadata, and `width`/`height` from `visual` (the original's size), else from
+// the preview rendition's size (its aspect ratio is the original's).
 function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: Attribution }) {
+  const size = r.visual ?? r.preview
   const base = {
     id: r.id,
     title: r.title,
@@ -54,6 +58,9 @@ function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: 
     relevance: Math.round(r.relevance * 1000) / 1000,
     thumbnail: r.thumbnail?.url,
     excerpt: r.text?.excerpt,
+    durationSec: r.audio?.durationSec ?? r.video?.durationSec,
+    width: size?.width,
+    height: size?.height,
   }
   if (!assessment) return base
   const { verdict, attribution } = assessment
@@ -86,6 +93,9 @@ const agentRefSchema = z.object({
   relevance: z.number().describe('0..1 cross-source relevance after fusion/rerank; compare results by this'),
   thumbnail: z.string().optional(),
   excerpt: z.string().optional(),
+  durationSec: z.number().optional().describe('length in seconds (audio and video), when the source reports it'),
+  width: z.number().optional().describe('width in pixels: the original\'s when the source reports it, else the preview rendition\'s (same aspect ratio)'),
+  height: z.number().optional().describe('height in pixels: the original\'s when the source reports it, else the preview rendition\'s (same aspect ratio)'),
   useVerdict: z
     .object({ decision: z.string(), reason: z.string(), confidence: z.string() })
     .optional()
@@ -181,9 +191,11 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         // A source-selection miss (the requested ids resolve to no configured
         // source for the modality or kind) is a caller mistake, not an outage —
         // turn core's typed throw into an agent-actionable tool error listing the
-        // valid ids. Everything else (every source failing, an invalid cursor)
-        // propagates as it is.
-        if (err instanceof SourceSelectionError && err.code === 'no-matching-source') {
+        // valid ids. Recognised structurally, so a client built with another copy
+        // of @refkit/core still gets the hint. Everything else (every source
+        // failing, an invalid cursor, a search no source supports) propagates as
+        // it is.
+        if (isSourceSelectionError(err) && err.code === 'no-matching-source') {
           const available = enabledSourceIds.join(', ') || '(none)'
           return {
             isError: true,

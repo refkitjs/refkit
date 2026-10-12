@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { defineProvider } from '../provider'
 import { selectProviders, SourceSelectionError } from '../select'
+import {
+  isSourceSelectionError, SOURCE_SELECTION_ERROR_CODES,
+  SourceSelectionError as ExportedSourceSelectionError, type SourceSelectionErrorCode,
+} from '../index'
 
 const p = (id: string, modalities: Array<'image' | 'text'>, kinds?: string[]) =>
   defineProvider({ id, modalities, ...(kinds ? { kinds } : {}), search: async () => [] })
@@ -102,6 +106,73 @@ describe('selectProviders', () => {
       expect(e.unknown).toEqual([])
       expect(e.kind).toBe('texture')
       expect(e.message).toContain('kind "texture"')
+    })
+  })
+
+  describe('isSourceSelectionError (exported from the package)', () => {
+    // What "another copy of @refkit/core" throws: the same fields on an Error
+    // whose class is not this copy's, so `instanceof` cannot see it.
+    const lookAlike = (fields: Record<string, unknown> = {}) => Object.assign(
+      new Error('refkit.search: no configured source matches id(s) [zzz] for modalities [image]'),
+      { name: 'SourceSelectionError', code: 'no-matching-source', requested: ['zzz'], unknown: ['zzz'], modalities: ['image'], ...fields },
+    )
+
+    it('lists the codes, and the class field is typed by them', () => {
+      expect(SOURCE_SELECTION_ERROR_CODES).toEqual(['no-matching-source', 'no-source-for-query'])
+      expectTypeOf<SourceSelectionErrorCode>().toEqualTypeOf<'no-matching-source' | 'no-source-for-query'>()
+      expectTypeOf<SourceSelectionError['code']>().toEqualTypeOf<SourceSelectionErrorCode>()
+      expect(ExportedSourceSelectionError).toBe(SourceSelectionError)
+    })
+
+    it('is true for a thrown instance (the instanceof path), with either code', () => {
+      let thrown: unknown
+      try {
+        selectProviders(providers, { modalities: ['image'], sources: ['zzz'], text: 'x' })
+      } catch (e) {
+        thrown = e
+      }
+      expect(isSourceSelectionError(thrown)).toBe(true)
+      expect(isSourceSelectionError(new SourceSelectionError({ code: 'no-source-for-query', unknown: [], modalities: ['video'] }))).toBe(true)
+      // instanceof alone decides for this copy's class: a host subclass that
+      // renames itself is still recognised.
+      class HostSelectionError extends SourceSelectionError {
+        override name = 'HostSelectionError'
+      }
+      expect(isSourceSelectionError(new HostSelectionError({ code: 'no-matching-source', unknown: [], modalities: ['image'] }))).toBe(true)
+    })
+
+    it('is true for a structural clone thrown by another copy of core, and narrows the type', () => {
+      const e: unknown = lookAlike()
+      expect(e).not.toBeInstanceOf(SourceSelectionError)
+      expect(isSourceSelectionError(e)).toBe(true)
+      expect(isSourceSelectionError(lookAlike({ code: 'no-source-for-query', requested: undefined, unknown: [] }))).toBe(true)
+      // A subclass in the other copy, the shape a real second copy produces.
+      class OtherCopySourceSelectionError extends Error {
+        override readonly name = 'SourceSelectionError'
+        readonly code = 'no-matching-source'
+        readonly unknown: string[] = []
+        readonly modalities = ['audio']
+      }
+      expect(isSourceSelectionError(new OtherCopySourceSelectionError('m'))).toBe(true)
+      if (isSourceSelectionError(e)) {
+        expectTypeOf(e).toEqualTypeOf<SourceSelectionError>()
+        expectTypeOf(e.code).toEqualTypeOf<SourceSelectionErrorCode>()
+        expect(e.unknown).toEqual(['zzz'])
+      }
+    })
+
+    it('is false for any other shape', () => {
+      expect(isSourceSelectionError(lookAlike({ name: 'Error' }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ code: 'other' }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ code: undefined }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ unknown: undefined }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ unknown: 'zzz' }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ modalities: undefined }))).toBe(false)
+      expect(isSourceSelectionError(lookAlike({ modalities: 'image' }))).toBe(false)
+      expect(isSourceSelectionError({ name: 'SourceSelectionError' })).toBe(false)
+      expect(isSourceSelectionError(new Error('refkit.search: no configured source matches id(s) [zzz] for modalities [image]'))).toBe(false)
+      expect(isSourceSelectionError(new AggregateError([], 'all sources failed'))).toBe(false)
+      for (const v of [null, undefined, 'SourceSelectionError', 0, true]) expect(isSourceSelectionError(v)).toBe(false)
     })
   })
 

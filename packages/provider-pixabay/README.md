@@ -20,4 +20,8 @@ const clips = await refkit.search({ query: 'forest', modalities: ['video'] })
 // every result carries source + license + attribution + canonicalUrl
 ```
 
-`pixabay()` serves the image leg; add `pixabayVideo()` (same key) for video. Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.
+`pixabay()` serves the image leg (source id `pixabay`); add `pixabayVideo()` (same key) for video (source id `pixabay-video`).
+
+A video result carries `video.durationSec` (seconds, when positive) and `kind` from Pixabay's `type` (`film` or `animation`). Its `preview` is the first usable rendition of large → medium → small → tiny (one with a non-empty URL and a non-zero size), with that rendition's `width` / `height`; `visual` is left unset, because it means the original's size, which the response does not give. A hit with no usable rendition is skipped.
+
+Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.

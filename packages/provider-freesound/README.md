@@ -17,4 +17,6 @@ const refkit = createRefkit({ providers: [freesound(/* config */)] })
 const refs = await refkit.search({ query: 'cat', modalities: ['audio'] })
 ```
 
+Each result carries `audio.durationSec` (seconds, a float, as Freesound reports it) when the duration is known and positive.
+
 Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.
