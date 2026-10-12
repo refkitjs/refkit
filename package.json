@@ -16,7 +16,7 @@
     "test:live": "REFKIT_LIVE=1 vitest run",
     "smoke:artifact": "node scripts/smoke-artifact.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && node scripts/sync-plugin-version.mjs",
     "release": "pnpm -r --if-present build && changeset publish"
   },
   "devDependencies": {

@@ -362,10 +362,11 @@ A provider's `search` returns `EmittedReference[]` — only what the **source** 
 
 ## Agent usage
 
-Agents can use refkit in two ways:
+Agents can use refkit in three ways:
 
 1. **SDK inside a host tool** — your app defines its own `search` tool, wires `createRefkit({ providers, fetch, cache })`, and controls keys, caching, retries, rerankers, search controls, and provider-specific options.
 2. **MCP adapter** — `@refkit/mcp` exposes the same license-normalized search over `search_references`, useful when you want a zero-glue tool that works across MCP-capable agents.
+3. **Agent plugin** — `plugins/refkit/` bundles the MCP server with skills that teach the agent when to search and how to read the verdicts, installable in Claude Code and Codex (see [Agent plugin](#agent-plugin-claude-code-codex)).
 
 ## MCP
 
@@ -378,6 +379,17 @@ npx -y @refkit/mcp
 ```
 
 It boots with the keyless sources (Met, Art Institute, Wikimedia Commons, Openverse + audio, Project Gutenberg, PoetryDB, Rijksmuseum, Poly Haven, ambientCG, Internet Archive, Nailbook) and auto-adds any BYOK source whose key is in the environment (`REFKIT_UNSPLASH_KEY`, `REFKIT_PEXELS_KEY`, `REFKIT_BRAVE_KEY`, … — legacy names like `UNSPLASH_KEY`, `PEXELS_KEY`, `BRAVE_TOKEN` still work as fallbacks). Pass `intent` to annotate each result with a use-verdict (may I use this, is attribution required); `gateFor` to return only allowed results, with `gateContext: { userJurisdiction }` when the caller's jurisdiction matters; `minRelevance` to drop weak matches (calibrated against the reranker's blend — see [Relevance threshold](#relevance-threshold)); `rerank: false` for raw cross-source fusion order (reranking is **on by default**); `deadlineMs` to bound the whole call; `cursor` (from the previous result's top-level `nextCursor` — always returned, no `explain` needed) to page through results without repeats; `REFKIT_MAX_CURSOR_SEEN` shrinks the cursor for hosts that clamp tool-output strings. BYOK provider packages are `optionalDependencies` of `@refkit/mcp` — installed by default (zero-config `npx` keeps working), but an install with `--omit=optional` skips them, and a key whose package is missing just logs a stderr warning instead of crashing the server. Beyond search, `evaluate_use` and `build_attribution` expose the same license-verdict and attribution logic as standalone stateless tools, for when an agent already has a license id and just needs a verdict or a credit line. Or wire your own providers/keys via `serveStdio(createRefkit({ … }))` — see [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp).
+
+## Agent plugin (Claude Code, Codex)
+
+[`plugins/refkit/`](plugins/refkit/README.md) packages `@refkit/mcp` with two skills: `find-references` (search with a use verdict on every result) and `check-usage-rights` (judge one work and build its credit line). This repository is its marketplace:
+
+```bash
+claude plugin marketplace add refkitjs/refkit
+claude plugin install refkit@refkit
+```
+
+For Codex, run `codex plugin marketplace add refkitjs/refkit`, then install **refkit** from the plugin browser in the Codex app (Codex support is untested so far). The plugin is keyless by default (its README lists the optional key variables the server also reads) and pins `@refkit/mcp` to an exact version.
 
 ## Not legal advice
 
@@ -396,3 +408,5 @@ pnpm build       # tsup → dist for every package
 `REFKIT_LIVE=1 pnpm test:run` runs the live smoke suites against real provider APIs (BYOK ones need their key env vars set); the weekly cron in CI runs the same check.
 
 Releases are automated with [changesets](https://github.com/changesets/changesets): run `pnpm changeset` to record a change; merging the CI-generated "Version Packages" PR publishes to npm.
+
+The agent plugin pins `@refkit/mcp` to an exact version. `pnpm run version-packages` (which the release workflow runs) rewrites that pin and the plugin's `version` through `scripts/sync-plugin-version.mjs`, so the "Version Packages" PR carries them. If the npm publish then fails, the plugin points at an unpublished version until the release is re-run (`gh run rerun <id> --failed`).

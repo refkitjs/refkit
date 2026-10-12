@@ -1,0 +1,39 @@
+{
+  "name": "refkit",
+  "version": "0.8.2",
+  "description": "License-aware reference search for creative work: find images, art, textures, audio and text across open sources, with a use verdict and attribution line per result.",
+  "author": {
+    "name": "refkitjs",
+    "url": "https://github.com/refkitjs"
+  },
+  "homepage": "https://github.com/refkitjs/refkit/tree/main/plugins/refkit",
+  "repository": "https://github.com/refkitjs/refkit",
+  "license": "Apache-2.0",
+  "keywords": [
+    "references",
+    "license",
+    "attribution",
+    "creative-commons",
+    "public-domain",
+    "moodboard"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "refkit",
+    "shortDescription": "License-aware reference search for creative work",
+    "longDescription": "Search museums, Wikimedia Commons, Openverse, Poly Haven, Project Gutenberg and more for images, art, textures, audio and text. Every result carries its license, a verdict for your intended use, and the attribution line when one is required.",
+    "developerName": "refkitjs",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Find CC0 forest textures I can ship in a game",
+      "Gather public-domain storm paintings for a moodboard",
+      "Can I use this Wikimedia Commons photo in an ad?"
+    ],
+    "websiteURL": "https://github.com/refkitjs/refkit",
+    "brandColor": "#0F172A"
+  }
+}
