@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { hammingDistance, dedupeReferences } from '../dedup'
-import type { Reference } from '../reference'
+import type { ImageReference, Reference } from '../reference'
 
-const make = (over: Partial<Reference>): Reference => ({
+const make = (over: Partial<ImageReference>): Reference => ({
   id: over.id ?? 'x',
   modality: 'image',
   source: over.source ?? { providerId: 'p', sourceUrl: 'https://x/1' },

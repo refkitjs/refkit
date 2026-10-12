@@ -12,11 +12,21 @@ export { buildAttribution } from './attribution'
 export type { Attribution, AttributionInput } from './attribution'
 export type {
   EmittedReference,
+  EmittedImageReference,
+  EmittedVideoReference,
+  EmittedAudioReference,
+  EmittedTextReference,
   Reference,
+  ImageReference,
+  VideoReference,
+  AudioReference,
+  TextReference,
   ReferenceMedia,
   MediaPreview,
   VisualMeta,
   TextMeta,
+  VideoMeta,
+  AudioMeta,
 } from './reference'
 export {
   emittedReferenceSchema, referenceSchema,

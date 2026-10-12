@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { tokenize, lexicalReranker } from '../rerank'
-import type { Reference } from '../reference'
+import type { ImageReference, Reference, TextMeta } from '../reference'
 import * as refkit from '../index'
 
-const ref = (id: string, title: string, opts: Partial<Reference> = {}): Reference => ({
+const ref = (id: string, title: string, opts: Partial<ImageReference> = {}): Reference => ({
   id,
   modality: 'image',
   title,
@@ -13,6 +13,19 @@ const ref = (id: string, title: string, opts: Partial<Reference> = {}): Referenc
   verifiedAt: '2026-06-24T00:00:00.000Z',
   relevance: 0,
   ...opts,
+})
+
+// A text excerpt belongs on a text reference; the image builder above rejects it.
+const textRef = (id: string, title: string, text: TextMeta): Reference => ({
+  id,
+  modality: 'text',
+  title,
+  text,
+  source: { providerId: 'p', sourceUrl: `https://x/${id}` },
+  canonicalUrl: `https://x/${id}`,
+  rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } },
+  verifiedAt: '2026-06-24T00:00:00.000Z',
+  relevance: 0,
 })
 
 describe('lexicalReranker', () => {
@@ -126,7 +139,7 @@ describe('lexicalReranker', () => {
   it('matches query tokens in the text excerpt, not just the title', async () => {
     const refs = [
       ref('title-only', 'untitled'),
-      ref('excerpt', 'untitled', { text: { excerpt: 'a quiet cyberpunk alley at dawn', excerptKind: 'passage' } }),
+      textRef('excerpt', 'untitled', { excerpt: 'a quiet cyberpunk alley at dawn', excerptKind: 'passage' }),
     ]
     const out = await lexicalReranker()({ query: 'cyberpunk alley', refs })
     expect(out[0].id).toBe('excerpt')
@@ -171,7 +184,7 @@ describe('lexicalReranker', () => {
     // every untitled ref after the first from a source ate the penalty and lost
     // its place to a weaker-matching sibling. `u1`'s title tokenizes to nothing
     // (all stopwords), which is the same empty set by another route.
-    const wiki = (id: string, opts: Partial<Reference>) =>
+    const wiki = (id: string, opts: Partial<ImageReference>) =>
       ref(id, '', { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` }, ...opts })
     const described = 'a forest path near the river bridge'
     const refs = [

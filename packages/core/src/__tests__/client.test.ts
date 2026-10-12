@@ -4,10 +4,10 @@ import { searchMetaSchema } from '../schemas'
 import { cursorSeenKey, decodeCursor } from '../cursor'
 import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
-import { completeReference, type EmittedReference } from '../reference'
+import { completeReference, type EmittedImageReference, type EmittedReference } from '../reference'
 import type { LicenseId } from '../license'
 
-const ref = (url: string, license: LicenseId = 'CC0-1.0'): EmittedReference => ({
+const ref = (url: string, license: LicenseId = 'CC0-1.0'): EmittedImageReference => ({
   modality: 'image',
   sourceUrl: url,
   rights: { license, rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
@@ -405,6 +405,31 @@ describe('createRefkit', () => {
     expect(out.meta.providers).toEqual([
       { providerId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
     ])
+  })
+
+  it('rejects an item whose modality the source was not asked for: counted, reported, dropped', async () => {
+    // The caller asks for image and video, but this source declares image only,
+    // so its share of the query is ['image'] and the video item is a leak.
+    const leaky = defineProvider({
+      id: 'leaky',
+      modalities: ['image'],
+      search: async () => [
+        ref('https://leaky/1'),
+        { modality: 'video', sourceUrl: 'https://leaky/2', rights: ref('https://leaky/2').rights },
+      ],
+    })
+    const onProviderError = vi.fn()
+    const rk = createRefkit({ providers: [leaky] })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image', 'video'], onProviderError })
+    expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://leaky/1'])
+    expect(out.meta.providers).toEqual([
+      { providerId: 'leaky', status: 'fulfilled', returned: 2, accepted: 1, rejected: 1, latencyMs: expect.any(Number), confidence: 1 },
+    ])
+    expect(onProviderError).toHaveBeenCalledTimes(1)
+    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'leaky',
+      error: expect.objectContaining({ message: expect.stringMatching(/modality "video"/) }),
+    }))
   })
 
   it('uses merge.isDuplicate to dedupe host-supplied fingerprints during search', async () => {
@@ -1056,7 +1081,7 @@ describe('multi-pass fidelity, deadline and gate context', () => {
 })
 
 describe('accuracy defaults', () => {
-  const titled = (url: string, title: string, extra: Partial<EmittedReference> = {}) => ({ ...ref(url), title, ...extra })
+  const titled = (url: string, title: string, extra: Partial<EmittedImageReference> = {}) => ({ ...ref(url), title, ...extra })
 
   it('a source whose batch never mentions the query sinks below a source that does', async () => {
     const noise = defineProvider({

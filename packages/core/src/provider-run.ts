@@ -32,8 +32,10 @@ export function providerCacheKey(providerId: string, query: NormalizedQuery): st
   return keyForFingerprint(providerId, stableStringify(query))
 }
 
+// v4: Reference became a union keyed by modality. Entries cached in an older
+// shape are missed rather than parsed (and rejected item by item).
 function keyForFingerprint(providerId: string, fingerprint: string): string {
-  return `refkit:v3:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
+  return `refkit:v4:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
 }
 
 /** Shape of a cached entry: the query fingerprint (verified on read so a key
@@ -51,7 +53,8 @@ export interface ProviderRunDeps {
   /** Per-provider soft deadline; undefined → no deadline (resilience disabled). */
   timeoutMs?: number
   signal?: AbortSignal
-  /** Reports BOTH per-item parse failures and a failed search. */
+  /** Reports per-item rejections (a malformed item, or a modality outside
+   *  query.modalities) and a failed search. */
   onError?: (error: unknown) => void
 }
 
@@ -85,6 +88,9 @@ export async function runProviderSearch(
   // `rejected` is counted right here, where a parse failure actually happens —
   // NOT derived later from returned/valid counts, since `valid` is post-`truncate`
   // and a limit-truncated (but well-formed) item must never read as a reject.
+  // A live item whose modality is outside query.modalities (this source's share
+  // of the search's modalities) is a modality leak, rejected the same way. Cached
+  // entries were checked when written, so the cache path only parses.
   const parseCached = (raw: unknown[]): { valid: Reference[]; rejected: number } => {
     const valid: Reference[] = []
     let rejected = 0
@@ -104,7 +110,11 @@ export async function runProviderSearch(
     let rejected = 0
     for (const item of raw) {
       try {
-        valid.push(completeReference(provider.id, parseEmitted(item), now))
+        const emitted = parseEmitted(item)
+        if (!query.modalities.includes(emitted.modality)) {
+          throw new Error(`modality "${emitted.modality}" is outside the modalities this source was asked for [${query.modalities.join(', ')}]`)
+        }
+        valid.push(completeReference(provider.id, emitted, now))
       } catch (error) {
         rejected++
         deps.onError?.(error)

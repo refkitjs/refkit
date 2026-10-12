@@ -82,8 +82,10 @@ export interface ProviderSearchStatus {
   status: 'fulfilled' | 'failed' | 'skipped'
   returned?: number
   accepted?: number
-  /** Items the provider returned that failed schema validation; items dropped
-   *  by the `limit` truncation are neither accepted nor rejected. */
+  /** Items the provider returned that failed schema validation, or whose
+   *  modality is outside this source's share of the requested modalities (the
+   *  ones it declares); each also fires onProviderError. Items dropped by the
+   *  `limit` truncation are neither accepted nor rejected. */
   rejected?: number
   reason?: ProviderSkipReason
   error?: string
