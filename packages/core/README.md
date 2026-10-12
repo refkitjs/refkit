@@ -203,7 +203,7 @@ The hook compares `Reference` objects only. Core still never fetches, decodes, o
 - **Zero network** — no `fetch` call, no hard-coded endpoint in this package. Hosts inject `ProviderContext.fetch`.
 - **Substrate-agnostic** — no import of any host or orchestration framework.
 - **Only `zod`** as a non-relative dependency.
-- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits and is validated on every record, but core never acts on it: it is metadata for the host binding to honour.
+- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits (`REHOST_POLICIES`) and is validated on every record, but core never acts on it: it is metadata for the host binding to honour, and `@refkit/mcp` passes it to agents on every result.
 - **Core stamps its own fields** — `id`, `source`, `canonicalUrl`, `verifiedAt`, `relevance` and the per-provider `limit` come from core, never from a provider.
 - **strict-deny** — when rights can't be determined, deny / `needs-review` (never fail-open). Unknown, NonCommercial, NoDerivatives, and "no known copyright restrictions" never map to a usable license. Indeterminate facts (all three axes `'unknown'`) can never be allowed, and a cross-source conflict whose claims are incomparable resolves to `unknown`.
 

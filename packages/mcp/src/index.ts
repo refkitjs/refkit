@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, REHOST_POLICIES, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
 import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
 
 // Legacy media.kind control values — kept in the dynamic enum because they stay
@@ -23,18 +23,35 @@ const VERSION: string = (() => {
   }
 })()
 
+// Agent context is the scarce resource: descriptions are capped and tags trimmed to the
+// leading few (sources list the most specific subjects first).
+const AGENT_DESCRIPTION_MAX = 280
+const AGENT_TAGS_MAX = 8
+
+function capText(text: string | undefined, max: number): string | undefined {
+  if (text === undefined || text.length <= max) return text
+  return `${text.slice(0, max - 1).trimEnd()}…`
+}
+
 // Concise, agent-facing projection of a Reference (no raw provider dump). When an
 // intent is supplied the use-gate verdict + attribution ride along, so the agent
 // sees *whether it may use* each result — not just a bare license id it ignores.
+// `sourceScore` stays out on purpose: it is in each source's own scale and only orders
+// results within one source; `relevance` is the cross-source score an agent can compare.
 function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: Attribution }) {
   const base = {
     id: r.id,
     title: r.title,
+    description: capText(r.description, AGENT_DESCRIPTION_MAX),
+    tags: r.tags && r.tags.length > 0 ? r.tags.slice(0, AGENT_TAGS_MAX) : undefined,
     modality: r.modality,
     kind: r.kind,
     provider: r.source.providerId,
     canonicalUrl: r.canonicalUrl,
     license: r.rights.license,
+    author: r.rights.author,
+    rehostPolicy: r.rights.rehostPolicy,
+    relevance: Math.round(r.relevance * 1000) / 1000,
     thumbnail: r.thumbnail?.url,
     excerpt: r.text?.excerpt,
   }
@@ -53,11 +70,20 @@ function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: 
 const agentRefSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
+  description: z.string().optional().describe(`the source's own caption or description, capped at ${AGENT_DESCRIPTION_MAX} characters`),
+  tags: z.array(z.string()).optional().describe(`the source's subjects or tags, first ${AGENT_TAGS_MAX}`),
   modality: z.string(),
   kind: z.string().optional().describe('fine-grained resource kind, e.g. photo / texture / ebook'),
   provider: z.string(),
   canonicalUrl: z.string(),
   license: z.string(),
+  author: z.string().optional().describe('creator as declared by the source'),
+  rehostPolicy: z.enum(REHOST_POLICIES).describe(
+    'what the source lets you do with the media file — respect it before downloading or storing anything: '
+    + 'hotlink-required = link to canonicalUrl, never copy the file; cache-allowed = you may download and cache it; '
+    + 'thumbnail-only = you may store the thumbnail but not the full file; no-store = store nothing, not even the thumbnail',
+  ),
+  relevance: z.number().describe('0..1 cross-source relevance after fusion/rerank; compare results by this'),
   thumbnail: z.string().optional(),
   excerpt: z.string().optional(),
   useVerdict: z
@@ -94,7 +120,8 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         'Search license-normalized reference material (image / video / audio / text) across the configured sources. ' +
         'Every result carries a license id + canonical source link. Pass `intent` to annotate each result with a ' +
         'use-verdict (may I use this, is attribution required) WITHOUT filtering; pass `gateFor` to instead return ' +
-        'only results whose license allows that intent. Results are references, not rights clearance — not legal advice.' +
+        'only results whose license allows that intent. Results are references, not rights clearance — not legal advice. ' +
+        'Before downloading or storing a result\'s media, follow its `rehostPolicy` (some sources only allow hotlinking or thumbnails).' +
         '\n\nConfigured sources:\n' + sourceList,
       inputSchema: {
         query: z.string().describe('what to search for, e.g. "cyberpunk alley at night"'),
