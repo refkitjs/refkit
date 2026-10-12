@@ -141,6 +141,7 @@ openverse-audio's `preview.mediaType` comes from the same `AUDIO_MIME` table as 
 - The tile's `provider` key becomes `source`. `narrowTile` accepts either key for one release, so cards persisted in old conversations still render.
 - The tile gains `durationSec`, and its `width`/`height` fall back to `preview.width/height` when `visual` is unset. Audio and video tiles show the duration as a small `m:ss` badge.
 - Video tiles render their poster (`thumbnail`) with a ▶ overlay instead of a bare glyph.
+- Audio tiles render their `thumbnail` (album art) when present, keeping ♪ as the fallback.
 - The `refkit_search` tool output schema follows (additive `durationSec`; `provider` → `source`).
 
 ## Testing

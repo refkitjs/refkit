@@ -170,6 +170,8 @@ describe('selectProviders', () => {
       expect(isSourceSelectionError(lookAlike({ modalities: undefined }))).toBe(false)
       expect(isSourceSelectionError(lookAlike({ modalities: 'image' }))).toBe(false)
       expect(isSourceSelectionError({ name: 'SourceSelectionError' })).toBe(false)
+      // every field but the message: callers interpolate e.message, so it must be a string
+      expect(isSourceSelectionError({ name: 'SourceSelectionError', code: 'no-matching-source', unknown: [], modalities: [] })).toBe(false)
       expect(isSourceSelectionError(new Error('refkit.search: no configured source matches id(s) [zzz] for modalities [image]'))).toBe(false)
       expect(isSourceSelectionError(new AggregateError([], 'all sources failed'))).toBe(false)
       for (const v of [null, undefined, 'SourceSelectionError', 0, true]) expect(isSourceSelectionError(v)).toBe(false)

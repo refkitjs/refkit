@@ -56,13 +56,15 @@ export class SourceSelectionError extends Error {
 /** True for a {@link SourceSelectionError} thrown by any copy of `@refkit/core`.
  *  `instanceof` only recognises this copy's class, and a host can load two (a
  *  client built with its own core handed to `@refkit/mcp`, or core bundled
- *  twice). So past `instanceof` this reads the stable fields — `name`, a known
- *  `code`, and the `unknown` and `modalities` arrays — and never the message. */
+ *  twice). So past `instanceof` this reads the stable fields — `name`, a string
+ *  `message` (callers interpolate it), a known `code`, and the `unknown` and
+ *  `modalities` arrays — and never parses the message. */
 export function isSourceSelectionError(e: unknown): e is SourceSelectionError {
   if (e instanceof SourceSelectionError) return true
   if (typeof e !== 'object' || e === null) return false
   const x = e as Record<string, unknown>
   return x.name === 'SourceSelectionError'
+    && typeof x.message === 'string'
     && typeof x.code === 'string'
     && (SOURCE_SELECTION_ERROR_CODES as readonly string[]).includes(x.code)
     && Array.isArray(x.unknown)

@@ -377,7 +377,7 @@ The bundled sources fill the audio and video metadata from what their search res
 
 | Source | Fills |
 |---|---|
-| `openverse-audio` | `audio.durationSec`, `audio.bitrateKbps` and `audio.sampleRateHz` when Openverse reports them; `audio.format` when the filetype is a known audio format (`mp3`, `ogg`, `oga`, `opus`, `wav`, `flac`, `mid`, `midi`, `webm`) |
+| `openverse-audio` | `audio.durationSec`, `audio.bitrateKbps` and `audio.sampleRateHz` when Openverse reports them; `audio.format` when the filetype is a known audio format (`mp3`, `ogg`, `oga`, `opus`, `wav`, `flac`, `mid`, `midi`, `webm`; Jamendo's `mp31`/`mp32` read as `mp3` and Wikimedia's `ogx` as `ogg`) |
 | `freesound`, `jamendo` | `audio.durationSec` |
 | `pexels-video` | `video.durationSec`, and `visual` (the source video's size) |
 | `pixabay-video` | `video.durationSec`; only a rendition's size is known, so it stays on `preview` |

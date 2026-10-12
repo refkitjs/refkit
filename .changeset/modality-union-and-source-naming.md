@@ -26,9 +26,9 @@ References now have a shape per modality, every public surface calls the catalog
 
 **Upgrade core, MCP and every provider together.** Each `@refkit/provider-*` package pins the exact `@refkit/core` version it was built with, so a host that upgrades core alone ends up with two copies of core.
 
-## What changed and why
+### What changed and why
 
-### `Reference` is a union keyed by `modality`
+#### `Reference` is a union keyed by `modality`
 
 Before, every result had one flat shape: any modality could carry `visual`, `text` or `preview`, and nothing said which fields belonged together. `EmittedReference` and `Reference` are now unions of four variants. Each variant is exported (`EmittedImageReference`, `EmittedVideoReference`, `EmittedAudioReference`, `EmittedTextReference`, and `ImageReference`, `VideoReference`, `AudioReference`, `TextReference`).
 
@@ -45,7 +45,7 @@ Before, every result had one flat shape: any modality could carry `visual`, `tex
 - **Types.** Each variant declares the other variants' fields as `?: never`. A provider that writes a field of another modality, such as `visual` on an audio item, gets a compile error. Code that reads the union still compiles without narrowing: `r.visual` is `VisualMeta | undefined` on any reference.
 - **Runtime.** `emittedReferenceSchema` and `referenceSchema` are discriminated unions on `modality`. An item whose `preview.mediaType` does not start with its variant's prefix (`image/`, `video/`, `audio/`) is rejected. A field that belongs to another modality is stripped.
 
-### Audio and video metadata
+#### Audio and video metadata
 
 There are two new types. Units:
 
@@ -65,13 +65,13 @@ The bundled sources fill them from the responses they already fetch. No source m
 - **Unset values.** A missing, non-finite, zero or negative duration, bitrate or sample rate leaves the field unset. Openverse reports a duration of 0 for MIDI files it never measured, and zero is never a real measurement for these fields.
 - **Not filled yet.** No bundled source fills `fps` or `channels`. Internet Archive leaves durations unset.
 
-### One word for the catalog a search queries: "source"
+#### One word for the catalog a search queries: "source"
 
 A *provider* is adapter code, such as a `ReferenceProvider` from a `@refkit/provider-*` package. Each provider instance serves one *source*. That source's id (`provider.id`, e.g. `openverse-audio`) is what `sources`, `sourceOptions`, `meta.sources` and each result's `source.id` speak.
 
 Before, the same id had several names: callers passed `sources`, but results reported `meta.providers[].providerId`, options went under `providerOptions`, errors went to `onProviderError`, and each reference named it `source.providerId`. The rename table is under "Breaking changes".
 
-### Fixes
+#### Fixes
 
 **openverse-audio**
 
@@ -112,7 +112,7 @@ Before, the same id had several names: callers passed `sources`, but results rep
 - **Unknown `sourceOptions` ids.** An id in `sourceOptions` that matches no configured source now adds `unknown sourceOptions id(s) ignored: …` to `meta.warnings`, as an unknown id in `sources` already did.
 - **Typed selection error.** When a search has no source to fan out to, core throws a `SourceSelectionError`. A host can now branch on its fields instead of matching the message. See "Breaking changes".
 
-### `@refkit/mcp`
+#### `@refkit/mcp`
 
 - **New fields.** Each `search_references` result gains optional `durationSec`, `width` and `height`:
   - `durationSec` is the audio or video length in seconds;
@@ -123,9 +123,9 @@ Before, the same id had several names: callers passed `sources`, but results rep
   - `sources: []` now gets that hint too.
   - So does a miss thrown by a client built with another copy of `@refkit/core`.
 
-## Breaking changes and how to migrate
+### Breaking changes and how to migrate
 
-### Renames
+#### Renames
 
 | Where | Old | New |
 |---|---|---|
@@ -148,7 +148,7 @@ These names stay unchanged:
 - `SearchInput.sources` and the MCP `sources` parameter;
 - **`NormalizedQuery.providerOptions`**: provider code keeps reading its own options from `q.providerOptions`.
 
-### `Reference` is a type alias of a union
+#### `Reference` is a type alias of a union
 
 - **`Omit`.** `Omit<Reference, K>` loses the link between `modality` and its fields. Use a distributive omit:
 
@@ -159,13 +159,13 @@ These names stay unchanged:
 - **Declaration merging.** You can no longer augment `Reference` by declaration merging.
 - **Test fixtures.** A builder that spreads `Partial<Reference>` or `Partial<EmittedReference>` over an image default no longer compiles. Type its parameter as `Partial<ImageReference>` / `Partial<EmittedImageReference>`.
 
-### Custom providers
+#### Custom providers
 
 - **Wrong-modality fields.** Writing a field of another modality is a compile error. At runtime the field is stripped.
 - **Preview media type.** A `preview.mediaType` without the variant's prefix (`image/`, `video/`, `audio/`) rejects the item.
 - **Undeclared modalities.** An item whose `modality` was not asked of the source is rejected. That covers a modality the source does not declare, and one the search did not request.
 
-### `SourceSelectionError` and `isSourceSelectionError`
+#### `SourceSelectionError` and `isSourceSelectionError`
 
 Core still throws when a search has no source to fan out to, but the error is now typed and its messages have changed. Stop matching the message and branch on the fields:
 
@@ -184,18 +184,18 @@ Recognise the error with `isSourceSelectionError(e)`, not `instanceof`:
 
 `SOURCE_SELECTION_ERROR_CODES` and the `SourceSelectionErrorCode` type are exported.
 
-### `runProviderSearch` rejects modality leaks
+#### `runProviderSearch` rejects modality leaks
 
 - The exported `runProviderSearch` now rejects every live item whose `modality` is not in the `modalities` of the query it is given.
 - A direct call with `modalities: []` therefore rejects every live item.
 - Through `createRefkit` this cannot happen: a source is only searched when it declares one of the requested modalities, so its query's `modalities` is never empty.
 
-### Other breaks
+#### Other breaks
 
 - **One-time cache miss.** The cache key prefix moved from `refkit:v3` to `refkit:v4`. Every entry cached by the previous version is missed once after the upgrade, instead of being parsed in the old shape.
 - **Duplicate source ids.** `createRefkit` now throws on duplicate source ids. Configure each source once.
 - **Poly Haven HDRI ids.** For HDRI users, `polyhaven({ assetType: 'hdris' })` changes its id from `polyhaven` to `polyhaven-hdri`. Reference ids, cache keys, and the `sources` and `sourceOptions` keys for HDRIs change with it. Replace `'polyhaven'` with `'polyhaven-hdri'` wherever you meant the HDRI source.
-- **`visual` on Flickr and pixabay-video.** These results no longer carry `visual`. For their size or aspect ratio, fall back to `preview.width` / `preview.height`, as `@refkit/mcp` does.
+- **`visual` on Flickr and pixabay-video.** These results no longer carry `visual`. For their size or aspect ratio, fall back to `preview.width` / `preview.height`, as `@refkit/mcp` does. The reranker's resolution term now treats these results as unknown (neutral) instead of scoring the rendition's size, so they can rank slightly higher in a mixed batch.
 - **MCP `providerOptions`.** The input is now `sourceOptions`. The MCP SDK silently strips unknown input keys, so a call that still sends `providerOptions` loses its options without an error.
 - **MCP agent ref.** Each reference's `provider` is now `source`.
 - **MCP errors with `sources` set.** Errors other than the source miss that are raised while `sources` is set (for example an invalid cursor) are now rethrown by the tool handler. Before, the handler returned its own `isError` result and appended a misleading "Enabled source ids" hint. The MCP SDK still reports a thrown error to the agent as an `isError` result with the error's message, now without the hint.
