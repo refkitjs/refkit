@@ -389,7 +389,7 @@ claude plugin marketplace add refkitjs/refkit
 claude plugin install refkit@refkit
 ```
 
-For Codex, run `codex plugin marketplace add refkitjs/refkit`, then install **refkit** from the plugin browser in the Codex app. The plugin is keyless by default (its README lists the optional key variables the server also reads) and pins `@refkit/mcp` to an exact version.
+For Codex, run `codex plugin marketplace add refkitjs/refkit`, then install **refkit** from the plugin browser in the Codex app (Codex support is untested so far). The plugin is keyless by default (its README lists the optional key variables the server also reads) and pins `@refkit/mcp` to an exact version.
 
 ## Not legal advice
 

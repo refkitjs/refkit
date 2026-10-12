@@ -17,6 +17,8 @@ Codex: register the marketplace, then install **refkit** from the plugin browser
 codex plugin marketplace add refkitjs/refkit
 ```
 
+Codex support follows OpenAI's documented plugin format but hasn't been tested in Codex yet. If the install or the tools don't work there, please [open an issue](https://github.com/refkitjs/refkit/issues). The first launch downloads the server and can exceed Codex's 10-second MCP startup timeout; if refkit fails to start once, retry.
+
 ## What's inside
 
 - **MCP server** [`@refkit/mcp`](https://www.npmjs.com/package/@refkit/mcp) with three tools: `search_references`, `evaluate_use` and `build_attribution`.
