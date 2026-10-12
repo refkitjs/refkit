@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { pixabay, pixabayVideo } from '../index'
 
 const FIXTURE = {
@@ -129,10 +130,60 @@ describe('pixabayVideo provider', () => {
     expect(r.rights.license).toBe('pixabay')
     expect(r.title).toBe('flowers, meadow')
     expect(r.tags).toEqual(['flowers', 'meadow'])
-    expect(r.preview?.url).toBe('https://cdn.pixabay.com/vimeo/125/large.mp4')
+    expect(r.preview).toEqual({ url: 'https://cdn.pixabay.com/vimeo/125/large.mp4', mediaType: 'video/mp4', width: 1920, height: 1080 })
     expect(r.thumbnail?.url).toBe('https://cdn.pixabay.com/vimeo/125/large.jpg')
-    expect(r.visual).toEqual({ width: 1920, height: 1080 })
+    // a rendition's size is not the original's: it stays on preview, visual is unset
+    expect(r.visual).toBeUndefined()
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pixabay license is commercial-OK
+  })
+
+  const videoCtx = (hits: unknown[]): ProviderContext => ({
+    fetch: (async () => new Response(JSON.stringify({ total: hits.length, totalHits: hits.length, hits }), { status: 200 })) as typeof fetch,
+  })
+  const HIT = VIDEO_FIXTURE.hits[0]
+
+  it('fills video.durationSec from the upstream duration; unset when null', async () => {
+    const [r] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([HIT]))
+    expect(r.video).toEqual({ durationSec: 13 })
+    const [noDuration] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([{ ...HIT, duration: null }]))
+    expect(noDuration.video).toBeUndefined()
+  })
+
+  it('maps the upstream type (film / animation) to kind; any other value leaves kind unset', async () => {
+    const refs = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([
+      HIT,
+      { ...HIT, id: 126, pageURL: 'https://pixabay.com/videos/id-126/', type: 'animation' },
+      { ...HIT, id: 127, pageURL: 'https://pixabay.com/videos/id-127/', type: 'hologram' },
+      { ...HIT, id: 128, pageURL: 'https://pixabay.com/videos/id-128/', type: undefined },
+    ]))
+    expect(refs.map(r => r.kind)).toEqual(['film', 'animation', undefined, undefined])
+  })
+
+  it('skips a rendition with an empty url or a size of 0 when choosing the preview', async () => {
+    // Pixabay docs: "If a large video version is not available, an empty URL
+    // value and a size of zero is returned."
+    const NO_LARGE = {
+      ...HIT,
+      videos: {
+        large: { url: '', width: 0, height: 0, size: 0, thumbnail: '' },
+        medium: { url: 'https://cdn.pixabay.com/vimeo/125/medium.mp4', width: 1280, height: 720, size: 0, thumbnail: 'https://cdn.pixabay.com/vimeo/125/medium.jpg' },
+        small: { url: 'https://cdn.pixabay.com/vimeo/125/small.mp4', width: 960, height: 540, size: 2000000, thumbnail: 'https://cdn.pixabay.com/vimeo/125/small.jpg' },
+      },
+    }
+    const [r] = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([NO_LARGE]))
+    expect(r.preview).toEqual({ url: 'https://cdn.pixabay.com/vimeo/125/small.mp4', mediaType: 'video/mp4', width: 960, height: 540 })
+    expect(r.thumbnail?.url).toBe('https://cdn.pixabay.com/vimeo/125/small.jpg')
+  })
+
+  it('drops a hit whose every rendition is empty', async () => {
+    const EMPTY = { ...HIT, videos: { large: { url: '', width: 0, height: 0, size: 0 }, tiny: { url: '', width: 0, height: 0, size: 0 } } }
+    const refs = await pixabayVideo({ key: 'k' }).search({ text: 'flowers', modalities: ['video'] }, videoCtx([EMPTY]))
+    expect(refs).toEqual([])
+  })
+
+  it('passes provider conformance (testkit) on the video fixture', async () => {
+    const refs = await searchConformant(pixabayVideo({ key: 'k' }), videoCtx([HIT]).fetch)
+    expect(refs).toHaveLength(1)
   })
 
   it('forwards documented video search controls and Pixabay-specific options', async () => {

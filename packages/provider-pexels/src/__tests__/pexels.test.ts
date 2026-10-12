@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { searchConformant } from '@refkit/provider-testkit'
 import { pexels, pexelsVideo } from '../index'
 
 const FIXTURE = {
@@ -100,6 +101,22 @@ describe('pexelsVideo provider', () => {
     expect(r.thumbnail?.url).toBe('https://images.pexels.com/videos/6394054/cat.jpg')
     expect(r.visual).toEqual({ width: 2560, height: 1440 })
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed') // pexels license is commercial-OK
+  })
+
+  it('fills video.durationSec from the upstream duration (integer seconds)', async () => {
+    const [r] = await pexelsVideo({ apiKey: 'k' }).search({ text: 'cat', modalities: ['video'] }, ctxWith(VIDEO_FIXTURE))
+    expect(r.video).toEqual({ durationSec: 12 })
+  })
+
+  it('leaves video unset when the duration is null', async () => {
+    const NO_DURATION = { videos: [{ ...VIDEO_FIXTURE.videos[0], duration: null }] }
+    const [r] = await pexelsVideo({ apiKey: 'k' }).search({ text: 'cat', modalities: ['video'] }, ctxWith(NO_DURATION))
+    expect(r.video).toBeUndefined()
+  })
+
+  it('passes provider conformance (testkit) on the video fixture', async () => {
+    const refs = await searchConformant(pexelsVideo({ apiKey: 'k' }), ctxWith(VIDEO_FIXTURE).fetch)
+    expect(refs).toHaveLength(1)
   })
 
   it('forwards documented video search controls and Pexels-specific options', async () => {

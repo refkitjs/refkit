@@ -87,7 +87,8 @@ interface PexelsVideo {
   width: number
   height: number
   url: string
-  duration: number
+  /** Seconds. */
+  duration: number | null
   image: string
   user: { name: string; url: string }
   video_files: PexelsVideoFile[]
@@ -101,6 +102,8 @@ function pickVideoFile(files: PexelsVideoFile[]): PexelsVideoFile | undefined {
 
 function toVideoReference(v: PexelsVideo): EmittedReference {
   const file = pickVideoFile(v.video_files ?? [])
+  const duration = v.duration
+  const hasDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
   const rights: RightsRecord = {
     license: 'pexels',
     author: v.user?.name,
@@ -114,7 +117,9 @@ function toVideoReference(v: PexelsVideo): EmittedReference {
     rights,
     thumbnail: { url: v.image },
     ...(file ? { preview: { url: file.link, mediaType: file.file_type || 'video/mp4', width: file.width ?? undefined, height: file.height ?? undefined } } : {}),
+    // the source video's dimensions (the renditions' sizes are on video_files)
     visual: { width: v.width, height: v.height },
+    ...(hasDuration ? { video: { durationSec: duration } } : {}),
     raw: v,
   }
 }

@@ -8,7 +8,9 @@ const PH_BASE = 'https://api.polyhaven.com'
 const PH_TERMS = 'https://polyhaven.com/license'
 
 export interface PolyHavenConfig {
-  /** texture vs HDRI listing. Default 'textures'. */
+  /** texture vs HDRI listing. Default 'textures'. Each is its own source: the
+   *  textures listing has the id `polyhaven`, the HDRI listing `polyhaven-hdri`,
+   *  so both can be configured side by side. */
   assetType?: 'textures' | 'hdris'
   /** Max assets resolved per search; each costs one /files/<id> call (N+1). Default 12. */
   maxAssets?: number
@@ -81,7 +83,7 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: 
 export function polyhaven(config: PolyHavenConfig = {}) {
   const assetType = config.assetType ?? 'textures'
   return defineProvider({
-    id: 'polyhaven',
+    id: assetType === 'hdris' ? 'polyhaven-hdri' : 'polyhaven',
     modalities: ['image'],
     kinds: assetType === 'hdris' ? ['hdri'] : ['texture'],
     description: assetType === 'hdris'

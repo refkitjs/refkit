@@ -35,6 +35,8 @@ const JAMENDO_AUDIO_MIME: Record<string, string> = {
 interface JamendoTrack {
   id: string
   name: string
+  /** Seconds (an integer in the documented response). */
+  duration?: number | null
   artist_name: string
   audio: string
   audiodownload?: string
@@ -71,6 +73,8 @@ function toAudioReference(t: JamendoTrack, mediaType: string): EmittedReference 
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: t.license_ccurl, sourceUrl },
   }
+  const duration = t.duration
+  const hasDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
   return {
     modality: 'audio',
     kind: 'music',
@@ -80,6 +84,7 @@ function toAudioReference(t: JamendoTrack, mediaType: string): EmittedReference 
     // audio has no native thumbnail; the album art is the closest visual handle
     ...(t.image ? { thumbnail: { url: t.image } } : {}),
     preview: { url: t.audio, mediaType },
+    ...(hasDuration ? { audio: { durationSec: duration } } : {}),
     raw: t,
   }
 }

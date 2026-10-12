@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateUse, type ProviderContext } from '@refkit/core'
+import { createRefkit, evaluateUse, type ProviderContext } from '@refkit/core'
 import { polyhaven } from '../index'
 
 // Poly Haven: /assets returns id→asset (no URLs); /files/<id> returns the download tree.
@@ -82,5 +82,14 @@ describe('polyhaven provider', () => {
   it('declares kinds per assetType', () => {
     expect(polyhaven().kinds).toEqual(['texture'])
     expect(polyhaven({ assetType: 'hdris' }).kinds).toEqual(['hdri'])
+  })
+
+  it('serves HDRIs as their own source, polyhaven-hdri, so textures and HDRIs can coexist', () => {
+    expect(polyhaven().id).toBe('polyhaven')
+    expect(polyhaven({ assetType: 'textures' }).id).toBe('polyhaven')
+    expect(polyhaven({ assetType: 'hdris' }).id).toBe('polyhaven-hdri')
+    // createRefkit throws on duplicate source ids
+    const refkit = createRefkit({ providers: [polyhaven(), polyhaven({ assetType: 'hdris' })] })
+    expect(refkit.providers.map(p => p.id)).toEqual(['polyhaven', 'polyhaven-hdri'])
   })
 })

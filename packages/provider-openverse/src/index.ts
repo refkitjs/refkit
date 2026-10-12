@@ -2,7 +2,7 @@ import {
   defineProvider, okJson, ccVersionFor,
   setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
   CC_FAMILY_BY_TOKEN,
-  type EmittedReference, type RightsRecord, type LicenseId,
+  type EmittedReference, type RightsRecord, type LicenseId, type AudioMeta,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -186,20 +186,61 @@ const AUDIO_MIME: Record<string, string> = {
   mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', flac: 'audio/flac', opus: 'audio/opus',
 }
 
+// Jamendo's own format codes (mp31 = 96 kbps mp3, mp32 = VBR mp3), which Openverse
+// passes through as `filetype` for Jamendo-sourced items.
+const JAMENDO_MP3_CODES = new Set(['mp31', 'mp32'])
+
 interface OpenverseAudioResult {
   id: string
   title: string | null
   creator: string | null
   foreign_landing_url: string
   url: string
+  /** Album art (`/v1/audio/<id>/thumb/`, image/jpeg); null when the item has none. */
   thumbnail: string | null
   license: string
   license_version: string
   license_url: string
   filetype?: string | null
-  waveform?: string | null
+  /** Milliseconds. */
+  duration?: number | null
+  /** Bits per second; null for Jamendo-sourced items. */
+  bit_rate?: number | null
+  /** Hertz; often null. */
+  sample_rate?: number | null
+  /** Top-level classification: audiobook, music, news, podcast, pronunciation,
+   *  sound_effect; null for Freesound-sourced items. */
+  category?: string | null
 }
 interface OpenverseAudioResponse { results: OpenverseAudioResult[] }
+
+const positive = (v: number | null | undefined): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/** `filetype` as a file format: Jamendo's mp31/mp32 codes normalised to mp3; a
+ *  value that is not a known audio format yields undefined. */
+function audioFormat(filetype: string | null | undefined): string | undefined {
+  const t = (filetype ?? '').toLowerCase()
+  const format = JAMENDO_MP3_CODES.has(t) ? 'mp3' : t
+  return Object.hasOwn(AUDIO_MIME, format) ? format : undefined
+}
+
+function audioMeta(r: OpenverseAudioResult, format: string | undefined): AudioMeta | undefined {
+  const meta: AudioMeta = {}
+  if (positive(r.duration)) meta.durationSec = r.duration / 1000
+  if (positive(r.bit_rate)) meta.bitrateKbps = r.bit_rate / 1000
+  if (positive(r.sample_rate)) meta.sampleRateHz = r.sample_rate
+  if (format) meta.format = format
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+/** Openverse `category` → kind, only for the values that clearly mean one of the
+ *  declared kinds (pronunciation, podcast, audiobook and news stay unset). */
+function audioKind(category: string | null | undefined): string | undefined {
+  if (category === 'music') return 'music'
+  if (category === 'sound_effect') return 'sound-effect'
+  return undefined
+}
 
 function toAudioReference(r: OpenverseAudioResult): EmittedReference {
   const license = mapOpenverseLicense(r.license)
@@ -211,14 +252,20 @@ function toAudioReference(r: OpenverseAudioResult): EmittedReference {
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: r.license_url, sourceUrl: r.foreign_landing_url },
   }
+  const format = audioFormat(r.filetype)
+  const kind = audioKind(r.category)
+  const audio = audioMeta(r, format)
   return {
     modality: 'audio',
+    ...(kind ? { kind } : {}),
     title: r.title ?? undefined,
     sourceUrl: r.foreign_landing_url,
     rights,
-    // audio has no image; the waveform render is the closest visual handle
-    ...(r.waveform ? { thumbnail: { url: r.waveform } } : {}),
-    preview: { url: r.url, mediaType: AUDIO_MIME[r.filetype ?? ''] ?? 'audio/mpeg' },
+    // The album art. The `waveform` URL is JSON peak data, not an image, so it is
+    // never a thumbnail.
+    ...(r.thumbnail ? { thumbnail: { url: r.thumbnail } } : {}),
+    preview: { url: r.url, mediaType: format ? AUDIO_MIME[format] : 'audio/mpeg' },
+    ...(audio ? { audio } : {}),
     raw: r,
   }
 }

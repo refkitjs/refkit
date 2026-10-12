@@ -259,26 +259,101 @@ describe('openverse anonymous page_size cap', () => {
 })
 
 describe('openverseAudio provider', () => {
-  const AUDIO = { results: [{
+  // Shapes observed live on api.openverse.org/v1/audio/ (2026-10-12/13, keyless):
+  // Freesound-sourced items carry category null, thumbnail null, bit_rate 128000,
+  // sample_rate null and filetype mp3; Jamendo-sourced items carry category
+  // "music", album art at /thumb/ (image/jpeg), bit_rate null and Jamendo's own
+  // format code (mp32); Wikimedia-sourced items carry a sample rate, sometimes
+  // category "pronunciation" and filetypes such as ogx. `duration` is in ms and
+  // `waveform` (on every item) is JSON peak data, never an image.
+  const FREESOUND_SOURCED = {
     id: 'a1', title: 'Piano Melody', creator: 'benpm',
     foreign_landing_url: 'https://freesound.org/people/benpm/sounds/186942',
     url: 'https://cdn.freesound.org/previews/186/186942_2594536-hq.mp3',
     thumbnail: null, license: 'by', license_version: '4.0',
     license_url: 'https://creativecommons.org/licenses/by/4.0/',
-    filetype: 'mp3', waveform: 'https://api.openverse.org/v1/audio/a1/waveform/',
-  }] }
+    provider: 'freesound', source: 'freesound', category: null, genres: null,
+    filetype: 'mp3', duration: 60116, bit_rate: 128000, sample_rate: null,
+    waveform: 'https://api.openverse.org/v1/audio/a1/waveform/',
+  }
+  const JAMENDO_SOURCED = {
+    id: 'a2', title: 'Ragtime Stroll', creator: 'fankel',
+    foreign_landing_url: 'https://www.jamendo.com/track/1848357',
+    url: 'https://prod-1.storage.jamendo.com/?trackid=1848357&format=mp32',
+    thumbnail: 'https://api.openverse.org/v1/audio/a2/thumb/', license: 'by-sa', license_version: '3.0',
+    license_url: 'https://creativecommons.org/licenses/by-sa/3.0/',
+    provider: 'jamendo', source: 'jamendo', category: 'music', genres: ['jazz', 'ragtime'],
+    filetype: 'mp32', duration: 72000, bit_rate: null, sample_rate: null,
+    waveform: 'https://api.openverse.org/v1/audio/a2/waveform/',
+  }
+  const WIKIMEDIA_SOURCED = {
+    id: 'a3', title: 'De-Hallo.ogg', creator: 'Someone',
+    foreign_landing_url: 'https://commons.wikimedia.org/w/index.php?curid=1',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/De-Hallo.ogx',
+    thumbnail: null, license: 'by-sa', license_version: '4.0',
+    license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+    provider: 'wikimedia_audio', source: 'wikimedia_audio', category: 'pronunciation', genres: null,
+    filetype: 'ogx', duration: 1234, bit_rate: 112000, sample_rate: 44100,
+    waveform: 'https://api.openverse.org/v1/audio/a3/waveform/',
+  }
+  const AUDIO = { results: [FREESOUND_SOURCED, JAMENDO_SOURCED, WIKIMEDIA_SOURCED] }
 
-  it('maps audio to a Reference (modality audio, CC-BY + version, waveform thumbnail, audio mime)', async () => {
+  it('maps audio to a Reference (modality audio, CC-BY + version, audio mime)', async () => {
     const refs = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
-    expect(refs).toHaveLength(1)
+    expect(refs).toHaveLength(3)
     const r = refs[0]
     expect(r.modality).toBe('audio')
     expect(r.rights.license).toBe('CC-BY')
     expect(r.rights.licenseVersion).toBe('4.0')
     expect(r.preview?.url).toBe('https://cdn.freesound.org/previews/186/186942_2594536-hq.mp3')
     expect(r.preview?.mediaType).toBe('audio/mpeg')
-    expect(r.thumbnail?.url).toContain('waveform')
     expect(evaluateUse(r.rights, 'commercial-product').decision).toBe('allowed-with-attribution')
+  })
+
+  it('fills audio metadata: duration ms → s, bit rate bps → kbps, format from filetype; null sample rate stays unset', async () => {
+    const [freesoundItem] = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(freesoundItem.audio).toEqual({ durationSec: 60.116, bitrateKbps: 128, format: 'mp3' })
+  })
+
+  it('normalises Jamendo format codes (mp31/mp32 → mp3) and leaves the null bit rate unset', async () => {
+    const [, jamendoItem] = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(jamendoItem.audio).toEqual({ durationSec: 72, format: 'mp3' })
+    expect(jamendoItem.preview?.mediaType).toBe('audio/mpeg')
+    const MP31 = { results: [{ ...JAMENDO_SOURCED, filetype: 'mp31' }] }
+    const [mp31] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(MP31))
+    expect(mp31.audio?.format).toBe('mp3')
+  })
+
+  it('keeps a sample rate when present; a filetype that is not a known audio format sets no format', async () => {
+    const [, , wikimediaItem] = await openverseAudio().search({ text: 'hallo', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(wikimediaItem.audio).toEqual({ durationSec: 1.234, bitrateKbps: 112, sampleRateHz: 44100 })
+  })
+
+  it('leaves audio unset when every upstream field is null', async () => {
+    const BARE = { results: [{ ...FREESOUND_SOURCED, filetype: null, duration: null, bit_rate: null, sample_rate: null }] }
+    const [r] = await openverseAudio().search({ text: 'x', modalities: ['audio'] }, ctxWith(BARE))
+    expect(r.audio).toBeUndefined()
+  })
+
+  it('thumbnail is the upstream album art, never the JSON waveform; unset when the art is null', async () => {
+    const [freesoundItem, jamendoItem] = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(jamendoItem.thumbnail).toEqual({ url: 'https://api.openverse.org/v1/audio/a2/thumb/' })
+    expect(freesoundItem.thumbnail).toBeUndefined()
+  })
+
+  it('maps category to kind only when it means music or a sound effect', async () => {
+    const SFX = { results: [{ ...FREESOUND_SOURCED, category: 'sound_effect' }] }
+    const [sfx] = await openverseAudio().search({ text: 'door', modalities: ['audio'] }, ctxWith(SFX))
+    expect(sfx.kind).toBe('sound-effect')
+    const [freesoundItem, jamendoItem, wikimediaItem] = await openverseAudio().search({ text: 'piano', modalities: ['audio'] }, ctxWith(AUDIO))
+    expect(jamendoItem.kind).toBe('music')
+    expect(freesoundItem.kind).toBeUndefined() // category null
+    expect(wikimediaItem.kind).toBeUndefined() // 'pronunciation' is not a declared kind
+  })
+
+  it('passes provider conformance (testkit) on the audio fixture', async () => {
+    const refs = await searchConformant(openverseAudio(), ctxWith(AUDIO).fetch)
+    expect(refs).toHaveLength(3)
   })
 
   it('shares the license_type helper with audio searches', async () => {
