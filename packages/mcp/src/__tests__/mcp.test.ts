@@ -249,6 +249,68 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
+  it('projects description, tags, author, relevance and rehostPolicy for agents (not the per-source sourceScore)', async () => {
+    const long = `Lighthouse on a rocky cape at dusk, ${'with long exposure waves '.repeat(20)}`.trim()
+    const tags = ['lighthouse', 'coast', 'dusk', 'sea', 'rocks', 'waves', 'beacon', 'cape', 'night', 'tower']
+    const provider = defineProvider({
+      id: 'p',
+      modalities: ['image'],
+      search: async () => [
+        {
+          modality: 'image' as const,
+          title: 'Cape light',
+          description: long,
+          tags,
+          sourceScore: 42,
+          sourceUrl: 'https://p/1',
+          rights: { license: 'CC-BY-4.0', author: 'Ann', rehostPolicy: 'hotlink-required' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://p/1' } },
+        },
+        {
+          modality: 'image' as const,
+          title: 'Harbour light',
+          description: 'Short caption.',
+          sourceUrl: 'https://p/2',
+          rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed' as const, raw: { sourceTerms: 'terms', sourceUrl: 'https://p/2' } },
+        },
+      ],
+    })
+    const server = createRefkitMcpServer(createRefkit({ providers: [provider], resilience: false }))
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test', version: '1.0.0' })
+    await Promise.all([client.connect(clientT), server.connect(serverT)])
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'lighthouse', modalities: ['image'] } })
+    const refs = (res.structuredContent as { references: Array<Record<string, unknown>> }).references
+    const cape = refs.find(r => r.title === 'Cape light')!
+    const harbour = refs.find(r => r.title === 'Harbour light')!
+    expect(typeof cape.description).toBe('string')
+    expect((cape.description as string).length).toBeLessThanOrEqual(280)
+    expect(cape.description as string).toMatch(/^Lighthouse on a rocky cape at dusk, with long exposure waves/)
+    expect(cape.description as string).toMatch(/…$/)
+    expect(harbour.description).toBe('Short caption.')
+    expect(cape.tags).toEqual(tags.slice(0, 8))
+    expect(harbour.tags).toBeUndefined()
+    expect(cape.author).toBe('Ann')
+    expect(cape.rehostPolicy).toBe('hotlink-required')
+    expect(harbour.rehostPolicy).toBe('cache-allowed')
+    expect(typeof cape.relevance).toBe('number')
+    expect(cape.relevance as number).toBeGreaterThan(0)
+    expect(cape.relevance as number).toBeLessThanOrEqual(1)
+    expect(cape).not.toHaveProperty('sourceScore')
+    await client.close()
+  })
+
+  it('tells agents what rehostPolicy means, in the tool description and the output schema', async () => {
+    const client = await connectedClient()
+    const { tools } = await client.listTools()
+    const search = tools.find(t => t.name === 'search_references')!
+    expect(search.description).toMatch(/rehostPolicy/)
+    const items = (search.outputSchema as unknown as { properties: { references: { items: { properties: Record<string, { enum?: string[]; description?: string }> } } } })
+      .properties.references.items.properties
+    expect(items.rehostPolicy.enum).toEqual(['hotlink-required', 'cache-allowed', 'thumbnail-only', 'no-store'])
+    for (const value of ['hotlink-required', 'cache-allowed', 'thumbnail-only', 'no-store']) expect(items.rehostPolicy.description).toContain(value)
+    await client.close()
+  })
+
   it('reranks by default and passes rerank:false through as raw fusion order', async () => {
     const titles = ['Something else', 'A lion']
     const provider = defineProvider({

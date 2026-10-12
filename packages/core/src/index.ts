@@ -7,7 +7,7 @@ export {
 } from './license'
 export type { LicenseId, KnownLicenseId, LicenseFacts, Tri } from './license'
 export type { RehostPolicy, RightsRecord } from './rights'
-export { rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
+export { REHOST_POLICIES, rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
 export { buildAttribution } from './attribution'
 export type { Attribution, AttributionInput } from './attribution'
 export type {

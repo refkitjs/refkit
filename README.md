@@ -357,7 +357,7 @@ A provider's `search` returns `EmittedReference[]` — only what the **source** 
 - **Zero network in `core`** — no `fetch` call, no hard-coded endpoint. Hosts inject `ProviderContext.fetch`.
 - **Core stamps its own fields** — `id`, `source`, `canonicalUrl`, `verifiedAt`, `relevance` and the `limit` come from core, never from a provider (`EmittedReference` → `Reference`).
 - **Facts, not labels** — the use-gate, the merge's conflict resolution, attribution and the license boost all read license **facts** via `factsOf(rights)`: `LicenseId` is an open string, and a source whose terms are narrower than the label it declares ships its own `rights.facts` row. An id with no known facts resolves to the `unknown` row, which grants nothing.
-- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits; it is host-facing metadata that core validates and passes through but never acts on — enforcing it is the host binding's job.
+- **No re-hosting** — keep `canonicalUrl` + thumbnails only; never store originals. `rights.rehostPolicy` records what the source permits (`REHOST_POLICIES`); core validates and passes it through but never acts on it. Enforcing it is the host binding's job, and `@refkit/mcp` hands it to agents on every result with what each value allows.
 - **strict-deny** — when rights can't be determined, deny / needs-review (never fail-open). Unknown, NonCommercial and "no known copyright restrictions" never map to a commercially usable license; NoDerivatives allows verbatim commercial reuse (with attribution) but never derivative/AI use.
 
 ## Agent usage
