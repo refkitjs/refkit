@@ -112,7 +112,7 @@ openverse-audio's `preview.mediaType` comes from the same `AUDIO_MIME` table as 
 3. **Duplicate source ids pass silently.**
    - `createRefkit` throws when two providers share an id.
    - `polyhaven({ assetType: 'hdris' })` gets the id `polyhaven-hdri`, so textures and HDRIs can coexist. This is breaking for HDRI users (reference ids, cache keys, `sources`/`sourceOptions` keys change) and the changeset says so.
-4. **Typed selection error.** Export `SourceSelectionError` for both selection throws: `code: 'no-matching-source'` when `sources` was given and nothing was chosen (unknown id, known id lacking the modality or kind, or `sources: []`), `'no-source-for-query'` otherwise; fields `requested?: string[]` (the `sources` as passed), `unknown: string[]` (ids that match no configured source), `modalities: Modality[]`, `kind?: string`. The dsh plugin stops string-matching core's message, which this release changes anyway.
+4. **Typed selection error.** Export `SourceSelectionError` for both selection throws: `code: 'no-matching-source'` when `sources` was given and nothing was chosen (unknown id, known id lacking the modality or kind, or `sources: []`), `'no-source-for-query'` otherwise; fields `requested?: string[]` (the `sources` as passed), `unknown: string[]` (ids that match no configured source), `modalities: Modality[]`, `kind?: string`. Core also exports a structural guard, `isSourceSelectionError(e)` (true on `instanceof`, else on `name` + a known `code` + array `unknown`/`modalities`), with `SOURCE_SELECTION_ERROR_CODES` and `SourceSelectionErrorCode`, because a host can load two copies of core and `instanceof` then fails. The dsh plugin stops string-matching core's message, which this release changes anyway.
 5. **Declared kinds that are never emitted.**
    - pixabay-video: `kind` from the upstream `type` (`film` / `animation`).
    - openverse-audio: `kind` from the upstream `category` when it maps to `music` or `sound-effect`. The implementer verifies the field and its values live (keyless). Expect only `music` (Jamendo-sourced items); Freesound-sourced items carry `category: null`.
@@ -124,7 +124,7 @@ openverse-audio's `preview.mediaType` comes from the same `AUDIO_MIME` table as 
 
 - Renames per D4: `sourceOptions` input, agent ref `source`. No alias for `providerOptions` (no shims; nobody depends on it yet) — see Risks.
 - The agent ref gains optional `durationSec` (from `audio`/`video`) and `width`/`height` (from `visual`, else from `preview.width/height`: aspect ratio is rendition-independent), so agents can filter by length or resolution. It stays a flat projection; the output schema does not become a union.
-- The "unknown sources" tool error is detected through `SourceSelectionError` with `code === 'no-matching-source'`, not a message heuristic. Other errors raised while `sources` is set (e.g. an invalid cursor) now throw instead of becoming an `isError` result.
+- The "unknown sources" tool error is detected with `isSourceSelectionError(err) && err.code === 'no-matching-source'`, not a message heuristic. Other errors raised while `sources` is set (e.g. an invalid cursor) are rethrown by the handler; the MCP SDK still returns them as an `isError` result, now without the configured-ids hint.
 
 ### D8 — `@refkit/dsh-plugin` 0.3.0 (separate repo, after the refkit packages are on npm)
 
@@ -133,7 +133,7 @@ openverse-audio's `preview.mediaType` comes from the same `AUDIO_MIME` table as 
 - dsh already exports its own `SourceStatus` (a different shape); alias the core import. Renaming the public `PROVIDER_IDS` export is breaking for the plugin's API and goes in its changelog.
 - Adapt to D4:
   - read `meta.sources`, `sourceId` and `onSourceError`;
-  - detect the selection miss with `SourceSelectionError`.
+  - detect the selection miss with `isSourceSelectionError(err) && err.code === 'no-matching-source'`.
 - Naming inside the plugin:
   - the host's `PROVIDER_IDS` becomes `SOURCE_IDS` and `RETIRED_IDS` becomes `RETIRED_SOURCE_IDS`, matching the client mirror;
   - copy that says "provider ids" says "source ids" (dsh uses "provider" for LLM providers);
