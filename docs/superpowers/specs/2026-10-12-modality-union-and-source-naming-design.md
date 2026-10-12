@@ -98,7 +98,9 @@ Positional parameters named `providerId` (e.g. `completeReference`, `referenceId
 | pexels-video | `video.durationSec` | `duration` |
 | pixabay-video | `video.durationSec` | `duration` |
 
-Null or non-finite upstream values leave the field unset. Internet Archive's `runtime` is skipped (sparse, ambiguous forms).
+Null, non-finite or non-positive upstream values leave the field unset (Openverse reports `duration: 0` for MIDI files it never measured; a real 0 is never meaningful for a duration, bitrate or sample rate). Internet Archive's `runtime` is skipped (sparse, ambiguous forms).
+
+openverse-audio's `preview.mediaType` comes from the same `AUDIO_MIME` table as `format`: Wikimedia's `ogx` (an Ogg Vorbis stream) is normalised to `ogg` like `mp31`/`mp32` to `mp3`, and `mid`/`midi` (`audio/midi`) and `webm` (`audio/webm`) are added, so no item falls back to `audio/mpeg` while its `format` says otherwise.
 
 ### D6 — Defects fixed in the same release
 
