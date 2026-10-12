@@ -28,7 +28,9 @@ function lostKeys(input: unknown, parsed: unknown, path = ''): string[] {
   return Object.keys(input).flatMap((k) => {
     if ((path === '' && k === 'raw') || input[k] === undefined) return []
     const at = path ? `${path}.${k}` : k
-    return k in parsed ? lostKeys(input[k], parsed[k], at) : [at]
+    // Own keys only: `in` would find `constructor` or `toString` on the
+    // prototype and miss that the schema stripped them.
+    return Object.hasOwn(parsed, k) ? lostKeys(input[k], parsed[k], at) : [at]
   })
 }
 
@@ -38,7 +40,8 @@ function lostKeys(input: unknown, parsed: unknown, path = ''): string[] {
  *  the real global fetch (live smoke). Per item:
  *  - it parses as its modality's variant (incl. the preview mediaType prefix);
  *  - parsing lost no keys;
- *  - its modality is one the provider declares, and its kind one it declares;
+ *  - its modality is one the provider declares and one the query asked for, and
+ *    its kind one the provider declares;
  *  - its thumbnail is not the landing page (every modality). */
 export async function searchConformant(
   provider: ReferenceProvider,
@@ -68,11 +71,14 @@ export async function searchConformant(
     if (lost.length > 0) {
       throw new Error(`[${provider.id}] result #${i} lost keys in parseEmitted: ${lost.join(', ')} (not part of the ${emitted.modality} variant, e.g. a field from another modality)`)
     }
-    // Declared-modalities consistency: core rejects an item outside the
-    // modalities the source was asked for; a provider must never emit one it
-    // does not declare.
+    // Modality consistency: a provider must never emit a modality it does not
+    // declare, nor one the query did not ask for — core rejects the latter as a
+    // modality leak (runProviderSearch checks query.modalities).
     if (!provider.modalities.includes(emitted.modality)) {
       throw new Error(`[${provider.id}] result #${i} modality "${emitted.modality}" is not in the provider's declared modalities [${provider.modalities.join(', ')}]`)
+    }
+    if (!query.modalities.includes(emitted.modality)) {
+      throw new Error(`[${provider.id}] result #${i} modality "${emitted.modality}" is not in the query's modalities [${query.modalities.join(', ')}]`)
     }
     const ref: Reference = completeReference(provider.id, emitted, now)
     // Declared-kinds consistency: a provider stating what it offers must not
@@ -92,7 +98,7 @@ export async function searchConformant(
     // is the schema's: each variant checks its own prefix in parseEmitted.)
     if (
       ref.thumbnail && !isLikelyImageUrl(ref.thumbnail.url)
-      && (ref.thumbnail.url === ref.canonicalUrl || ref.thumbnail.url === ref.source.sourceUrl)
+      && (ref.thumbnail.url === ref.canonicalUrl || ref.thumbnail.url === ref.source.url)
     ) {
       throw new Error(`[${provider.id}] result #${i} thumbnail.url is the item's landing page, not an image resource: ${ref.thumbnail.url}`)
     }

@@ -6,6 +6,7 @@ import { defineProvider, type ReferenceProvider } from '../provider'
 import { lexicalReranker } from '../rerank'
 import { completeReference, type EmittedImageReference, type EmittedReference } from '../reference'
 import type { LicenseId } from '../license'
+import { SourceSelectionError } from '../index' // the public entry: proves the export
 
 const ref = (url: string, license: LicenseId = 'CC0-1.0'): EmittedImageReference => ({
   modality: 'image',
@@ -31,12 +32,12 @@ describe('createRefkit', () => {
     expect(out[0].relevance).toBeGreaterThan(0)
   })
 
-  it('degrades gracefully when one provider fails (onProviderError, survivors merged)', async () => {
-    const onProviderError = vi.fn()
+  it('degrades gracefully when one provider fails (onSourceError, survivors merged)', async () => {
+    const onSourceError = vi.fn()
     const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), failing('b')] })
-    const out = await rk.search({ query: 'x', modalities: ['image'], onProviderError })
+    const out = await rk.search({ query: 'x', modalities: ['image'], onSourceError })
     expect(out).toHaveLength(1)
-    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'b' }))
+    expect(onSourceError).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'b' }))
   })
 
   it('throws AggregateError only when ALL providers fail', async () => {
@@ -175,6 +176,13 @@ describe('createRefkit', () => {
     promised.catch(() => {})
   })
 
+  it('throws when two providers serve the same source id, naming the id', () => {
+    expect(() => createRefkit({ providers: [provider('a', []), provider('b', []), provider('a', [])] }))
+      .toThrow('createRefkit: duplicate source id(s) [a]')
+    expect(() => createRefkit({ providers: [provider('b', []), provider('a', []), provider('b', []), provider('a', []), provider('a', [])] }))
+      .toThrow('createRefkit: duplicate source id(s) [b, a]')
+  })
+
   it('surfaces cross-source license conflicts as meta.warnings with conservative rights', async () => {
     const rk = createRefkit({
       providers: [
@@ -275,13 +283,13 @@ describe('createRefkit', () => {
     const imageOnly = provider('img', [ref('https://img/1')])
     const rk = createRefkit({ providers: [imageOnly] })
     await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.toThrow(
-      "refkit.search: no registered provider supports modalities [video]"
+      "refkit.search: no configured source supports modalities [video]"
     )
     await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.not.toBeInstanceOf(AggregateError)
   })
 
-  it('provider fulfills but returns malformed data: onProviderError called, result excluded, no throw', async () => {
-    const onProviderError = vi.fn()
+  it('provider fulfills but returns malformed data: onSourceError called, result excluded, no throw', async () => {
+    const onSourceError = vi.fn()
     const malformedProvider = defineProvider({
       id: 'bad',
       modalities: ['image'],
@@ -289,8 +297,8 @@ describe('createRefkit', () => {
     })
     const goodProvider = provider('good', [ref('https://good/1')])
     const rk = createRefkit({ providers: [malformedProvider, goodProvider] })
-    const out = await rk.search({ query: 'x', modalities: ['image'], onProviderError })
-    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'bad' }))
+    const out = await rk.search({ query: 'x', modalities: ['image'], onSourceError })
+    expect(onSourceError).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'bad' }))
     expect(out.every(r => r.id !== '')).toBe(true)
     expect(out).toHaveLength(1)
   })
@@ -358,7 +366,7 @@ describe('createRefkit', () => {
     await rk.search({
       query: 'x',
       modalities: ['image'],
-      providerOptions: { a: { orderBy: 'latest' }, b: { sort: 'relevance' } },
+      sourceOptions: { a: { orderBy: 'latest' }, b: { sort: 'relevance' } },
     })
     expect(seenA).toEqual({ orderBy: 'latest' })
     expect(seenB).toEqual({ sort: 'relevance' })
@@ -380,13 +388,13 @@ describe('createRefkit', () => {
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
 
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://ok/1'])
-    expect(out.meta.providers).toEqual([
-      { providerId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
-      { providerId: 'bad', status: 'failed', error: 'boom', latencyMs: expect.any(Number) },
-      { providerId: 'text', status: 'skipped', reason: 'unsupported-modality' },
+    expect(out.meta.sources).toEqual([
+      { sourceId: 'ok', status: 'fulfilled', returned: 2, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
+      { sourceId: 'bad', status: 'failed', error: 'boom', latencyMs: expect.any(Number) },
+      { sourceId: 'text', status: 'skipped', reason: 'unsupported-modality' },
     ])
     expect(out.meta.gate).toEqual({ intent: 'commercial-product', before: 2, after: 1, dropped: 1 })
-    expect(out.meta.warnings).toContain('1 provider(s) failed; returning partial results.')
+    expect(out.meta.warnings).toContain('1 source(s) failed; returning partial results.')
   })
 
   it('does not count limit-truncated items as rejected — only schema-invalid items are rejected', async () => {
@@ -402,8 +410,8 @@ describe('createRefkit', () => {
     // poolFactor: 1 so fetchLimit === limit === 2 — the per-provider truncation
     // point — isolating "dropped by limit" from "dropped by overfetch pooling".
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], limit: 2, poolFactor: 1 })
-    expect(out.meta.providers).toEqual([
-      { providerId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
+    expect(out.meta.sources).toEqual([
+      { sourceId: 'many', status: 'fulfilled', returned: 5, accepted: 2, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
     ])
   })
 
@@ -418,16 +426,16 @@ describe('createRefkit', () => {
         { modality: 'video', sourceUrl: 'https://leaky/2', rights: ref('https://leaky/2').rights },
       ],
     })
-    const onProviderError = vi.fn()
+    const onSourceError = vi.fn()
     const rk = createRefkit({ providers: [leaky] })
-    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image', 'video'], onProviderError })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image', 'video'], onSourceError })
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://leaky/1'])
-    expect(out.meta.providers).toEqual([
-      { providerId: 'leaky', status: 'fulfilled', returned: 2, accepted: 1, rejected: 1, latencyMs: expect.any(Number), confidence: 1 },
+    expect(out.meta.sources).toEqual([
+      { sourceId: 'leaky', status: 'fulfilled', returned: 2, accepted: 1, rejected: 1, latencyMs: expect.any(Number), confidence: 1 },
     ])
-    expect(onProviderError).toHaveBeenCalledTimes(1)
-    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({
-      providerId: 'leaky',
+    expect(onSourceError).toHaveBeenCalledTimes(1)
+    expect(onSourceError).toHaveBeenCalledWith(expect.objectContaining({
+      sourceId: 'leaky',
       error: expect.objectContaining({ message: expect.stringMatching(/modality "video"/) }),
     }))
   })
@@ -468,8 +476,8 @@ describe('createRefkit', () => {
     })
     expect(out.meta.controls).toEqual({
       requested: ['orientation', 'color', 'safety'],
-      appliedByProvider: { controlled: ['orientation', 'color'], plain: [] },
-      ignoredByProvider: { controlled: ['safety'], plain: ['orientation', 'color', 'safety'] },
+      appliedBySource: { controlled: ['orientation', 'color'], plain: [] },
+      ignoredBySource: { controlled: ['safety'], plain: ['orientation', 'color', 'safety'] },
     })
   })
 
@@ -486,9 +494,9 @@ describe('createRefkit', () => {
       controls: { orientation: 'landscape', color: 'blue' },
     })
     expect(out.meta.controls?.requested).toEqual(['orientation', 'color'])
-    expect(out.meta.controls?.ignoredByProvider.bare).toEqual(['orientation', 'color'])
+    expect(out.meta.controls?.ignoredBySource.bare).toEqual(['orientation', 'color'])
     // declares nothing → applies nothing (an undeclared control is never routed)
-    expect(out.meta.controls?.appliedByProvider).toEqual({ bare: [] })
+    expect(out.meta.controls?.appliedBySource).toEqual({ bare: [] })
   })
 
   it('produces meta that validates against the exported searchMetaSchema', async () => {
@@ -498,7 +506,7 @@ describe('createRefkit', () => {
       query: 'x',
       modalities: ['image'],
       controls: { orientation: 'landscape' },
-      providerOptions: { a: { orderBy: 'latest' } },
+      sourceOptions: { a: { orderBy: 'latest' } },
       gateFor: 'commercial-product',
     })
     const parsed = searchMetaSchema.safeParse(out.meta)
@@ -518,7 +526,7 @@ describe('createRefkit', () => {
       await vi.advanceTimersByTimeAsync(10_000)
       const out = await p
       expect(out.references).toHaveLength(1)
-      const hangStatus = out.meta.providers.find(s => s.providerId === 'hang')
+      const hangStatus = out.meta.sources.find(s => s.sourceId === 'hang')
       expect(hangStatus?.status).toBe('failed')
       expect(hangStatus?.error).toContain('timeout after 10000ms')
     } finally {
@@ -544,7 +552,7 @@ describe('createRefkit', () => {
       await vi.advanceTimersByTimeAsync(10_000)
       const out = await p
       expect(observedAbort).toBe(true)
-      const wbStatus = out.meta.providers.find(s => s.providerId === 'wb')
+      const wbStatus = out.meta.sources.find(s => s.sourceId === 'wb')
       expect(wbStatus?.status).toBe('failed')
     } finally {
       vi.useRealTimers()
@@ -584,7 +592,7 @@ describe('createRefkit', () => {
       // the search must already have settled from the parent abort, not the timer
       await vi.advanceTimersByTimeAsync(50)
       const result = await p
-      expect(result).toBeInstanceOf(AggregateError) // all providers failed → AggregateError
+      expect(result).toBeInstanceOf(AggregateError) // all sources failed → AggregateError
     } finally {
       vi.useRealTimers()
     }
@@ -612,7 +620,7 @@ describe('createRefkit', () => {
     const textOnly = defineProvider({ id: 'text', modalities: ['text'], search: async () => [] })
     const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), failing('bad'), textOnly] })
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
-    const byId = Object.fromEntries(out.meta.providers.map(s => [s.providerId, s]))
+    const byId = Object.fromEntries(out.meta.sources.map(s => [s.sourceId, s]))
     expect(byId.a.latencyMs).toEqual(expect.any(Number))
     expect(byId.bad.latencyMs).toEqual(expect.any(Number))
     expect(byId.text.latencyMs).toBeUndefined()
@@ -640,7 +648,7 @@ describe('createRefkit', () => {
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'] })
     expect(calls).toBe(1)
     expect(out.references).toHaveLength(1)
-    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(out.meta.sources[0]).toMatchObject({ status: 'fulfilled', cached: true })
     expect(cache.ttls).toEqual([300_000]) // default cacheTtlMs, one set for the first (live) search
   })
 
@@ -693,7 +701,7 @@ describe('createRefkit', () => {
     const rk = createRefkit({ providers: [provider('a', [ref('https://a/1', 'proprietary')])], cache })
     await rk.search({ query: 'x', modalities: ['image'] })
     const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], gateFor: 'commercial-product' })
-    expect(out.meta.providers[0]).toMatchObject({ status: 'fulfilled', cached: true })
+    expect(out.meta.sources[0]).toMatchObject({ status: 'fulfilled', cached: true })
     expect(out.references).toHaveLength(0)
     expect(out.meta.gate).toMatchObject({ intent: 'commercial-product', before: 1, after: 0, dropped: 1 })
   })
@@ -719,7 +727,7 @@ describe('createRefkit', () => {
     }
   })
 
-  it('providerOptions key order does not change the cache key', async () => {
+  it('sourceOptions key order does not change the cache key', async () => {
     const cache = mapCache()
     let calls = 0
     const counted = defineProvider({
@@ -727,8 +735,8 @@ describe('createRefkit', () => {
       search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
-    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { b: 2, a: 1 } } })
-    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: 2 } } })
+    await rk.search({ query: 'x', modalities: ['image'], sourceOptions: { c: { b: 2, a: 1 } } })
+    await rk.search({ query: 'x', modalities: ['image'], sourceOptions: { c: { a: 1, b: 2 } } })
     expect(calls).toBe(1) // second search is a cache hit despite the different key order
   })
 
@@ -754,7 +762,7 @@ describe('createRefkit', () => {
 
   it('a cache entry with one malformed item validates per-item (matches the live path): good kept, bad reported+rejected', async () => {
     const cache = mapCache()
-    const onProviderError = vi.fn()
+    const onSourceError = vi.fn()
     const counted = defineProvider({
       id: 'c', modalities: ['image'],
       search: async () => [ref('https://c/1')],
@@ -766,11 +774,11 @@ describe('createRefkit', () => {
       const payload = JSON.parse(cache.store.get(k)!)
       cache.store.set(k, JSON.stringify({ ...payload, refs: [...payload.refs, { id: '', modality: 'image' }] }))
     }
-    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], onProviderError })
+    const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], onSourceError })
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://c/1'])
-    expect(out.meta.providers[0]).toMatchObject({ cached: true, returned: 2, accepted: 1, rejected: 1 })
-    expect(onProviderError).toHaveBeenCalledTimes(1)
-    expect(onProviderError).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'c' }))
+    expect(out.meta.sources[0]).toMatchObject({ cached: true, returned: 2, accepted: 1, rejected: 1 })
+    expect(onSourceError).toHaveBeenCalledTimes(1)
+    expect(onSourceError).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'c' }))
   })
 
   it('stableStringify cache keys treat undefined-valued keys the same as absent keys', async () => {
@@ -781,8 +789,8 @@ describe('createRefkit', () => {
       search: async () => { calls++; return [ref('https://c/1')] },
     })
     const rk = createRefkit({ providers: [counted], cache })
-    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1, b: undefined } } })
-    await rk.search({ query: 'x', modalities: ['image'], providerOptions: { c: { a: 1 } } })
+    await rk.search({ query: 'x', modalities: ['image'], sourceOptions: { c: { a: 1, b: undefined } } })
+    await rk.search({ query: 'x', modalities: ['image'], sourceOptions: { c: { a: 1 } } })
     expect(calls).toBe(1) // second search hits the same cache entry as the first
   })
 
@@ -798,7 +806,7 @@ describe('createRefkit', () => {
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
       expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
       expect(bCalled).toBe(false) // never queried — its query is untouched
-      expect(out.meta.providers.find(s => s.providerId === 'b')).toEqual({ providerId: 'b', status: 'skipped', reason: 'not-selected' })
+      expect(out.meta.sources.find(s => s.sourceId === 'b')).toEqual({ sourceId: 'b', status: 'skipped', reason: 'not-selected' })
     })
 
     it('a modality miss stays unsupported-modality; only a source exclusion is not-selected', async () => {
@@ -809,15 +817,15 @@ describe('createRefkit', () => {
       const textOnly = defineProvider({ id: 'text', modalities: ['text'], search: async () => [] })
       const rk = createRefkit({ providers: [a, b, textOnly] })
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a'] })
-      const byId = Object.fromEntries(out.meta.providers.map(s => [s.providerId, s]))
+      const byId = Object.fromEntries(out.meta.sources.map(s => [s.sourceId, s]))
       expect(byId.b).toMatchObject({ status: 'skipped', reason: 'not-selected' })
       expect(byId.text).toMatchObject({ status: 'skipped', reason: 'unsupported-modality' })
     })
 
-    it('throws a clear Error (not AggregateError) when sources match no configured provider', async () => {
+    it('throws a clear Error (not AggregateError) when sources match no configured source', async () => {
       const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
       await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.toThrow(
-        'refkit.search: no configured provider matches source id(s) [nope] for modalities [image]',
+        'refkit.search: no configured source matches id(s) [nope] for modalities [image]',
       )
       await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.not.toBeInstanceOf(AggregateError)
     })
@@ -828,7 +836,19 @@ describe('createRefkit', () => {
       const rk = createRefkit({ providers: [imageOnly, textOnly] })
       // txt is registered, but scoping an image search to [txt] has an empty intersection
       await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['txt'] })).rejects.toThrow(
-        /no configured provider matches source id\(s\) \[txt\]/,
+        /no configured source matches id\(s\) \[txt\]/,
+      )
+    })
+
+    it('throws a SourceSelectionError (exported from the package) a host can branch on without reading the message', async () => {
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
+      await expect(rk.search({ query: 'x', modalities: ['image'], sources: ['nope'] })).rejects.toSatisfy(
+        (e: unknown) => e instanceof SourceSelectionError
+          && e.code === 'no-matching-source' && e.unknown.join() === 'nope' && e.requested?.join() === 'nope',
+      )
+      await expect(rk.search({ query: 'x', modalities: ['video'] })).rejects.toSatisfy(
+        (e: unknown) => e instanceof SourceSelectionError
+          && e.code === 'no-source-for-query' && e.requested === undefined && e.modalities.join() === 'video',
       )
     })
 
@@ -837,6 +857,26 @@ describe('createRefkit', () => {
       const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sources: ['a', 'ghost'] })
       expect(out.references).toHaveLength(1)
       expect(out.meta.warnings).toContain('unknown source id(s) ignored: ghost.')
+    })
+
+    it('warns about unknown sourceOptions ids, worded like the unknown-sources warning', async () => {
+      const textOnly = defineProvider({ id: 'txt', modalities: ['text'], search: async () => [] })
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')]), textOnly] })
+      const out = await rk.searchWithMeta({
+        query: 'x',
+        modalities: ['image'],
+        // `txt` is configured (it just sits this image search out), so only the typos warn.
+        sourceOptions: { a: { orderBy: 'latest' }, ghost: { sort: 'new' }, txt: { lang: 'en' }, phantom: undefined },
+      })
+      expect(out.references).toHaveLength(1)
+      expect(out.meta.sourceOptions).toEqual(['a', 'ghost', 'txt', 'phantom'])
+      expect(out.meta.warnings).toContain('unknown sourceOptions id(s) ignored: ghost, phantom.')
+    })
+
+    it('does not warn when every sourceOptions id is a configured source', async () => {
+      const rk = createRefkit({ providers: [provider('a', [ref('https://a/1')])] })
+      const out = await rk.searchWithMeta({ query: 'x', modalities: ['image'], sourceOptions: { a: { orderBy: 'latest' } } })
+      expect(out.meta.warnings.some(w => w.includes('sourceOptions'))).toBe(false)
     })
 
     it('does not warn when every requested source id resolves', async () => {
@@ -887,7 +927,7 @@ describe('kind-aware routing', () => {
       query: 'x', modalities: ['image'], controls: { media: { kind: 'texture' } },
     })
     expect(references.map(r => r.canonicalUrl)).toEqual(['https://t/1'])
-    expect(meta.providers.find(p => p.providerId === 'ph'))
+    expect(meta.sources.find(p => p.sourceId === 'ph'))
       .toMatchObject({ status: 'skipped', reason: 'unsupported-kind' })
   })
 
@@ -915,7 +955,7 @@ describe('query acceptance (accepts)', () => {
     const picky = defineProvider({ id: 'picky', modalities: ['image'], accepts: () => false, search: async () => [ref('https://x.test/1')] })
     const { references, meta } = await createRefkit({ providers: [picky], resilience: false }).searchWithMeta({ query: 'lion', modalities: ['image'] })
     expect(references).toEqual([])
-    expect(meta.providers[0]).toMatchObject({ providerId: 'picky', status: 'skipped', reason: 'declined' })
+    expect(meta.sources[0]).toMatchObject({ sourceId: 'picky', status: 'skipped', reason: 'declined' })
     expect(meta.nextCursor).toBeUndefined()
     // A decline is routing, not a failure: nothing to warn about.
     expect(meta.warnings).toEqual([])
@@ -932,7 +972,7 @@ describe('query acceptance (accepts)', () => {
     const out = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
     expect(out.references.map(r => r.canonicalUrl)).toEqual(['https://a/1'])
     expect(pickyCalled).toBe(false)
-    expect(out.meta.providers.find(p => p.providerId === 'picky')).toEqual({ providerId: 'picky', status: 'skipped', reason: 'declined' })
+    expect(out.meta.sources.find(p => p.sourceId === 'picky')).toEqual({ sourceId: 'picky', status: 'skipped', reason: 'declined' })
   })
 
   it('hands accepts the real query text, then runs the provider', async () => {
@@ -998,13 +1038,13 @@ describe('multi-pass fidelity, deadline and gate context', () => {
     expect(first.meta.passes).toBe(1)
     const second = await rk.searchWithMeta({ query: 'q', modalities: ['image'], limit: 5, cursor: first.meta.nextCursor })
     expect(second.meta.passes).toBeGreaterThan(1)
-    expect(second.meta.warnings.some(w => /pass 1: 1 provider\(s\) failed/.test(w))).toBe(true)
+    expect(second.meta.warnings.some(w => /pass 1: 1 source\(s\) failed/.test(w))).toBe(true)
     expect(second.references.map(r => r.canonicalUrl)).toEqual(['https://f.test/2'])
     expect(calls).toBeGreaterThan(1)
     // Latency is SUMMED over every pass, so a multi-pass call never under-reports
     // it: `steady` slept STEADY_SLEEP_MS on each of the two passes, a total one
     // pass alone could not reach.
-    expect(second.meta.providers.find(p => p.providerId === 'steady')?.latencyMs)
+    expect(second.meta.sources.find(p => p.sourceId === 'steady')?.latencyMs)
       .toBeGreaterThan(STEADY_SLEEP_MS * 1.5)
   })
 
@@ -1060,7 +1100,7 @@ describe('multi-pass fidelity, deadline and gate context', () => {
     const { references, meta } = await rk.searchWithMeta({ query: 'q', modalities: ['image'], deadlineMs: 100 })
     expect(Date.now() - started).toBeLessThan(2000)
     expect(references).toHaveLength(1)
-    expect(meta.providers.find(p => p.providerId === 'hung')?.status).toBe('failed')
+    expect(meta.sources.find(p => p.sourceId === 'hung')?.status).toBe('failed')
   })
 
   it('gateContext forwards the user jurisdiction to the search-time gate', async () => {
@@ -1096,9 +1136,9 @@ describe('accuracy defaults', () => {
     const { references, meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
     // Raw RRF would put noise's rank-0 item first; the confidence weight sinks
     // the whole batch to a tenth of its contribution instead.
-    expect(references[0].source.providerId).toBe('signal')
-    expect(meta.providers.find(p => p.providerId === 'noise')?.confidence).toBeCloseTo(0.1, 5)
-    expect(meta.providers.find(p => p.providerId === 'signal')?.confidence).toBe(1)
+    expect(references[0].source.id).toBe('signal')
+    expect(meta.sources.find(p => p.sourceId === 'noise')?.confidence).toBeCloseTo(0.1, 5)
+    expect(meta.sources.find(p => p.sourceId === 'signal')?.confidence).toBe(1)
   })
 
   it('under the shipped defaults the trustworthy source wins an equal lexical hit', async () => {
@@ -1125,9 +1165,9 @@ describe('accuracy defaults', () => {
     // rank 0, max-normalised): signal 1, noise's lion 0.325. Equal lexical 1, so
     // base(signal) = 1 + 0.5·1 + 0.15·0.5 = 1.575 beats
     // base(noise) = 1 + 0.5·0.325 + 0.15·1 = 1.3125 despite the resolution edge.
-    expect(references[0].source.providerId).toBe('signal')
-    expect(meta.providers.find(p => p.providerId === 'signal')?.confidence).toBeCloseTo(1, 5)
-    expect(meta.providers.find(p => p.providerId === 'noise')?.confidence).toBeCloseTo(0.325, 5)
+    expect(references[0].source.id).toBe('signal')
+    expect(meta.sources.find(p => p.sourceId === 'signal')?.confidence).toBeCloseTo(1, 5)
+    expect(meta.sources.find(p => p.sourceId === 'noise')?.confidence).toBeCloseTo(0.325, 5)
   })
 
   it('sourceConfidence: false leaves the fusion unweighted', async () => {
@@ -1141,8 +1181,8 @@ describe('accuracy defaults', () => {
     })
     const rk = createRefkit({ providers: [noise, signal], resilience: false, rerank: false, sourceConfidence: false })
     const { references, meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
-    expect(references[0].source.providerId).toBe('noise') // rank-0 tie, input order
-    expect(meta.providers.every(p => p.confidence === undefined)).toBe(true)
+    expect(references[0].source.id).toBe('noise') // rank-0 tie, input order
+    expect(meta.sources.every(p => p.confidence === undefined)).toBe(true)
   })
 
   it('omits confidence for a fulfilled provider that returned nothing', async () => {
@@ -1156,9 +1196,9 @@ describe('accuracy defaults', () => {
     })
     const { meta } = await createRefkit({ providers: [empty, p], resilience: false })
       .searchWithMeta({ query: 'lion', modalities: ['image'] })
-    const status = meta.providers.find(s => s.providerId === 'empty')
-    expect(status).toEqual({ providerId: 'empty', status: 'fulfilled', returned: 0, accepted: 0, rejected: 0, latencyMs: expect.any(Number) })
-    expect(meta.providers.find(s => s.providerId === 'p')?.confidence).toBe(1)
+    const status = meta.sources.find(s => s.sourceId === 'empty')
+    expect(status).toEqual({ sourceId: 'empty', status: 'fulfilled', returned: 0, accepted: 0, rejected: 0, latencyMs: expect.any(Number) })
+    expect(meta.sources.find(s => s.sourceId === 'p')?.confidence).toBe(1)
   })
 
   it('a custom confidence floor deepens the dampening', async () => {
@@ -1168,7 +1208,7 @@ describe('accuracy defaults', () => {
     })
     const rk = createRefkit({ providers: [noise], resilience: false, sourceConfidence: { floor: 0.5 } })
     const { meta } = await rk.searchWithMeta({ query: 'lion', modalities: ['image'] })
-    expect(meta.providers[0].confidence).toBeCloseTo(0.5, 5)
+    expect(meta.sources[0].confidence).toBeCloseTo(0.5, 5)
   })
 
   it('the lexical reranker runs by default and rerank:false restores raw fusion order', async () => {

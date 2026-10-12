@@ -17,6 +17,6 @@ export function canonicalizeUrl(url: string): string {
 }
 
 /** Content-addressed id: stable within a result set, not promised across calls. */
-export function referenceId(providerId: string, sourceUrl: string): string {
-  return `${providerId}:${fnv1a(canonicalizeUrl(sourceUrl))}`
+export function referenceId(sourceId: string, sourceUrl: string): string {
+  return `${sourceId}:${fnv1a(canonicalizeUrl(sourceUrl))}`
 }

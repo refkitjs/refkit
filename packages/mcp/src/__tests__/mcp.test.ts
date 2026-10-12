@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createRefkit, defineProvider, PROVIDER_SKIP_REASONS, SEARCH_CONTROL_KEYS } from '@refkit/core'
+import { createRefkit, defineProvider, SOURCE_SKIP_REASONS, SEARCH_CONTROL_KEYS } from '@refkit/core'
 import { openverse } from '@refkit/provider-openverse'
 import { readFileSync } from 'node:fs'
 import { createRefkitMcpServer } from '../index'
@@ -37,12 +37,13 @@ describe('@refkit/mcp', () => {
   it('search_references returns license-normalized structured references', async () => {
     const client = await connectedClient()
     const res = await client.callTool({ name: 'search_references', arguments: { query: 'sky', modalities: ['image'] } })
-    const structured = res.structuredContent as { references: Array<{ title?: string; license: string; canonicalUrl: string; provider: string }> }
+    const structured = res.structuredContent as { references: Array<{ title?: string; license: string; canonicalUrl: string; source: string }> }
     expect(structured.references).toHaveLength(1)
     expect(structured.references[0].title).toBe('cc0 sky')
     expect(structured.references[0].license).toBe('CC0-1.0')
     expect(structured.references[0].canonicalUrl).toBe('https://ov/aaa')
-    expect(structured.references[0].provider).toBe('openverse')
+    expect(structured.references[0].source).toBe('openverse')
+    expect(structured.references[0]).not.toHaveProperty('provider')
     await client.close()
   })
 
@@ -120,7 +121,7 @@ describe('@refkit/mcp', () => {
     await client.close()
   })
 
-  it('accepts providerOptions and forwards the matching entry to its provider', async () => {
+  it('accepts sourceOptions and forwards the matching entry to that source\'s provider', async () => {
     let seen: unknown
     const fakeProvider = defineProvider({
       id: 'fake',
@@ -140,7 +141,7 @@ describe('@refkit/mcp', () => {
       arguments: {
         query: 'sky',
         modalities: ['image'],
-        providerOptions: { fake: { sort: 'latest' } },
+        sourceOptions: { fake: { sort: 'latest' } },
       },
     })
     expect(seen).toEqual({ sort: 'latest' })
@@ -198,15 +199,15 @@ describe('@refkit/mcp', () => {
       meta?: {
         controls?: {
           requested: string[]
-          appliedByProvider: Record<string, string[]>
-          ignoredByProvider: Record<string, string[]>
+          appliedBySource: Record<string, string[]>
+          ignoredBySource: Record<string, string[]>
         }
       }
     }
     expect(structured.meta?.controls).toEqual({
       requested: ['orientation', 'color'],
-      appliedByProvider: { fake: ['orientation'] },
-      ignoredByProvider: { fake: ['color'] },
+      appliedBySource: { fake: ['orientation'] },
+      ignoredBySource: { fake: ['color'] },
     })
     await client.close()
   })
@@ -246,6 +247,26 @@ describe('@refkit/mcp', () => {
     const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
     expect(text).toContain('nope') // the offending request is echoed back
     expect(text).toContain('openverse') // and the valid id is surfaced
+    await client.close()
+  })
+
+  it('detects the source-selection miss by its type, so sources: [] gets the valid ids too', async () => {
+    const client = await connectedClient() // openverse-only server
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: [] } })
+    expect(res.isError).toBe(true)
+    const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
+    expect(text).toContain('Enabled source ids: openverse.')
+    await client.close()
+  })
+
+  it('does not dress up other errors raised while sources is set as a source miss', async () => {
+    const client = await connectedClient() // openverse-only server
+    // `sources` resolves; the cursor is what is wrong.
+    const res = await client.callTool({ name: 'search_references', arguments: { query: 'x', modalities: ['image'], sources: ['openverse'], cursor: 'not-a-cursor' } })
+    expect(res.isError).toBe(true)
+    const text = (res.content as Array<{ type: string; text: string }>).map(c => c.text).join('\n')
+    expect(text).toContain('invalid cursor')
+    expect(text).not.toContain('Enabled source ids')
     await client.close()
   })
 
@@ -399,10 +420,10 @@ describe('@refkit/mcp', () => {
     })
     const structured = res.structuredContent as {
       references: Array<{ title?: string }>
-      meta?: { providers: Array<{ providerId: string; status: string }> }
+      meta?: { sources: Array<{ sourceId: string; status: string }> }
     }
     expect(structured.references.map(r => r.title)).toEqual(['A lion'])
-    expect(structured.meta?.providers.find(p => p.providerId === 'hung')?.status).toBe('failed')
+    expect(structured.meta?.sources.find(p => p.sourceId === 'hung')?.status).toBe('failed')
     await client.close()
   })
 
@@ -459,15 +480,15 @@ describe('@refkit/mcp', () => {
     })
     const structured = res.structuredContent as {
       references: Array<{ useExplanation?: string }>
-      meta?: { providers: Array<{ providerId: string; status: string; error?: string; latencyMs?: number; confidence?: number }>; warnings: string[] }
+      meta?: { sources: Array<{ sourceId: string; status: string; error?: string; latencyMs?: number; confidence?: number }>; warnings: string[] }
     }
     expect(structured.references[0].useExplanation).toContain('allowed-with-attribution')
-    expect(structured.meta?.providers).toEqual([
+    expect(structured.meta?.sources).toEqual([
       // 'credit me' matches the query, so the source is fully trusted in the fusion
-      { providerId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
-      { providerId: 'bad', status: 'failed', error: 'offline', latencyMs: expect.any(Number) },
+      { sourceId: 'good', status: 'fulfilled', returned: 1, accepted: 1, rejected: 0, latencyMs: expect.any(Number), confidence: 1 },
+      { sourceId: 'bad', status: 'failed', error: 'offline', latencyMs: expect.any(Number) },
     ])
-    expect(structured.meta?.warnings).toContain('1 provider(s) failed; returning partial results.')
+    expect(structured.meta?.warnings).toContain('1 source(s) failed; returning partial results.')
     await client.close()
   })
 })
@@ -671,6 +692,19 @@ describe('defaultProviders (zero-config CLI wiring)', () => {
     expect((await defaultProviders({ SI_KEY: 'k' })).map(p => p.id)).toContain('smithsonian')
   })
 
+  it('serves distinct source ids even with every BYOK key set, so createRefkit accepts the list', async () => {
+    const env = {
+      REFKIT_UNSPLASH_KEY: 'k', REFKIT_PEXELS_KEY: 'k', REFKIT_PIXABAY_KEY: 'k', REFKIT_FLICKR_KEY: 'k',
+      REFKIT_SMITHSONIAN_KEY: 'k', REFKIT_BRAVE_KEY: 'k', REFKIT_FREESOUND_KEY: 'k', REFKIT_JAMENDO_CLIENT_ID: 'k',
+      REFKIT_EUROPEANA_KEY: 'k',
+    }
+    const providers = await defaultProviders(env)
+    expect(providers.length).toBeGreaterThan(20) // every BYOK source loaded
+    const ids = providers.map(p => p.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(() => createRefkit({ providers })).not.toThrow()
+  })
+
   it('BYOK_SOURCES and package.json optionalDependencies stay in sync', () => {
     const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
       optionalDependencies?: Record<string, string>
@@ -726,14 +760,28 @@ describe('dynamic declaration-derived schema', () => {
     await client.close()
   })
 
+  it('speaks of sources in its schemas: sourceOptions in, source on each reference out', async () => {
+    const client = await declClient()
+    const { tools } = await client.listTools()
+    const tool = tools.find(t => t.name === 'search_references')!
+    const input = (tool.inputSchema as { properties: Record<string, { description?: string }> }).properties
+    expect(input.sourceOptions?.description).toContain('keyed by source id')
+    expect(input).not.toHaveProperty('providerOptions')
+    const ref = (tool.outputSchema as Record<string, any>).properties.references.items
+    expect(ref.properties.source.type).toBe('string')
+    expect(ref.required).toContain('source')
+    expect(ref.properties).not.toHaveProperty('provider')
+    await client.close()
+  })
+
   it('declares the control-key vocabulary straight from core (no local mirror)', async () => {
     const client = await declClient()
     const { tools } = await client.listTools()
     const out = tools.find(t => t.name === 'search_references')!.outputSchema as Record<string, any>
     const requestedEnum = out.properties.meta.properties.controls.properties.requested.items.enum as string[]
     expect(requestedEnum).toEqual([...SEARCH_CONTROL_KEYS])
-    const reasonEnum = out.properties.meta.properties.providers.items.properties.reason.enum as string[]
-    expect(reasonEnum).toEqual([...PROVIDER_SKIP_REASONS])
+    const reasonEnum = out.properties.meta.properties.sources.items.properties.reason.enum as string[]
+    expect(reasonEnum).toEqual([...SOURCE_SKIP_REASONS])
     await client.close()
   })
 })

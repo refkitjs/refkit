@@ -6,15 +6,53 @@
 import type { Modality } from './modality'
 import type { ReferenceProvider } from './provider'
 
-/** Why a configured provider sat a search out (no fetch attempted). */
-export const PROVIDER_SKIP_REASONS = ['unsupported-modality', 'not-selected', 'unsupported-kind', 'declined'] as const
-export type ProviderSkipReason = (typeof PROVIDER_SKIP_REASONS)[number]
+/** Why a configured source sat a search out (no fetch attempted). */
+export const SOURCE_SKIP_REASONS = ['unsupported-modality', 'not-selected', 'unsupported-kind', 'declined'] as const
+export type SourceSkipReason = (typeof SOURCE_SKIP_REASONS)[number]
+
+/** Thrown when a search has no source to fan out to. A host branches on `code`
+ *  and the fields, never on the message:
+ *  - `'no-matching-source'`: `sources` was given and none of it can serve this
+ *    search (an unknown id, a known id lacking the modality or the kind, or
+ *    `sources: []`) — a caller mistake to report back with the valid ids;
+ *  - `'no-source-for-query'`: no `sources`, and no configured source supports
+ *    the modalities (and kind) asked for. */
+export class SourceSelectionError extends Error {
+  readonly code: 'no-matching-source' | 'no-source-for-query'
+  /** The `sources` as passed; absent when the search was unscoped. */
+  readonly requested?: string[]
+  /** Ids in `sources` that match no configured source. */
+  readonly unknown: string[]
+  readonly modalities: Modality[]
+  /** `controls.media.kind`, when the search narrowed by kind. */
+  readonly kind?: string
+
+  constructor(fields: {
+    code: SourceSelectionError['code']
+    requested?: string[]
+    unknown: string[]
+    modalities: Modality[]
+    kind?: string
+  }) {
+    const kindSuffix = fields.kind !== undefined ? ` with kind "${fields.kind}"` : ''
+    const modalities = `modalities [${fields.modalities.join(', ')}]${kindSuffix}`
+    super(fields.code === 'no-matching-source'
+      ? `refkit.search: no configured source matches id(s) [${(fields.requested ?? []).join(', ')}] for ${modalities}`
+      : `refkit.search: no configured source supports ${modalities}`)
+    this.name = 'SourceSelectionError'
+    this.code = fields.code
+    if (fields.requested !== undefined) this.requested = fields.requested
+    this.unknown = fields.unknown
+    this.modalities = fields.modalities
+    if (fields.kind !== undefined) this.kind = fields.kind
+  }
+}
 
 export interface ProviderSelection {
   chosen: ReferenceProvider[]
   /** Why each excluded provider sat this search out. */
-  skipReasons: Map<string, ProviderSkipReason>
-  /** `sources` ids that match no configured provider (tolerated, surfaced as a warning). */
+  skipReasons: Map<string, SourceSkipReason>
+  /** `sources` ids that match no configured source (tolerated, surfaced as a warning). */
   unknownSources: string[]
 }
 
@@ -28,12 +66,13 @@ export interface SelectionInput {
 }
 
 /** Decide which providers a search fans out to, with an explanation per exclusion.
- *  Throws when nothing is left: a source-scoped miss is a caller typo and must fail
- *  loudly rather than read as "no results" — EXCEPT when a provider declined the
- *  query itself, which is a real "this source has nothing for you", not a typo. */
+ *  Throws a {@link SourceSelectionError} when nothing is left: a source-scoped
+ *  miss is a caller typo and must fail loudly rather than read as "no results" —
+ *  EXCEPT when a provider declined the query itself, which is a real "this
+ *  source has nothing for you", not a typo. */
 export function selectProviders(providers: readonly ReferenceProvider[], input: SelectionInput): ProviderSelection {
-  const skipReasons = new Map<string, ProviderSkipReason>()
-  const reasonFor = (p: ReferenceProvider): ProviderSkipReason | undefined => {
+  const skipReasons = new Map<string, SourceSkipReason>()
+  const reasonFor = (p: ReferenceProvider): SourceSkipReason | undefined => {
     if (!p.modalities.some(m => input.modalities.includes(m))) return 'unsupported-modality'
     if (input.sources != null && !input.sources.includes(p.id)) return 'not-selected'
     // Declaration-gated kind narrowing: providers with no `kinds` declared are
@@ -59,11 +98,13 @@ export function selectProviders(providers: readonly ReferenceProvider[], input: 
   // result, not a routing mistake, so the pipeline runs a no-provider pass.
   const someDeclined = [...skipReasons.values()].includes('declined')
   if (chosen.length === 0 && !someDeclined) {
-    const kindSuffix = input.kind !== undefined ? ` with kind "${input.kind}"` : ''
-    if (input.sources != null) {
-      throw new Error(`refkit.search: no configured provider matches source id(s) [${input.sources.join(', ')}] for modalities [${input.modalities.join(', ')}]${kindSuffix}`)
-    }
-    throw new Error(`refkit.search: no registered provider supports modalities [${input.modalities.join(', ')}]${kindSuffix}`)
+    throw new SourceSelectionError({
+      code: input.sources != null ? 'no-matching-source' : 'no-source-for-query',
+      ...(input.sources != null ? { requested: [...input.sources] } : {}),
+      unknown: unknownSources,
+      modalities: [...input.modalities],
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+    })
   }
   return { chosen, skipReasons, unknownSources }
 }

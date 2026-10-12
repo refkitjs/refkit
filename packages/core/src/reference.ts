@@ -21,6 +21,7 @@ export interface VideoMeta {
 export interface AudioMeta {
   /** Seconds, as a float. */
   durationSec?: number
+  /** Kilobits per second (bits/s ÷ 1000). */
   bitrateKbps?: number
   sampleRateHz?: number
   channels?: number
@@ -86,9 +87,11 @@ interface EmittedTail {
 }
 /** What core stamps onto an emitted item (see completeReference). */
 interface StampedTail {
-  /** Content-addressed: `${providerId}:${hash(sourceUrl)}`; stable within a result set. */
+  /** Content-addressed: `${sourceId}:${hash(sourceUrl)}`; stable within a result set. */
   id: string
-  source: { providerId: string; sourceUrl: string }
+  /** Where this reference came from: the source's id (`provider.id`, what `sources`
+   *  and `meta.sources` speak) and the landing page at that source. */
+  source: { id: string; url: string }
   canonicalUrl: string
   /** ISO; the moment the satellite's output was parsed. */
   verifiedAt: string
@@ -117,8 +120,9 @@ export interface AudioReference extends CommonFields, StampedTail, AudioFields, 
 export interface TextReference extends CommonFields, StampedTail, TextFields, Absent<TextFields> { modality: 'text' }
 
 /** A complete reference: the emitted variant without sourceUrl/canonicalUrl, plus
- *  the core-stamped fields. A type alias, so `Omit<Reference, K>` collapses to the
- *  common keys; omit per variant instead. */
+ *  the core-stamped fields. A type alias of a union, so `Omit<Reference, K>` loses
+ *  the link between `modality` and its fields (use a distributive omit), and an
+ *  interface can no longer `extend` it. */
 export type Reference = ImageReference | VideoReference | AudioReference | TextReference
 
 const mediaSchema = z.object({ url: z.string(), width: z.number().optional(), height: z.number().optional() })
@@ -161,7 +165,7 @@ const VARIANT_SHAPES = {
 const emittedTail = { sourceUrl: z.string().min(1), canonicalUrl: z.string().min(1).optional() }
 const stampedTail = {
   id: z.string().min(1),
-  source: z.object({ providerId: z.string().min(1), sourceUrl: z.string().min(1) }),
+  source: z.object({ id: z.string().min(1), url: z.string().min(1) }),
   canonicalUrl: z.string().min(1),
   verifiedAt: z.string().datetime(),
   relevance: z.number().min(0).max(1),
@@ -203,12 +207,12 @@ export function parseReference(input: unknown): Reference {
 
 /** Stamp the fields that are core's concern onto an emitted item. The rest-spread
  *  keeps the discriminant: the result narrows on `modality` like its input. */
-export function completeReference(providerId: string, e: EmittedReference, now: string): Reference {
+export function completeReference(sourceId: string, e: EmittedReference, now: string): Reference {
   const { sourceUrl, canonicalUrl, ...rest } = e
   return {
     ...rest,
-    id: referenceId(providerId, sourceUrl),
-    source: { providerId, sourceUrl },
+    id: referenceId(sourceId, sourceUrl),
+    source: { id: sourceId, url: sourceUrl },
     canonicalUrl: canonicalUrl ?? sourceUrl,
     verifiedAt: now,
     relevance: 0,

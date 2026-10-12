@@ -1,5 +1,5 @@
 import type { Modality } from './modality'
-import type { NormalizedQuery, ProviderOptionsById, ReferenceProvider } from './provider'
+import type { NormalizedQuery, ReferenceProvider, SourceOptionsById } from './provider'
 import {
   SEARCH_CONTROL_KEYS,
   getControl,
@@ -40,7 +40,7 @@ function normalizeControlsForProvider(controls: SearchControls | undefined, prov
 }
 
 export function normalizeQuery(
-  input: { query: string; modalities: Modality[]; controls?: SearchControls; providerOptions?: ProviderOptionsById; limit?: number },
+  input: { query: string; modalities: Modality[]; controls?: SearchControls; sourceOptions?: SourceOptionsById; limit?: number },
   provider: ReferenceProvider,
 ): NormalizedQuery {
   const controls = normalizeControlsForProvider(input.controls, provider)
@@ -48,7 +48,7 @@ export function normalizeQuery(
     text: input.query,
     modalities: input.modalities.filter(m => provider.modalities.includes(m)),
     ...(controls ? { controls } : {}),
-    ...(input.providerOptions?.[provider.id] ? { providerOptions: input.providerOptions[provider.id] } : {}),
+    ...(input.sourceOptions?.[provider.id] ? { providerOptions: input.sourceOptions[provider.id] } : {}),
     ...(input.limit !== undefined ? { limit: input.limit } : {}),
   }
 }

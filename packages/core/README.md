@@ -6,6 +6,8 @@ The neutral brain of **refkit** — a dependency-light reference-retrieval toolk
 pnpm add @refkit/core @refkit/provider-openverse @refkit/provider-met
 ```
 
+**Providers and sources.** A *provider* is adapter code (a `ReferenceProvider` from a `@refkit/provider-*` package). Each provider instance serves one *source*, whose id (`provider.id`) is what `sources`, `sourceOptions` and `meta.sources` speak.
+
 ## Quickstart
 
 ```ts
@@ -56,14 +58,14 @@ await refkit.search({
 })
 ```
 
-Provider-specific escape hatches go under `providerOptions`, keyed by provider id. Core routes only the matching entry; providers own typed whitelists for the practical official search parameters they translate:
+Provider-specific escape hatches go under `sourceOptions`, keyed by source id. Core routes only the matching entry to that source's provider (which reads it as `NormalizedQuery.providerOptions`); providers own typed whitelists for the practical official search parameters they translate:
 
 ```ts
 await refkit.search({
   query: 'mountain trail',
   modalities: ['image'],
   controls: { orientation: 'landscape', safety: 'strict' },
-  providerOptions: {
+  sourceOptions: {
     unsplash: { collections: ['abc', 'def'], page: 2 },
     flickr: { sort: 'relevance', tags: ['mountain', 'trail'], tagMode: 'all' },
     openverse: { source: ['flickr'], category: 'photograph', aspectRatio: 'wide' },
@@ -72,11 +74,11 @@ await refkit.search({
 })
 ```
 
-`providerOptions` is not a raw upstream passthrough. Each provider package exports its own `*SearchOptions` interface and keeps response-format/debug/auth-only parameters out when they would conflict with normalized references or provider credentials.
+`sourceOptions` is not a raw upstream passthrough. Each provider package exports its own `*SearchOptions` interface and keeps response-format/debug/auth-only parameters out when they would conflict with normalized references or provider credentials.
 
 Currently supported unified controls:
 
-| Provider id | Unified controls |
+| Source id | Unified controls |
 |---|---|
 | `unsplash` | `orientation`, `color`, `language`, `sort`, `safety`, `page` |
 | `pexels` | `orientation`, `color`, `language`, `media.size`, `page` |
@@ -102,9 +104,9 @@ const { references, meta } = await refkit.searchWithMeta({
   gateFor: 'commercial-product',
 })
 
-meta.controls?.appliedByProvider
-meta.controls?.ignoredByProvider
-meta.providers  // per-source status: fulfilled / failed / skipped (+ reason), latencyMs, confidence
+meta.controls?.appliedBySource
+meta.controls?.ignoredBySource
+meta.sources    // per-source status: fulfilled / failed / skipped (+ reason), latencyMs, confidence
 meta.gate       // before/after/dropped counts when gateFor is used
 meta.threshold  // { minRelevance, dropped } when minRelevance is set
 meta.passes     // fan-out passes this call ran (> 1 only when a cursor advanced pages)
@@ -116,7 +118,7 @@ meta.warnings   // partial-result, rights-conflict and gate/threshold-drop notes
 
 Results are fused across sources with **Reciprocal Rank Fusion**, weighted per source by how well that source's batch matched the query, and then reranked for the query. Both are defaults:
 
-- **Source confidence** (`RefkitOptions.sourceConfidence`, default on) weights each source's RRF contribution by `floor + (1 − floor) × hitRate`, where `hitRate` is the fraction of its refs whose text mentions any query token and `floor` is `0.1` — a source is dampened, never erased. `sourceConfidence: false` for unweighted fusion, `{ floor: 0.3 }` to dampen less. Every fulfilled source reports its weight as `meta.providers[].confidence`; a source that returned nothing reports none.
+- **Source confidence** (`RefkitOptions.sourceConfidence`, default on) weights each source's RRF contribution by `floor + (1 − floor) × hitRate`, where `hitRate` is the fraction of its refs whose text mentions any query token and `floor` is `0.1` — a source is dampened, never erased. `sourceConfidence: false` for unweighted fusion, `{ floor: 0.3 }` to dampen less. Every fulfilled source reports its weight as `meta.sources[].confidence`; a source that returned nothing reports none.
 - **`lexicalReranker(opts?)`** is the default reranker: no model, no network. It scores each result over `title + description + tags + text.excerpt` (CJK via character bigrams), blends in the incoming fused relevance (`fusionWeight`, default `0.5`), adds a resolution boost (`qualityWeight` `0.15`) and optionally license permissiveness (`licenseWeight`, default `0`) or the source's own `sourceScore` (`sourceScoreWeight`, default `0`), then emits greedily with a per-source diversity penalty (`sourceDiversity` `0.1`) and a same-source near-duplicate-title penalty (`nearDuplicatePenalty` `0.25` above a title-token Jaccard of `nearDuplicateThreshold` `0.7`). The greedy penalties steer order only; the reported `relevance` is the normalised blend.
 - **Replace or disable it** — `RefkitOptions.rerank` sets the client default, `SearchInput.rerank` overrides per call; `false` on either returns raw cross-source fusion order.
 - **Bring your own** — the `Reranker` hook receives `{ query, refs, signal }` and returns reordered refs, so you can wire a CLIP/embedding/LLM reranker to your own API. `core` ships no model; this is the only seam. `refText(ref)` and `tokenize(text)` are exported so a custom reranker can read the same text with the same tokenizer.
@@ -177,7 +179,7 @@ export const example = () => defineProvider({
 })
 ```
 
-Core validates each item against `emittedReferenceSchema` at the boundary, then `completeReference` stamps the fields that are core's concern — `id` (content-addressed from `providerId` + `sourceUrl`), `source`, `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, and a `relevance` of zero until the merge scores it — and truncates to the requested `limit`. A provider never computes an id, never writes provenance or a score, and never post-truncates. A single malformed item is reported and dropped (`meta.providers[].rejected`), not fatal.
+Core validates each item against `emittedReferenceSchema` at the boundary, then `completeReference` stamps the fields that are core's concern — `id` (content-addressed from the source id + `sourceUrl`), `source` (`{ id, url }`), `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, and a `relevance` of zero until the merge scores it — and truncates to the requested `limit`. A provider never computes an id, never writes provenance or a score, and never post-truncates. A single malformed item is reported and dropped (`meta.sources[].rejected`), not fatal.
 
 `LicenseId` is an **open** string. Known ids carry a row in `LICENSE_FACTS`; anything else resolves to the `unknown` row, which grants nothing. A source whose terms are narrower than the label it declares ships its own `rights.facts` row, and every consumer — the use-gate, the merge's conflict resolution, attribution, the reranker's license boost — reads facts via `factsOf(rights)`, never the id string.
 

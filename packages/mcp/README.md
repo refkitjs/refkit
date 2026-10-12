@@ -45,7 +45,7 @@ await serveStdio(createRefkit({
 
 ## The `search_references` tool
 
-Input: `{ query, modalities?, sources?, controls?, providerOptions?, limit?, cursor?, rerank?, minRelevance?, deadlineMs?, intent?, gateFor?, gateContext?, explain? }`.
+Input: `{ query, modalities?, sources?, controls?, sourceOptions?, limit?, cursor?, rerank?, minRelevance?, deadlineMs?, intent?, gateFor?, gateContext?, explain? }`.
 
 - `controls` — provider-neutral search controls such as `{ orientation, color, language, sort, safety, license, media, page }`; providers translate supported controls and report ignored controls when `explain: true`.
 - `sources` — restrict the search to specific source ids (the ids are listed in the tool description under "Configured sources"). Naming a source also **bypasses** that source's own query-acceptance predicate, so a narrow source like Nailbook — which declines non-nail queries on an unscoped search and then appears as `skipped` with `reason: 'declined'` — still answers when asked for by name.
@@ -56,15 +56,15 @@ Input: `{ query, modalities?, sources?, controls?, providerOptions?, limit?, cur
 - `gateFor` — return only results whose license allows that intent.
 - `gateContext` — `{ userJurisdiction }` for that gate, matching `evaluate_use`'s jurisdiction input: a source-declared jurisdiction that differs from the caller's defaults to `needs-review`, which `gateFor` then drops.
 - `cursor` — the previous result's top-level `nextCursor` (always returned, no `explain` needed); fetches the next batch, deduped against earlier ones.
-- `explain` — include provider status (incl. per-source `confidence`, `latencyMs`, skip `reason`), applied and ignored unified controls, warnings, and gate/threshold-drop metadata.
-- `providerOptions` — typed provider-specific whitelisted controls keyed by provider id, for example:
+- `explain` — include per-source status (incl. `confidence`, `latencyMs`, skip `reason`), applied and ignored unified controls, warnings, and gate/threshold-drop metadata.
+- `sourceOptions` — typed provider-specific whitelisted controls keyed by source id, for example:
 
 ```json
 {
   "query": "forest path",
   "modalities": ["image"],
   "controls": { "orientation": "landscape", "color": "green", "safety": "strict" },
-  "providerOptions": {
+  "sourceOptions": {
     "unsplash": { "collections": ["abc", "def"], "page": 2 },
     "flickr": { "tags": ["forest", "path"], "tagMode": "all", "minTakenDate": "2020-01-01" },
     "brave": { "country": "US", "searchLang": "en" }
@@ -72,7 +72,7 @@ Input: `{ query, modalities?, sources?, controls?, providerOptions?, limit?, cur
 }
 ```
 
-Output: `{ references: [{ id, title?, description?, tags?, modality, kind?, provider, canonicalUrl, license, author?, rehostPolicy, relevance, thumbnail?, excerpt?, useVerdict?, useExplanation?, attribution? }], nextCursor?, meta? }`. `description` is capped at 280 characters and `tags` at the first 8, to keep agent context small. `relevance` is the 0..1 cross-source score after fusion and rerank; the per-source `sourceScore` is left out because it is not comparable across sources. `rehostPolicy` tells the agent what it may do with the media before storing anything: `hotlink-required` (link only), `cache-allowed`, `thumbnail-only` or `no-store`. When `intent` (or `gateFor`) is set, each result carries `useVerdict { decision, reason, confidence }`, a plain `useExplanation`, and — if the license requires it — a ready-to-use `attribution` credit line. When `explain: true`, `meta` includes per-provider `fulfilled` / `failed` / `skipped` status, applied/ignored control details, warnings, and gate/threshold-drop counts. The `meta` shape comes from core's own `searchMetaSchema` — this server keeps no copy of the vocabulary.
+Output: `{ references: [{ id, title?, description?, tags?, modality, kind?, source, canonicalUrl, license, author?, rehostPolicy, relevance, thumbnail?, excerpt?, useVerdict?, useExplanation?, attribution? }], nextCursor?, meta? }`. `description` is capped at 280 characters and `tags` at the first 8, to keep agent context small. `relevance` is the 0..1 cross-source score after fusion and rerank; the per-source `sourceScore` is left out because it is not comparable across sources. `rehostPolicy` tells the agent what it may do with the media before storing anything: `hotlink-required` (link only), `cache-allowed`, `thumbnail-only` or `no-store`. When `intent` (or `gateFor`) is set, each result carries `useVerdict { decision, reason, confidence }`, a plain `useExplanation`, and — if the license requires it — a ready-to-use `attribution` credit line. When `explain: true`, `meta` includes per-source `fulfilled` / `failed` / `skipped` status (`meta.sources`), applied/ignored control details, warnings, and gate/threshold-drop counts. The `meta` shape comes from core's own `searchMetaSchema` — this server keeps no copy of the vocabulary.
 
 > Results are references with a license id + source link — **not rights clearance, not legal advice**. `unknown` / `needs-review` results require the caller to verify the source's terms.
 

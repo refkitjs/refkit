@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { LICENSE_IDS, INTENTS, REHOST_POLICIES, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
-import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, ProviderOptionsById, RightsRecord, Modality } from '@refkit/core'
+import { LICENSE_IDS, INTENTS, REHOST_POLICIES, SourceSelectionError, evaluateUse, buildAttribution, ccVersionFor, buildSearchControlsSchema, searchMetaSchema } from '@refkit/core'
+import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, SearchInput, SourceOptionsById, RightsRecord, Modality } from '@refkit/core'
 
 // Legacy media.kind control values — kept in the dynamic enum because they stay
 // meaningful as upstream filter translations for providers that support the
@@ -11,7 +11,7 @@ import type { RefkitClient, Reference, Verdict, Attribution, SearchControls, Sea
 const BASE_MEDIA_KINDS = ['photo', 'illustration', 'vector', 'film', 'animation'] as const
 
 const providerOptionValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())])
-const providerOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
+const sourceOptionsSchema = z.record(z.string(), z.record(z.string(), providerOptionValueSchema))
 
 // Reported in the MCP initialize handshake. Read the real version (the dist sits
 // next to package.json, which npm always ships) instead of a hardcoded placeholder.
@@ -46,7 +46,7 @@ function toAgentRef(r: Reference, assessment?: { verdict: Verdict; attribution: 
     tags: r.tags && r.tags.length > 0 ? r.tags.slice(0, AGENT_TAGS_MAX) : undefined,
     modality: r.modality,
     kind: r.kind,
-    provider: r.source.providerId,
+    source: r.source.id,
     canonicalUrl: r.canonicalUrl,
     license: r.rights.license,
     author: r.rights.author,
@@ -74,7 +74,7 @@ const agentRefSchema = z.object({
   tags: z.array(z.string()).optional().describe(`the source's subjects or tags, first ${AGENT_TAGS_MAX}`),
   modality: z.string(),
   kind: z.string().optional().describe('fine-grained resource kind, e.g. photo / texture / ebook'),
-  provider: z.string(),
+  source: z.string().describe('id of the source this result came from (see "Configured sources")'),
   canonicalUrl: z.string(),
   license: z.string(),
   author: z.string().optional().describe('creator as declared by the source'),
@@ -131,8 +131,8 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
           + 'Use to scope a search-engine operator (e.g. "site:example.com") to a web-discovery source without affecting other sources\' queries.',
         ),
         controls: searchControlsSchema.optional().describe('provider-neutral search controls; providers translate supported controls and report ignored controls in explain metadata'),
-        providerOptions: providerOptionsSchema.optional().describe('provider-specific search controls keyed by provider id; each provider whitelists supported keys'),
-        explain: z.boolean().optional().describe('include provider status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
+        sourceOptions: sourceOptionsSchema.optional().describe('source-specific search options keyed by source id; each source whitelists the keys it supports'),
+        explain: z.boolean().optional().describe('include per-source status, applied and ignored controls, warnings, gate/drop metadata, and the load-more cursor'),
         limit: z.number().int().positive().optional(),
         cursor: z.string().optional().describe('opaque cursor from a previous result\'s nextCursor — fetches the next batch, deduped against earlier batches'),
         rerank: z.boolean().optional().describe('re-rank results by query relevance (term coverage incl. CJK over title/description/tags/excerpt, fused cross-source relevance, resolution, source and near-duplicate diversity). Default true — pass false for raw cross-source rank fusion. true cannot re-enable reranking when the host built the client with rerank: false'),
@@ -154,7 +154,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         meta: searchMetaSchema.optional(),
       },
     },
-    async ({ query, modalities, controls, providerOptions, explain, limit, cursor, rerank, minRelevance, deadlineMs, gateContext, intent, gateFor, sources }) => {
+    async ({ query, modalities, controls, sourceOptions, explain, limit, cursor, rerank, minRelevance, deadlineMs, gateContext, intent, gateFor, sources }) => {
       // Typed as core's SearchInput so every parameter above is checked against
       // the contract it is forwarded into, not just against zod.
       const searchInput: SearchInput = {
@@ -162,7 +162,7 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
         modalities: modalities ?? ['image'],
         sources,
         controls: controls as SearchControls | undefined,
-        providerOptions: providerOptions as ProviderOptionsById | undefined,
+        sourceOptions: sourceOptions as SourceOptionsById | undefined,
         limit,
         cursor,
         // Core reranks by default; only an explicit false turns it off.
@@ -178,16 +178,16 @@ export function createRefkitMcpServer(refkit: RefkitClient): McpServer {
       try {
         result = await refkit.searchWithMeta(searchInput)
       } catch (err) {
-        // A source-selection miss (no requested id resolves for the modality) is a
-        // caller mistake, not an outage — turn core's throw into an agent-actionable
-        // tool error listing the valid ids. AggregateError (every chosen provider
-        // failed at fetch) is a genuine upstream fault, so let it propagate.
-        if (sources && sources.length > 0 && !(err instanceof AggregateError)) {
+        // A source-selection miss (the requested ids resolve to no configured
+        // source for the modality or kind) is a caller mistake, not an outage —
+        // turn core's typed throw into an agent-actionable tool error listing the
+        // valid ids. Everything else (every source failing, an invalid cursor)
+        // propagates as it is.
+        if (err instanceof SourceSelectionError && err.code === 'no-matching-source') {
           const available = enabledSourceIds.join(', ') || '(none)'
-          const detail = err instanceof Error ? err.message : String(err)
           return {
             isError: true,
-            content: [{ type: 'text', text: `${detail} Enabled source ids: ${available}.` }],
+            content: [{ type: 'text', text: `${err.message} Enabled source ids: ${available}.` }],
           }
         }
         throw err

@@ -20,9 +20,9 @@ describe('clean + discovery integration (offline)', () => {
   it('merges clean (openverse) and discovery (brave) results', async () => {
     const rk = createRefkit({ providers: [openverse(), brave({ token: 'k' })], fetch: routedFetch })
     const refs = await rk.search({ query: 'sky', modalities: ['image'] })
-    const providers = new Set(refs.map(r => r.source.providerId))
-    expect(providers.has('openverse')).toBe(true)
-    expect(providers.has('brave')).toBe(true)
+    const sources = new Set(refs.map(r => r.source.id))
+    expect(sources.has('openverse')).toBe(true)
+    expect(sources.has('brave')).toBe(true)
   })
 
   it('gateFor commercial-product keeps the clean cc0 result, drops the discovery (needs-review) one', async () => {

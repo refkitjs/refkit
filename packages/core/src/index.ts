@@ -56,7 +56,7 @@ export type {
   WellKnownKind,
   ResourceKind,
 } from './controls'
-export { searchMetaSchema, providerSearchStatusSchema, searchControlKeySchema } from './schemas'
+export { searchMetaSchema, sourceStatusSchema, searchControlKeySchema } from './schemas'
 export { defineProvider } from './provider'
 export type {
   ReferenceProvider,
@@ -65,7 +65,7 @@ export type {
   ProviderCapabilities,
   ProviderOptionValue,
   ProviderOptions,
-  ProviderOptionsById,
+  SourceOptionsById,
   KeyValueCache,
 } from './provider'
 export {
@@ -77,8 +77,8 @@ export {
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
 export type { ProviderRun, ProviderRunDeps } from './provider-run'
-export { selectProviders, PROVIDER_SKIP_REASONS } from './select'
-export type { ProviderSkipReason, ProviderSelection } from './select'
+export { selectProviders, SOURCE_SKIP_REASONS, SourceSelectionError } from './select'
+export type { SourceSkipReason, ProviderSelection } from './select'
 export { runPass } from './pipeline'
 export type { PassDeps, PassOutcome } from './pipeline'
 export { createRefkit } from './client'
@@ -92,8 +92,8 @@ export type {
   SearchControlsMeta,
   SearchGateMeta,
   SearchThresholdMeta,
-  ProviderSearchStatus,
-  ProviderError,
+  SourceStatus,
+  SourceError,
 } from './client'
 export { lexicalReranker, tokenize, refText } from './rerank'
 export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'

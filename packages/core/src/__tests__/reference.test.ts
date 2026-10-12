@@ -6,7 +6,7 @@ const ref: Reference = {
   id: 'p:abc',
   modality: 'image',
   title: 'Sunset',
-  source: { providerId: 'unsplash', sourceUrl: 'https://unsplash.com/photos/1' },
+  source: { id: 'unsplash', url: 'https://unsplash.com/photos/1' },
   canonicalUrl: 'https://unsplash.com/photos/1',
   rights: {
     license: 'unsplash',
@@ -46,7 +46,7 @@ describe('referenceSchema / parseReference', () => {
     const base = {
       id: 'p:1',
       modality: 'image',
-      source: { providerId: 'p', sourceUrl: 'https://p/1' },
+      source: { id: 'p', url: 'https://p/1' },
       canonicalUrl: 'https://p/1',
       rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://p/1' } },
       verifiedAt: '2026-07-24T00:00:00.000Z',
@@ -66,7 +66,7 @@ describe('EmittedReference → Reference', () => {
   it('completeReference stamps id, source, canonicalUrl, verifiedAt and relevance', () => {
     const r = completeReference('p', parseEmitted(emitted), '2026-01-01T00:00:00.000Z')
     expect(r.id).toMatch(/^p:[0-9a-z]+$/)
-    expect(r.source).toEqual({ providerId: 'p', sourceUrl: 'https://X.test/a/' })
+    expect(r.source).toEqual({ id: 'p', url: 'https://X.test/a/' })
     expect(r.canonicalUrl).toBe('https://X.test/a/')
     expect(r.verifiedAt).toBe('2026-01-01T00:00:00.000Z')
     expect(r.relevance).toBe(0)
@@ -77,7 +77,7 @@ describe('EmittedReference → Reference', () => {
   it('an explicit canonicalUrl is kept', () => {
     const r = completeReference('p', parseEmitted({ ...emitted, canonicalUrl: 'https://x.test/canon' }), '2026-01-01T00:00:00.000Z')
     expect(r.canonicalUrl).toBe('https://x.test/canon')
-    expect(r.source.sourceUrl).toBe('https://X.test/a/')
+    expect(r.source.url).toBe('https://X.test/a/')
   })
   it('parseEmitted rejects a missing sourceUrl', () => {
     expect(() => parseEmitted({ ...emitted, sourceUrl: undefined })).toThrow()

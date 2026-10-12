@@ -5,13 +5,13 @@ import type { Intent, Verdict } from './evaluate-use'
 import { evaluateUse } from './evaluate-use'
 import type { Attribution } from './attribution'
 import { buildAttribution } from './attribution'
-import type { ReferenceProvider, KeyValueCache, ProviderOptionsById } from './provider'
+import type { ReferenceProvider, KeyValueCache, SourceOptionsById } from './provider'
 import type { SearchControlKey, SearchControls } from './controls'
 import type { MergeOptions, RightsConflict } from './merge'
 import { DEFAULT_CONFIDENCE_FLOOR } from './confidence'
 import { retryingFetch, withDefaultUserAgent, withTimeout, type TimeoutHandle } from './resilience'
 import { cursorSeenKey, decodeCursor, encodeCursor } from './cursor'
-import { selectProviders, type ProviderSkipReason } from './select'
+import { selectProviders, type SourceSkipReason } from './select'
 import { runPass, type PassDeps, type PassOutcome } from './pipeline'
 
 export interface ResilienceOptions {
@@ -43,7 +43,7 @@ export interface RefkitOptions {
    *  its score. With `fusionWeight: 0` — or a BYO reranker that ignores the
    *  incoming `relevance` — confidence only breaks ties among refs the reranker
    *  scores equally, and otherwise survives as the `confidence` diagnostic on
-   *  each `meta.providers` entry. */
+   *  each `meta.sources` entry. */
   sourceConfidence?: boolean | { floor?: number }
   /** Per-provider timeout + retry (H8). Defaults ON; pass `false` to disable both. */
   resilience?: ResilienceOptions | false
@@ -72,27 +72,27 @@ export interface RefkitOptions {
   maxCursorSeen?: number
 }
 
-export interface ProviderError {
-  providerId: string
+export interface SourceError {
+  sourceId: string
   error: unknown
 }
 
-export interface ProviderSearchStatus {
-  providerId: string
+export interface SourceStatus {
+  sourceId: string
   status: 'fulfilled' | 'failed' | 'skipped'
   returned?: number
   accepted?: number
-  /** Items the provider returned that failed schema validation, or whose
+  /** Items the source returned that failed schema validation, or whose
    *  modality is outside this source's share of the requested modalities (the
-   *  ones it declares); each also fires onProviderError. Items dropped by the
+   *  ones it declares); each also fires onSourceError. Items dropped by the
    *  `limit` truncation are neither accepted nor rejected. */
   rejected?: number
-  reason?: ProviderSkipReason
+  reason?: SourceSkipReason
   error?: string
   latencyMs?: number
   cached?: boolean
   /** How well this source's batch matched the query (0..1), the multiplier its
-   *  rank positions carried into the fusion. Present on fulfilled providers while
+   *  rank positions carried into the fusion. Present on fulfilled sources while
    *  `sourceConfidence` is on. */
   confidence?: number
 }
@@ -111,8 +111,8 @@ export interface SearchThresholdMeta {
 
 export interface SearchControlsMeta {
   requested: SearchControlKey[]
-  appliedByProvider: Record<string, SearchControlKey[]>
-  ignoredByProvider: Record<string, SearchControlKey[]>
+  appliedBySource: Record<string, SearchControlKey[]>
+  ignoredBySource: Record<string, SearchControlKey[]>
 }
 
 export interface SearchMeta {
@@ -124,8 +124,9 @@ export interface SearchMeta {
   /** Fan-out passes this call ran (>1 only when the cursor advanced pages). */
   passes: number
   controls?: SearchControlsMeta
-  providerOptions?: string[]
-  providers: ProviderSearchStatus[]
+  /** The `sourceOptions` keys the caller passed. */
+  sourceOptions?: string[]
+  sources: SourceStatus[]
   gate?: SearchGateMeta
   /** Present when `minRelevance` was set: the bar and how many results it cut. */
   threshold?: SearchThresholdMeta
@@ -144,20 +145,23 @@ export interface SearchResult {
 export interface SearchInput {
   query: string
   modalities: Modality[]
-  /** Restrict this search to these provider ids (intersected with modality
+  /** Restrict this search to these source ids (intersected with modality
    *  matching). Omit to fan out to every configured source. Lets the caller
    *  scope search-engine operators (e.g. `site:xiaohongshu.com`) to a
-   *  web-discovery source without polluting other providers' queries.
+   *  web-discovery source without polluting other sources' queries.
    *
-   *  A total miss — no requested id matches a configured provider for the
-   *  requested modalities — throws (a source typo must fail loudly, not read as
-   *  "no results"); ids that resolve to nothing while others still match are
+   *  A total miss — no requested id matches a configured source for the
+   *  requested modalities — throws a `SourceSelectionError` with code
+   *  `'no-matching-source'` (a source typo must fail loudly, not read as "no
+   *  results"); ids that resolve to nothing while others still match are
    *  reported in `meta.warnings`. */
   sources?: string[]
   controls?: SearchControls
-  /** Provider-specific search controls keyed by provider id. Core routes only the
-   * matching entry to each provider; providers whitelist what they translate. */
-  providerOptions?: ProviderOptionsById
+  /** Source-specific search options keyed by source id. Core routes only the
+   *  matching entry to each source (its provider reads it as
+   *  `NormalizedQuery.providerOptions`); providers whitelist what they translate.
+   *  Ids that match no configured source are reported in `meta.warnings`. */
+  sourceOptions?: SourceOptionsById
   limit?: number
   /** Opaque cursor from a previous search's `meta.nextCursor`. Resumes the
    *  provider-local page (overriding `controls.page`), filters out results
@@ -181,7 +185,7 @@ export interface SearchInput {
   gateFor?: Intent
   /** Context for the search-time gate (`gateFor`), matching evaluateUse's ctx. */
   gateContext?: { userJurisdiction?: string }
-  onProviderError?: (e: ProviderError) => void
+  onSourceError?: (e: SourceError) => void
   /** Override the client's reranker for this call: a {@link Reranker} to use
    *  instead, or `false` for raw cross-source rank fusion. Omit to keep the
    *  client's default (the lexical reranker unless `RefkitOptions.rerank` says
@@ -236,6 +240,15 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
   // construction and crash cryptically on the first search.
   if (!Array.isArray(options.providers) || options.providers.length === 0) {
     throw new Error('createRefkit: providers must be a non-empty array (did you forget to await an async provider factory?)')
+  }
+  // A source id names one source in `sources`, `sourceOptions`, `meta.sources`,
+  // reference ids and cache keys. Two providers sharing one would be
+  // indistinguishable in all of them, so the second must not pass silently.
+  const sourceIds = new Set<string>()
+  const duplicateIds = new Set<string>()
+  for (const p of options.providers) (sourceIds.has(p.id) ? duplicateIds : sourceIds).add(p.id)
+  if (duplicateIds.size > 0) {
+    throw new Error(`createRefkit: duplicate source id(s) [${[...duplicateIds].join(', ')}] — each provider instance must serve its own source id`)
   }
   // Built once, not per search: the default reranker is stateless and its weight
   // resolution is fixed for the life of the client.
@@ -298,7 +311,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         query: input.query,
         modalities: input.modalities,
         controls: input.controls,
-        providerOptions: input.providerOptions,
+        sourceOptions: input.sourceOptions,
         fetchLimit,
         run: {
           fetch: sharedFetch,
@@ -317,7 +330,7 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         gateContext: input.gateContext,
         seen,
         signal,
-        onProviderError: (providerId, error) => input.onProviderError?.({ providerId, error }),
+        onSourceError: (sourceId, error) => input.onSourceError?.({ sourceId, error }),
       }
       // Providers fetch fetchLimit (≥ limit) candidates per page, but each call
       // returns only `limit` — so the cursor must NOT advance the provider page
@@ -355,14 +368,20 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
         : undefined
       const warnings: string[] = []
       if (selection.unknownSources.length > 0) warnings.push(`unknown source id(s) ignored: ${selection.unknownSources.join(', ')}.`)
-      // Per-pass failure counts: a provider that failed on an earlier page and
+      // Same for an option keyed by a typo: it would otherwise be dropped silently.
+      // A configured source that merely sat this search out is not unknown.
+      const unknownOptionIds = input.sourceOptions
+        ? Object.keys(input.sourceOptions).filter(id => !options.providers.some(p => p.id === id))
+        : []
+      if (unknownOptionIds.length > 0) warnings.push(`unknown sourceOptions id(s) ignored: ${unknownOptionIds.join(', ')}.`)
+      // Per-pass failure counts: a source that failed on an earlier page and
       // recovered on a later one must still be visible.
       passes.forEach((pass, i) => {
-        const failed = [...pass.statusByProvider.values()].filter(s => s.status === 'failed').length
+        const failed = [...pass.statusBySource.values()].filter(s => s.status === 'failed').length
         if (failed === 0) return
         warnings.push(passes.length > 1
-          ? `pass ${i + 1}: ${failed} provider(s) failed; returning partial results.`
-          : `${failed} provider(s) failed; returning partial results.`)
+          ? `pass ${i + 1}: ${failed} source(s) failed; returning partial results.`
+          : `${failed} source(s) failed; returning partial results.`)
       })
       // Conflicts concatenate across passes but are reported once per URL — the
       // same URL conflicts again on every page that returns it.
@@ -378,11 +397,11 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
       if (last.gate && last.gate.dropped > 0) warnings.push(`${last.gate.dropped} result(s) dropped by ${last.gate.intent} gate.`)
       // Status: the last pass wins (it produced the results), but latency sums
       // over every pass — a multi-pass call really did spend that long.
-      const providers = options.providers.map((p): ProviderSearchStatus => {
-        const status = last.statusByProvider.get(p.id)
-          ?? { providerId: p.id, status: 'skipped' as const, reason: selection.skipReasons.get(p.id) ?? 'unsupported-modality' as const }
+      const sources = options.providers.map((p): SourceStatus => {
+        const status = last.statusBySource.get(p.id)
+          ?? { sourceId: p.id, status: 'skipped' as const, reason: selection.skipReasons.get(p.id) ?? 'unsupported-modality' as const }
         if (status.status === 'skipped') return status
-        return { ...status, latencyMs: passes.reduce((sum, pass) => sum + (pass.statusByProvider.get(p.id)?.latencyMs ?? 0), 0) }
+        return { ...status, latencyMs: passes.reduce((sum, pass) => sum + (pass.statusBySource.get(p.id)?.latencyMs ?? 0), 0) }
       })
       return {
         references,
@@ -394,8 +413,8 @@ export function createRefkit(options: RefkitOptions): RefkitClient {
           fetchLimit,
           passes: passes.length,
           ...(last.controlsMeta ? { controls: last.controlsMeta } : {}),
-          ...(input.providerOptions ? { providerOptions: Object.keys(input.providerOptions) } : {}),
-          providers,
+          ...(input.sourceOptions ? { sourceOptions: Object.keys(input.sourceOptions) } : {}),
+          sources,
           ...(last.gate ? { gate: last.gate } : {}),
           ...(last.threshold ? { threshold: last.threshold } : {}),
           ...(nextCursor ? { nextCursor } : {}),

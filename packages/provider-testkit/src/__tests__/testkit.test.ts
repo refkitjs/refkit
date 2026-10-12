@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  defineProvider, type EmittedAudioReference, type EmittedImageReference, type EmittedReference, type Modality, type ProviderContext,
+  defineProvider, type EmittedAudioReference, type EmittedImageReference, type EmittedReference, type EmittedTextReference,
+  type EmittedVideoReference, type Modality, type ProviderContext,
 } from '@refkit/core'
 import { expectLicenseMap, searchConformant, type LicenseMapResult } from '../index'
 
@@ -36,6 +37,30 @@ function audioRef(): EmittedAudioReference {
   }
 }
 
+function videoRef(): EmittedVideoReference {
+  return {
+    modality: 'video',
+    sourceUrl: 'https://example.com/film/1',
+    rights: {
+      license: 'PD',
+      rehostPolicy: 'hotlink-required',
+      raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
+    },
+  }
+}
+
+function textRef(): EmittedTextReference {
+  return {
+    modality: 'text',
+    sourceUrl: 'https://example.com/book/1',
+    rights: {
+      license: 'PD',
+      rehostPolicy: 'hotlink-required',
+      raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
+    },
+  }
+}
+
 // Fixture-fetch fake provider: search() ignores ctx.fetch's real behavior and
 // just returns whatever result set the test configured, but still routes
 // through ctx.fetch once so the shape matches a real satellite.
@@ -58,7 +83,7 @@ describe('searchConformant', () => {
     const refs = await searchConformant(provider, fixtureFetch)
     expect(refs).toHaveLength(1)
     expect(refs[0].id).toMatch(/^fake:/) // stamped by core, not by the provider
-    expect(refs[0].source).toEqual({ providerId: 'fake', sourceUrl: 'https://example.com/photo/1' })
+    expect(refs[0].source).toEqual({ id: 'fake', url: 'https://example.com/photo/1' })
     expect(refs[0].canonicalUrl).toBe('https://example.com/photo/1')
   })
 
@@ -103,6 +128,15 @@ describe('searchConformant', () => {
     await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/result #1 modality "audio" is not in the provider's declared modalities \[image\]/)
   })
 
+  it('fails when a result\'s modality is declared but outside the query it ran', async () => {
+    // Declares video and text (like internet-archive), is asked for text only,
+    // and leaks a video: core rejects that item, so the testkit must too.
+    const provider = fakeProvider([textRef(), videoRef()], ['video', 'text'])
+    await expect(searchConformant(provider, fixtureFetch, { queryExtras: { modalities: ['text'] } }))
+      .rejects.toThrow(/result #1 modality "video" is not in the query's modalities \[text\]/)
+    await expect(searchConformant(provider, fixtureFetch)).resolves.toHaveLength(2) // default query: both declared
+  })
+
   it('fails when parseEmitted drops a key: a field from another modality', async () => {
     // The union type rejects this at compile time; the cast stands in for a
     // provider whose types were loosened (any, JSON passthrough).
@@ -117,9 +151,25 @@ describe('searchConformant', () => {
     await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/lost keys in parseEmitted: visual\.colours/)
   })
 
-  it('does not inspect raw, and does not count a key set to undefined as lost', async () => {
+  it('fails when parseEmitted drops a key named like an Object.prototype member', async () => {
+    // `in` would find these on the prototype and miss that zod stripped them.
     const provider = fakeProvider([
-      { ...baseRef(), raw: { anything: { goes: true } } },
+      { ...baseRef(), constructor: 'Photo' } as unknown as EmittedReference,
+      { ...baseRef(), visual: { width: 4, height: 3, toString: 'x' } } as unknown as EmittedReference,
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/result #0 lost keys in parseEmitted: constructor \(/)
+    await expect(searchConformant(fakeProvider([
+      { ...baseRef(), visual: { width: 4, height: 3, toString: 'x' } } as unknown as EmittedReference,
+    ]), fixtureFetch)).rejects.toThrow(/result #0 lost keys in parseEmitted: visual\.toString/)
+  })
+
+  it('does not inspect raw, and does not count a key set to undefined as lost', async () => {
+    // A self-referencing raw makes the skip observable: walking into it would
+    // never end, so the search only resolves if raw is left alone.
+    const raw: Record<string, unknown> = { anything: { goes: true } }
+    raw.self = raw
+    const provider = fakeProvider([
+      { ...baseRef(), raw },
       { ...audioRef(), visual: undefined },
     ], ['image', 'audio'])
     await expect(searchConformant(provider, fixtureFetch)).resolves.toHaveLength(2)

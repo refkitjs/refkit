@@ -45,7 +45,7 @@ describe('providerCacheKey', () => {
     const key = providerCacheKey('p', q)
     expect(key.startsWith('refkit:v4:p:')).toBe(true)
     const cache = memoryCache()
-    const old = { id: 'p:old', modality: 'image', source: { providerId: 'p', sourceUrl: 'https://x.test/old' }, canonicalUrl: 'https://x.test/old', rights: ref('https://x.test/old').rights, verifiedAt: '2026-01-01T00:00:00.000Z', relevance: 0 }
+    const old = { id: 'p:old', modality: 'image', source: { id: 'p', url: 'https://x.test/old' }, canonicalUrl: 'https://x.test/old', rights: ref('https://x.test/old').rights, verifiedAt: '2026-01-01T00:00:00.000Z', relevance: 0 }
     cache.store.set(key.replace(/^refkit:v4:/, 'refkit:v3:'), JSON.stringify({ q: stableStringify(q), refs: [old] }))
     const run = await runProviderSearch(provider([ref('https://x.test/live')]), q, { fetch: (async () => new Response('')) as typeof fetch, cache, cacheTtlMs: 60_000, cacheRaw: true })
     expect(run.ok && run.cached).toBeUndefined()
@@ -86,7 +86,7 @@ describe('runProviderSearch completion', () => {
     const run = await runProviderSearch(provider, { text: 'q', modalities: ['image'], limit: 3 }, { fetch: (async () => new Response('')) as typeof fetch, cacheTtlMs: 0, cacheRaw: true })
     expect(run.ok && run.valid.length).toBe(3)
     expect(run.ok && run.returned).toBe(5)
-    expect(run.ok && run.valid[0].source.providerId).toBe('p')
+    expect(run.ok && run.valid[0].source.id).toBe('p')
     expect(run.ok && run.valid[0].id.startsWith('p:')).toBe(true)
   })
 })

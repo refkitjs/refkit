@@ -28,4 +28,4 @@ The default host, `gutendex.com`, is the upstream maintainer's **test instance**
 gutendex({ baseUrl: 'https://gutendex.your-domain.example' })
 ```
 
-When the public instance blocks a request, the search degrades gracefully: this source is reported as `failed` in `meta.providers` and results from other providers still return.
+When the public instance blocks a request, the search degrades gracefully: this source is reported as `failed` in `meta.sources` and results from other sources still return.

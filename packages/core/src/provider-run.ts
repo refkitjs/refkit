@@ -8,8 +8,8 @@ import type { KeyValueCache, NormalizedQuery, ProviderContext, ReferenceProvider
 import { withTimeout } from './resilience'
 import { fnv1a } from './hash'
 
-// Deterministic JSON for cache keys: object keys sorted recursively, so a
-// caller's providerOptions key order can't split otherwise-identical keys.
+// Deterministic JSON for cache keys: object keys sorted recursively, so the key
+// order of a caller's sourceOptions entry can't split otherwise-identical keys.
 // Keys whose value is `undefined` are skipped, matching JSON.stringify's own
 // object semantics — `{ a: 1, b: undefined }` and `{ a: 1 }` must key alike.
 export function stableStringify(value: unknown): string {
@@ -28,14 +28,16 @@ export function stableStringify(value: unknown): string {
  *  normalized-query string and the read path verifies it before trusting a hit
  *  (see runProviderSearch), so a colliding key degrades to a cache miss. The two
  *  hash passes (raw + length-salted) exist only to make that degradation rare. */
-export function providerCacheKey(providerId: string, query: NormalizedQuery): string {
-  return keyForFingerprint(providerId, stableStringify(query))
+export function providerCacheKey(sourceId: string, query: NormalizedQuery): string {
+  return keyForFingerprint(sourceId, stableStringify(query))
 }
 
-// v4: Reference became a union keyed by modality. Entries cached in an older
-// shape are missed rather than parsed (and rejected item by item).
-function keyForFingerprint(providerId: string, fingerprint: string): string {
-  return `refkit:v4:${providerId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
+// v4: `source.providerId` became `source.id` (and `sourceUrl` became `url`), and
+// Reference became a union keyed by modality. Every entry cached in the old shape
+// would fail parseReference and empty the search for the TTL, so it is missed
+// instead of parsed.
+function keyForFingerprint(sourceId: string, fingerprint: string): string {
+  return `refkit:v4:${sourceId}:${fnv1a(fingerprint)}${fnv1a(`${fingerprint.length}:${fingerprint}`)}`
 }
 
 /** Shape of a cached entry: the query fingerprint (verified on read so a key

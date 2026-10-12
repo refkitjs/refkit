@@ -106,7 +106,7 @@ describe('Reference variants (types)', () => {
     // @ts-expect-error audio metadata on a video
     emitted({ modality: 'video', ...base, audio: audioMeta })
     // @ts-expect-error the complete Reference rejects it too
-    complete({ modality: 'text', id: 'p:1', source: { providerId: 'p', sourceUrl: 'https://x/1' }, canonicalUrl: 'https://x/1', rights, verifiedAt: '2026-01-01T00:00:00.000Z', relevance: 0, visual: visualMeta })
+    complete({ modality: 'text', id: 'p:1', source: { id: 'p', url: 'https://x/1' }, canonicalUrl: 'https://x/1', rights, verifiedAt: '2026-01-01T00:00:00.000Z', relevance: 0, visual: visualMeta })
   })
 
   it('the `?: never` fields catch what excess-property checks miss (non-fresh objects, map callbacks)', () => {

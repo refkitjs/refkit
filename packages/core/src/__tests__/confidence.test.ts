@@ -8,7 +8,7 @@ const ref = (id: string, title: string, opts: Partial<ImageReference> = {}): Ref
   id,
   modality: 'image',
   title,
-  source: { providerId: 'p', sourceUrl: `https://x/${id}` },
+  source: { id: 'p', url: `https://x/${id}` },
   canonicalUrl: `https://x/${id}`,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } },
   verifiedAt: '2026-06-24T00:00:00.000Z',

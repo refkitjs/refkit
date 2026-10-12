@@ -44,9 +44,9 @@ function licLabel(rights: RightsRecord): string {
 
 // Providers hand back small preview thumbs; pull a larger rendition per source so the
 // 3× hero stays crisp (artic defaults to 200px, the met to web-large/500px).
-function upscale(url: string, providerId: string): string {
-  if (providerId === 'artic') return url.replace(/\/full\/\d+,\//, '/full/1200,/')
-  if (providerId === 'met') return url.replace('/web-large/', '/original/')
+function upscale(url: string, sourceId: string): string {
+  if (sourceId === 'artic') return url.replace(/\/full\/\d+,\//, '/full/1200,/')
+  if (sourceId === 'met') return url.replace('/web-large/', '/original/')
   return url
 }
 
@@ -84,7 +84,7 @@ const results = await rk.search({
   modalities: ['image'],
   rerank: lexicalReranker(),
   limit: 40,
-  onProviderError: (e) => console.warn(`  [warn] ${e.providerId}: ${(e.error as Error)?.message ?? e.error}`),
+  onSourceError: (e) => console.warn(`  [warn] ${e.sourceId}: ${(e.error as Error)?.message ?? e.error}`),
 })
 
 // Top result per source, in rerank order — a clean one-card-per-source strip.
@@ -92,20 +92,20 @@ const bySource = new Map<string, Reference>()
 for (const r of results) {
   const thumb = r.thumbnail?.url ?? r.preview?.url
   if (!thumb) continue
-  if (!bySource.has(r.source.providerId)) bySource.set(r.source.providerId, r)
+  if (!bySource.has(r.source.id)) bySource.set(r.source.id, r)
 }
 const picks = [...bySource.values()].slice(0, 4)
 if (picks.length < 2) throw new Error(`only ${picks.length} source(s) returned usable results — aborting`)
-console.log(`picked ${picks.length} sources: ${picks.map((r) => r.source.providerId).join(', ')}`)
+console.log(`picked ${picks.length} sources: ${picks.map((r) => r.source.id).join(', ')}`)
 
 // ---- bake thumbnails first; a source whose image won't fetch is dropped, not fatal ----
 const baked: { r: Reference; href: string }[] = []
 for (const r of picks) {
-  const thumbUrl = upscale(r.thumbnail?.url ?? r.preview!.url, r.source.providerId)
+  const thumbUrl = upscale(r.thumbnail?.url ?? r.preview!.url, r.source.id)
   try {
     baked.push({ r, href: await dataUri(thumbUrl) })
   } catch (e) {
-    console.warn(`  [warn] dropped ${r.source.providerId} thumbnail: ${(e as Error)?.message ?? e}`)
+    console.warn(`  [warn] dropped ${r.source.id} thumbnail: ${(e as Error)?.message ?? e}`)
   }
 }
 if (baked.length < 2) throw new Error(`only ${baked.length} thumbnail(s) baked — aborting`)
@@ -120,7 +120,7 @@ for (let i = 0; i < baked.length; i++) {
   const lic = licLabel(r.rights)
   const decision = rk.evaluateUse(r, 'commercial-product').decision
   const { verdict, tint, licColor, vColor } = verdictStyle(decision)
-  const src = SOURCE_LABEL[r.source.providerId] ?? `via ${r.source.providerId}`
+  const src = SOURCE_LABEL[r.source.id] ?? `via ${r.source.id}`
   const title = splitTitle((r.title ?? '').replace(/^\d+[\s_.-]+/, '')) // drop filename-prefix numbers like "002 "
   defs += `<clipPath id="img${i}"><rect x="${x}" y="${CY}" width="${W}" height="120" rx="14"/></clipPath>`
   body += `

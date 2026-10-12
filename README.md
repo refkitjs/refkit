@@ -75,14 +75,14 @@ await refkit.search({
 })
 ```
 
-Use `providerOptions` for provider-specific escape hatches that do not belong in the common contract. These are **typed whitelists**, not raw passthrough maps: each provider package translates the practical official search parameters it supports and ignores unsupported values.
+Use `sourceOptions`, keyed by source id, for provider-specific escape hatches that do not belong in the common contract. These are **typed whitelists**, not raw passthrough maps: each provider package translates the practical official search parameters it supports and ignores unsupported values.
 
 ```ts
 await refkit.search({
   query: 'forest path',
   modalities: ['image'],
   controls: { orientation: 'landscape', safety: 'strict' },
-  providerOptions: {
+  sourceOptions: {
     unsplash: { collections: ['abc', 'def'], page: 2 },
     flickr: { tags: ['forest', 'path'], tagMode: 'all', minTakenDate: '2020-01-01' },
     brave: { country: 'US', searchLang: 'en', spellcheck: false },
@@ -96,7 +96,7 @@ The provider package owns its native options surface, e.g. `UnsplashSearchOption
 
 ### Site-scoped discovery
 
-Pass `sources` to restrict a search to specific provider ids (still intersected with modality matching; omit to fan out to every configured source). This is the clean way to point a web-discovery source at another site's index with a `site:` operator — without that operator leaking into the other providers' queries:
+Pass `sources` to restrict a search to specific source ids (still intersected with modality matching; omit to fan out to every configured source). This is the clean way to point a web-discovery source at another site's index with a `site:` operator — without that operator leaking into the other sources' queries:
 
 ```ts
 // Query Brave's index for Xiaohongshu nail-art notes — Brave only, so the
@@ -108,11 +108,11 @@ const notes = await refkit.search({
 })
 ```
 
-A `sources` list that matches nothing for the requested modalities throws (a source typo fails loudly instead of reading as "no results"); an id that resolves to nothing while others still match is reported in `meta.warnings`, and every excluded provider appears in `meta.providers` with `reason: 'not-selected'`.
+A `sources` list that matches nothing for the requested modalities throws (a source typo fails loudly instead of reading as "no results"); an id that resolves to nothing while others still match is reported in `meta.warnings`, and every excluded source appears in `meta.sources` with `reason: 'not-selected'`.
 
 ### Source routing & acceptance
 
-A provider may declare `accepts({ text, modalities })` — a pure, fetch-free predicate that lets a narrow source opt out of queries it cannot answer. On an **unscoped** search a provider that returns `false` never runs: it is skipped with `reason: 'declined'` in `meta.providers` (routing, not a failure — no warning, no error). If every modality-matching provider declines, the search returns an empty result instead of throwing.
+A provider may declare `accepts({ text, modalities })` — a pure, fetch-free predicate that lets a narrow source opt out of queries it cannot answer. On an **unscoped** search a provider that returns `false` never runs: it is skipped with `reason: 'declined'` in `meta.sources` (routing, not a failure — no warning, no error). If every modality-matching provider declines, the search returns an empty result instead of throwing.
 
 Naming a source in `sources` **bypasses** its `accepts` — asking for a source explicitly is the caller overriding the source's own judgement:
 
@@ -152,9 +152,9 @@ const { references, meta } = await refkit.searchWithMeta({
   gateFor: 'commercial-product',
 })
 
-console.log(meta.controls?.appliedByProvider)
-console.log(meta.controls?.ignoredByProvider)
-console.log(meta.providers)
+console.log(meta.controls?.appliedBySource)
+console.log(meta.controls?.ignoredBySource)
+console.log(meta.sources)
 console.log(meta.warnings)
 ```
 
@@ -174,7 +174,7 @@ The cursor first **drains the overfetched pool** of the current provider page (e
 
 Every search fuses the per-source lists with **Reciprocal Rank Fusion** and then re-ranks the fused pool for the query. Both stages are on by default — no model, no network, nothing to configure:
 
-1. **Source confidence** weights each source's RRF contribution by how much of the batch it returned actually mentions the query (`floor + (1 − floor) × hitRate`, floor `0.1`), so a source that answered something else stops out-ranking the ones that answered. Each fulfilled source reports its weight as `meta.providers[].confidence`.
+1. **Source confidence** weights each source's RRF contribution by how much of the batch it returned actually mentions the query (`floor + (1 − floor) × hitRate`, floor `0.1`), so a source that answered something else stops out-ranking the ones that answered. Each fulfilled source reports its weight as `meta.sources[].confidence`.
 2. **`lexicalReranker()`** then scores every candidate over `title + description + tags + text.excerpt` (CJK included, via character bigrams), blends in the fused relevance the candidate arrived with, adds a resolution boost, and emits greedily with a per-source diversity penalty plus a same-source near-duplicate-title penalty — so neither one provider nor one upload batch owns the top.
 
 ```ts
@@ -241,7 +241,7 @@ createRefkit({ providers, sourceConfidence: { floor: 0.3 } }) // dampen a miss l
 createRefkit({ providers, sourceConfidence: false })          // unweighted fusion
 ```
 
-Confidence reaches the final **order** through the reranker's `fusionWeight`; with `fusionWeight: 0` — or a BYO reranker that ignores the incoming `relevance` — it only breaks ties among otherwise-equal refs and survives as the `meta.providers[].confidence` diagnostic. A fulfilled source that returned nothing reports no `confidence` at all: an empty batch neither mentions the query nor fails to.
+Confidence reaches the final **order** through the reranker's `fusionWeight`; with `fusionWeight: 0` — or a BYO reranker that ignores the incoming `relevance` — it only breaks ties among otherwise-equal refs and survives as the `meta.sources[].confidence` diagnostic. A fulfilled source that returned nothing reports no `confidence` at all: an empty batch neither mentions the query nor fails to.
 
 ### Descriptive fields
 
@@ -273,7 +273,7 @@ const refkit = createRefkit({
 
 ## Resilience & caching
 
-Fan-out is hardened by default: each provider gets a **soft 10s timeout** and **one retry** (429/5xx/network errors, exponential backoff). A slow or hanging source is reported in `meta.providers` as `failed` with `timeout after Nms` — the search still returns everyone else. Tune or disable per client:
+Fan-out is hardened by default: each provider gets a **soft 10s timeout** and **one retry** (429/5xx/network errors, exponential backoff). A slow or hanging source is reported in `meta.sources` as `failed` with `timeout after Nms` — the search still returns everyone else. Tune or disable per client:
 
 ```ts
 createRefkit({ providers, resilience: { timeoutMs: 4000, retries: 2 } })
@@ -294,7 +294,7 @@ With many sources registered, bound the fan-out with `concurrency` — at most N
 createRefkit({ providers, concurrency: 6 }) // default: unlimited
 ```
 
-Pass a `cache` to memoize **per-provider** results (short fixed-shape hashed keys, safe for strict KV backends; the cached value embeds the full normalized query and is verified on read, so a key collision degrades to a miss instead of serving another query's results; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.providers`, and every provider status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
+Pass a `cache` to memoize **per-provider** results (short fixed-shape hashed keys, safe for strict KV backends; the cached value embeds the full normalized query and is verified on read, so a key collision degrades to a miss instead of serving another query's results; TTL `cacheTtlMs`, default 5 min). Merging, reranking, and the license gate always run fresh; cache hits are flagged `cached: true` in `meta.sources`, and every source status carries `latencyMs`. Pass `cacheRaw: false` to strip each result's `raw` provider payload from cache entries (smaller entries; raw-reading `isDuplicate` hooks then won't see `raw` on hits):
 
 ```ts
 createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false })
@@ -324,7 +324,7 @@ createRefkit({ providers, cache: myKvCache, cacheTtlMs: 60_000, cacheRaw: false 
 | `@refkit/provider-internet-archive` | Internet Archive | video · text | keyless | per-item CC (dirty) → unknown |
 | `@refkit/provider-nailbook` | Nailbook (Japanese nail art) | image | keyless | unknown → needs-review |
 
-¹ gutendex's default host (`gutendex.com`) is the upstream maintainer's **test instance** — its docs say "You should run your own server", and its Cloudflare front blocks datacenter IPs. Desktop/local use works out of the box; for production or server-side traffic, [self-host Gutendex](https://github.com/garethbjohnson/gutendex) and pass `gutendex({ baseUrl: 'https://your-instance' })`. When blocked, the source degrades gracefully (a `failed` entry in `meta.providers`; other sources still return).
+¹ gutendex's default host (`gutendex.com`) is the upstream maintainer's **test instance** — its docs say "You should run your own server", and its Cloudflare front blocks datacenter IPs. Desktop/local use works out of the box; for production or server-side traffic, [self-host Gutendex](https://github.com/garethbjohnson/gutendex) and pass `gutendex({ baseUrl: 'https://your-instance' })`. When blocked, the source degrades gracefully (a `failed` entry in `meta.sources`; other sources still return).
 
 Audio/video are extra factories on existing packages: `openverseAudio()`, `pexelsVideo()`, `pixabayVideo()`. Modality routing is automatic — an `['audio']` search only hits audio-capable providers.
 
@@ -350,7 +350,7 @@ One search pass is a fixed pipeline: **select** (modality → `sources` → `kin
 
 ### Providers describe, core completes
 
-A provider's `search` returns `EmittedReference[]` — only what the **source** knows: `modality, kind?, title?, description?, tags?, sourceUrl, canonicalUrl?, rights, thumbnail?, preview?, perceptualHash?, visual?, text?, sourceScore?, raw?`. Core validates each item against `emittedReferenceSchema` at the boundary and then stamps everything that is its own concern — `id` (content-addressed from providerId + sourceUrl), `source`, `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, `relevance` — and applies the per-provider `limit`. Providers never compute ids, never write provenance or scores, and never post-truncate; a satellite is a mapper plus a rights mapping.
+A provider's `search` returns `EmittedReference[]` — only what the **source** knows: `modality, kind?, title?, description?, tags?, sourceUrl, canonicalUrl?, rights, thumbnail?, preview?, perceptualHash?, visual?, text?, sourceScore?, raw?`. Core validates each item against `emittedReferenceSchema` at the boundary and then stamps everything that is its own concern — `id` (content-addressed from the source id + sourceUrl), `source` (`{ id, url }`), `canonicalUrl` (defaults to `sourceUrl`), `verifiedAt`, `relevance` — and applies the per-provider `limit`. Providers never compute ids, never write provenance or scores, and never post-truncate; a satellite is a mapper plus a rights mapping.
 
 ## Core invariants (enforced by tests in `@refkit/core`)
 

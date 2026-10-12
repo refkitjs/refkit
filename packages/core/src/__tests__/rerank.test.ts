@@ -7,7 +7,7 @@ const ref = (id: string, title: string, opts: Partial<ImageReference> = {}): Ref
   id,
   modality: 'image',
   title,
-  source: { providerId: 'p', sourceUrl: `https://x/${id}` },
+  source: { id: 'p', url: `https://x/${id}` },
   canonicalUrl: `https://x/${id}`,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } },
   verifiedAt: '2026-06-24T00:00:00.000Z',
@@ -21,7 +21,7 @@ const textRef = (id: string, title: string, text: TextMeta): Reference => ({
   modality: 'text',
   title,
   text,
-  source: { providerId: 'p', sourceUrl: `https://x/${id}` },
+  source: { id: 'p', url: `https://x/${id}` },
   canonicalUrl: `https://x/${id}`,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } },
   verifiedAt: '2026-06-24T00:00:00.000Z',
@@ -71,13 +71,13 @@ describe('lexicalReranker', () => {
     // 3 from "a", 1 from "b", all equal lexical score → default diversity must
     // interleave "b" before the third "a".
     const refs = [
-      ref('a1', 'lion', { source: { providerId: 'a', sourceUrl: 'https://x/a1' } }),
-      ref('a2', 'lion', { source: { providerId: 'a', sourceUrl: 'https://x/a2' } }),
-      ref('a3', 'lion', { source: { providerId: 'a', sourceUrl: 'https://x/a3' } }),
-      ref('b1', 'lion', { source: { providerId: 'b', sourceUrl: 'https://x/b1' } }),
+      ref('a1', 'lion', { source: { id: 'a', url: 'https://x/a1' } }),
+      ref('a2', 'lion', { source: { id: 'a', url: 'https://x/a2' } }),
+      ref('a3', 'lion', { source: { id: 'a', url: 'https://x/a3' } }),
+      ref('b1', 'lion', { source: { id: 'b', url: 'https://x/b1' } }),
     ]
     const out = await lexicalReranker()({ query: 'lion', refs })
-    const sources = out.map((r) => r.source.providerId)
+    const sources = out.map((r) => r.source.id)
     expect(sources.slice(0, 2)).toEqual(['a', 'b']) // b promoted above the 2nd+ a
   })
 
@@ -91,11 +91,11 @@ describe('lexicalReranker', () => {
     // still surfaces second. Titles differ per ref, so no near-duplicate penalty
     // is doing this work.
     const fromA = (id: string) =>
-      ref(id, `lion ${id}`, { relevance: 1, source: { providerId: 'a', sourceUrl: `https://x/${id}` } })
-    const b1 = ref('b1', 'lion cub', { relevance: 0.9, source: { providerId: 'b', sourceUrl: 'https://x/b1' } })
+      ref(id, `lion ${id}`, { relevance: 1, source: { id: 'a', url: `https://x/${id}` } })
+    const b1 = ref('b1', 'lion cub', { relevance: 0.9, source: { id: 'b', url: 'https://x/b1' } })
     const out = await lexicalReranker()({ query: 'lion', refs: [fromA('a1'), fromA('a2'), fromA('a3'), b1] })
     expect(out.map(r => r.id)).toEqual(['a1', 'b1', 'a2', 'a3'])
-    expect(out.findIndex(r => r.source.providerId === 'b')).toBeLessThan(3)
+    expect(out.findIndex(r => r.source.id === 'b')).toBeLessThan(3)
   })
 
   it('prefers a more permissive license on a tie when licenseWeight > 0', async () => {
@@ -109,7 +109,7 @@ describe('lexicalReranker', () => {
 
   it('license boost is derived from facts: CC0 outranks CC-BY outranks unknown', () => {
     const mk = (id: string, license: string): Reference => ({
-      id, modality: 'image', title: 'same', source: { providerId: 'p', sourceUrl: `https://x.test/${id}` }, canonicalUrl: `https://x.test/${id}`,
+      id, modality: 'image', title: 'same', source: { id: 'p', url: `https://x.test/${id}` }, canonicalUrl: `https://x.test/${id}`,
       rights: { license, rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'u' } }, verifiedAt: new Date().toISOString(), relevance: 0,
     })
     const out = lexicalReranker({ lexicalWeight: 0, qualityWeight: 0, licenseWeight: 1, sourceDiversity: 0 })({ query: 'same', refs: [mk('u', 'unknown'), mk('b', 'CC-BY'), mk('z', 'CC0-1.0')] }) as Reference[]
@@ -161,7 +161,7 @@ describe('lexicalReranker', () => {
     // A Commons upload batch: three near-identical titles from one source, all
     // matching the query as well as the genuinely different fourth result.
     const wiki = (id: string, title: string) =>
-      ref(id, title, { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` } })
+      ref(id, title, { source: { id: 'wiki', url: `https://x/${id}` } })
     const dupes = [
       'Forest path near Graigddu-isaf 1',
       'Forest path near Graigddu-isaf 2',
@@ -185,7 +185,7 @@ describe('lexicalReranker', () => {
     // its place to a weaker-matching sibling. `u1`'s title tokenizes to nothing
     // (all stopwords), which is the same empty set by another route.
     const wiki = (id: string, opts: Partial<ImageReference>) =>
-      ref(id, '', { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` }, ...opts })
+      ref(id, '', { source: { id: 'wiki', url: `https://x/${id}` }, ...opts })
     const described = 'a forest path near the river bridge'
     const refs = [
       wiki('u0', { title: undefined, description: described }),
@@ -219,7 +219,7 @@ describe('lexicalReranker', () => {
 
   it('nearDuplicateThreshold decides what counts as a repeat (0.8 pair penalised at the default, spared at 1)', () => {
     const wiki = (id: string, title: string) =>
-      ref(id, title, { source: { providerId: 'wiki', sourceUrl: `https://x/${id}` } })
+      ref(id, title, { source: { id: 'wiki', url: `https://x/${id}` } })
     // Title-token Jaccard against 'Forest path near river': exact1 → 1.0,
     // bridge → 4/5 = 0.8 (over the 0.7 default, under a raised 1), weak → 0.4.
     // Query coverage over 5 query tokens: 4/5 = 0.8 for the three 'Forest path
@@ -277,7 +277,7 @@ describe('lexicalReranker', () => {
     // re-derived against every already-picked title on every round: the latter is
     // O(n³) and would blow the test timeout on a realistic overfetched pool.
     const refs = Array.from({ length: 1200 }, (_, i) =>
-      ref(`r${i}`, `Forest path near Graigddu-isaf ${i}`, { source: { providerId: 'wiki', sourceUrl: `https://x/r${i}` } }))
+      ref(`r${i}`, `Forest path near Graigddu-isaf ${i}`, { source: { id: 'wiki', url: `https://x/r${i}` } }))
     const out = lexicalReranker()({ query: 'forest path', refs }) as Reference[]
     expect(out).toHaveLength(1200)
     expect(new Set(out.map(r => r.id)).size).toBe(1200) // a reorder, not a resample
