@@ -54,7 +54,7 @@ export interface AudioMeta { durationSec?: number; bitrateKbps?: number; sampleR
 - Exported types: `ImageReference`, `VideoReference`, `AudioReference`, `TextReference` and their `Emitted…` counterparts; `EmittedReference` and `Reference` become union type aliases. `VideoMeta` and `AudioMeta` are new exports. `ReferenceMedia`, `MediaPreview`, `VisualMeta` and `TextMeta` stay.
 - `Reference` can no longer use `interface … extends Omit<…>`. It is built per variant: the emitted variant minus `sourceUrl`/`canonicalUrl`, plus the core-stamped fields. `completeReference` must keep the discriminant through its rest-spread; verify by type tests.
 - A strict union (fields absent on other variants) is rejected: 8 more code edits and about 16 more test reads, on top of the 6 fixture-builder retypes both options need, for no extra safety on the emit side.
-- Consequences for hosts, stated in the changeset: `Reference` is a type alias, so it can no longer be augmented by declaration merging, and `Omit<Reference, K>` in host code collapses to the common keys (use a distributive omit).
+- Consequences for hosts, stated in the changeset: `Reference` is a type alias of a union, so it can no longer be augmented by declaration merging, an interface can no longer `extend` it (TS2312), and `Omit<Reference, K>` in host code loses the link between `modality` and its fields (use a distributive omit).
 
 ### D3 — Runtime schemas
 
