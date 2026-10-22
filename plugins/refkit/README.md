@@ -44,6 +44,15 @@ The server is keyless by default. It also turns on a key-based source when that 
 | Jamendo | `REFKIT_JAMENDO_CLIENT_ID`, `JAMENDO_CLIENT_ID` |
 | Europeana | `REFKIT_EUROPEANA_KEY`, `EUROPEANA_KEY` |
 
+## Privacy
+
+refkit has no server of its own and collects nothing about you.
+
+- No accounts, telemetry or analytics: neither the plugin nor its MCP server sends anything to refkit's authors.
+- Your search queries go only to the sources listed above, each under its own privacy policy. Results link back to the source; nothing you search for or open is uploaded.
+- The server writes nothing to disk and keeps no cache; what it holds in memory ends with the process.
+- A key for a key-based source, if one is set in the environment, is sent only to that source's own API.
+
 ## Not legal advice
 
 Verdicts are a conservative heuristic over the license facts each source declares. They are not rights clearance and not legal advice. Check the source page before relying on a result.
