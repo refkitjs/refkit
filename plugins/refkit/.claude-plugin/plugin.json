@@ -20,5 +20,6 @@
   ],
   "icon": "./assets/icon.png",
   "documentationUrl": "https://github.com/refkitjs/refkit/tree/main/plugins/refkit#readme",
-  "supportUrl": "https://github.com/refkitjs/refkit/issues"
+  "supportUrl": "https://github.com/refkitjs/refkit/issues",
+  "privacyPolicyUrl": "https://github.com/refkitjs/refkit/blob/main/plugins/refkit/README.md#privacy"
 }

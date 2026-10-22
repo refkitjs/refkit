@@ -280,6 +280,11 @@ describe('directory listing fields', () => {
     expect(width).toBeGreaterThanOrEqual(512)
   })
 
+  it('links a privacy policy that the plugin README actually contains', () => {
+    expect(claudeManifest.privacyPolicyUrl).toBe('https://github.com/refkitjs/refkit/blob/main/plugins/refkit/README.md#privacy')
+    expect(readFileSync(join(PLUGIN, 'README.md'), 'utf8')).toMatch(/^## Privacy$/m)
+  })
+
   it('links documentation and support over https', () => {
     expect(claudeManifest.documentationUrl).toBe('https://github.com/refkitjs/refkit/tree/main/plugins/refkit#readme')
     expect(claudeManifest.supportUrl).toBe('https://github.com/refkitjs/refkit/issues')
