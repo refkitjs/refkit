@@ -263,3 +263,31 @@ describe('agent plugin text matches what the server does', () => {
     for (const name of names) expect(readme, `README should name ${name}`).toContain(`\`${name}\``)
   })
 })
+
+// Anthropic's directory reads these from .claude-plugin/plugin.json for the listing
+// (Claude Code itself ignores them); the Codex app shows the same artwork.
+describe('directory listing fields', () => {
+  const pngSize = (path: string) => {
+    const bytes = readFileSync(path)
+    expect(bytes.subarray(0, 8).toString('hex'), `${path} is not a PNG`).toBe('89504e470d0a1a0a')
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+  }
+
+  it('points icon at a square PNG of at least 512px inside the plugin', () => {
+    expect(claudeManifest.icon).toBe('./assets/icon.png')
+    const { width, height } = pngSize(join(PLUGIN, claudeManifest.icon))
+    expect(width).toBe(height)
+    expect(width).toBeGreaterThanOrEqual(512)
+  })
+
+  it('links documentation and support over https', () => {
+    expect(claudeManifest.documentationUrl).toBe('https://github.com/refkitjs/refkit/tree/main/plugins/refkit#readme')
+    expect(claudeManifest.supportUrl).toBe('https://github.com/refkitjs/refkit/issues')
+  })
+
+  it('gives the Codex app the same artwork', () => {
+    expect(codexManifest.interface.logo).toBe(claudeManifest.icon)
+    expect(codexManifest.interface.composerIcon).toBe('./assets/icon.svg')
+    expect(existsSync(join(PLUGIN, codexManifest.interface.composerIcon))).toBe(true)
+  })
+})

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- refkit: a fanned hand of reference cards (many sources), the front one carrying an "allowed" license badge -->
+  <defs>
+    <rect id="card" x="158" y="120" width="196" height="236" rx="24"/>
+    <clipPath id="picture">
+      <rect x="180" y="142" width="152" height="124" rx="12"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0F172A"/>
+  <g transform="translate(0 -10)">
+    <g stroke="#0F172A" stroke-width="6">
+      <use href="#card" fill="#1E293B" transform="rotate(-21 256 440)"/>
+      <use href="#card" fill="#1E293B" transform="rotate(21 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(-14 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(14 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(-7 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(7 256 440)"/>
+    </g>
+    <use href="#card" fill="#F8FAFC"/>
+    <g clip-path="url(#picture)">
+      <rect x="180" y="142" width="152" height="124" fill="#E2E8F0"/>
+      <circle cx="300" cy="176" r="16" fill="#CBD5E1"/>
+      <polygon points="168,274 222,206 258,242 286,214 344,274" fill="#94A3B8"/>
+    </g>
+    <rect x="180" y="290" width="100" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="180" y="314" width="66" height="12" rx="6" fill="#E2E8F0"/>
+    <circle cx="352" cy="352" r="56" fill="#16A34A" stroke="#0F172A" stroke-width="14"/>
+    <path d="M326 353 L344 371 L379 334" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
