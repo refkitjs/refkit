@@ -10,8 +10,8 @@
       <rect x="180" y="142" width="152" height="124" rx="12"/>
     </clipPath>
   </defs>
-  <rect width="512" height="512" rx="112" fill="#0F172A"/>
-  <g clip-path="url(#tile)" font-family="Menlo, Monaco, Courier New, monospace" font-size="18" fill="#1A2537">
+  <rect width="512" height="512" rx="112" fill="#000000"/>
+  <g clip-path="url(#tile)" font-family="Menlo, Monaco, Courier New, monospace" font-size="18" fill="#1C2029">
     <text x="-87" y="30">unsplash CC-BY-SA-3.0 CC-BY-NC-ND CC-BY-4.0 PD CC0-1.0 CC0 CC-BY-NC-SA</text>
     <text x="-7" y="60">CC-BY-ND-4.0 CC-BY-SA-3.0 CC-BY-NC-4.0 CC-BY-ND-4.0 CC-BY-NC-SA</text>
     <text x="-65" y="90">CC-BY-NC-4.0 CC-BY-ND-4.0 proprietary CC0-1.0 CC-BY-NC-4.0 unsplash</text>
@@ -30,14 +30,14 @@
     <text x="-65" y="480">CC-BY-SA-3.0 proprietary CC-BY-NC-SA CC0-1.0 CC-BY-4.0 proprietary</text>
     <text x="-88" y="510">CC-BY-3.0 CC0 PDM-1.0 PD CC-BY-NC-4.0 unknown pixabay CC0 CC-BY-NC-SA</text>
   </g>
-  <g transform="translate(0 -10)">
-    <g stroke="#0F172A" stroke-width="6">
-      <use href="#card" fill="#1E293B" transform="rotate(-21 256 440)"/>
-      <use href="#card" fill="#1E293B" transform="rotate(21 256 440)"/>
-      <use href="#card" fill="#334155" transform="rotate(-14 256 440)"/>
-      <use href="#card" fill="#334155" transform="rotate(14 256 440)"/>
-      <use href="#card" fill="#475569" transform="rotate(-7 256 440)"/>
-      <use href="#card" fill="#475569" transform="rotate(7 256 440)"/>
+  <g transform="translate(256 257) scale(1.18) translate(-256 -267)">
+    <g stroke="#000000" stroke-width="6">
+      <use href="#card" fill="#1E293B" transform="rotate(-18 256 440)"/>
+      <use href="#card" fill="#1E293B" transform="rotate(18 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(-12 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(12 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(-6 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(6 256 440)"/>
     </g>
     <use href="#card" fill="#F8FAFC"/>
     <g clip-path="url(#picture)">
@@ -47,7 +47,7 @@
     </g>
     <rect x="180" y="290" width="100" height="12" rx="6" fill="#CBD5E1"/>
     <rect x="180" y="314" width="66" height="12" rx="6" fill="#E2E8F0"/>
-    <circle cx="352" cy="352" r="56" fill="#16A34A" stroke="#0F172A" stroke-width="14"/>
+    <circle cx="352" cy="352" r="56" fill="#16A34A" stroke="#000000" stroke-width="14"/>
     <path d="M326 353 L344 371 L379 334" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
