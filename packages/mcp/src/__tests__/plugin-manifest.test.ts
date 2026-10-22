@@ -291,3 +291,21 @@ describe('directory listing fields', () => {
     expect(existsSync(join(PLUGIN, codexManifest.interface.composerIcon))).toBe(true)
   })
 })
+
+// Anthropic's directory blocks a plugin whose npx launcher could be steered by a
+// package-manager config in the plugin or in any folder above it ("Package registry
+// redirected"), and it counts every pnpm setting in pnpm-workspace.yaml, not only
+// registry keys.
+describe('package-manager config above the plugin', () => {
+  it('pnpm-workspace.yaml declares only the workspace packages', () => {
+    const text = readFileSync(join(ROOT, 'pnpm-workspace.yaml'), 'utf8')
+    const keys = text.split('\n').filter(line => /^[A-Za-z]/.test(line)).map(line => line.slice(0, line.indexOf(':')))
+    expect(keys).toEqual(['packages'])
+  })
+
+  it('has no .npmrc, bunfig.toml or uv.toml between the repository root and the plugin', () => {
+    for (const dir of [ROOT, join(ROOT, 'plugins')]) {
+      for (const name of ['.npmrc', 'bunfig.toml', 'uv.toml']) expect(existsSync(join(dir, name)), join(dir, name)).toBe(false)
+    }
+  })
+})
