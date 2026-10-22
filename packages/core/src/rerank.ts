@@ -127,8 +127,8 @@ function sourceScoreScores(refs: readonly Reference[]): number[] {
   for (const r of refs) {
     const s = scoreOf(r)
     if (s === undefined) continue
-    const cur = span.get(r.source.providerId)
-    if (!cur) span.set(r.source.providerId, { min: s, max: s })
+    const cur = span.get(r.source.id)
+    if (!cur) span.set(r.source.id, { min: s, max: s })
     else {
       if (s < cur.min) cur.min = s
       if (s > cur.max) cur.max = s
@@ -137,7 +137,7 @@ function sourceScoreScores(refs: readonly Reference[]): number[] {
   return refs.map((r) => {
     const s = scoreOf(r)
     if (s === undefined) return 0.5
-    const { min, max } = span.get(r.source.providerId)!
+    const { min, max } = span.get(r.source.id)!
     return max > min ? (s - min) / (max - min) : 0.5
   })
 }
@@ -181,7 +181,7 @@ export function lexicalReranker(opts: LexicalRerankOptions = {}): Reranker {
     const upstream = sourceScoreScores(refs)
     const scored = refs.map((ref, i) => ({
       ref,
-      sid: ref.source.providerId,
+      sid: ref.source.id,
       titleTokens: new Set(tokenize(ref.title ?? '')),
       // Set once a title already picked from this source turns out to repeat this
       // one; never cleared, since the picked set only grows.

@@ -156,15 +156,27 @@ interface PixabayVideoSize { url: string; width: number; height: number; size: n
 interface PixabayVideoHit {
   id: number
   pageURL: string
+  /** 'film' | 'animation' */
+  type?: string
   tags: string
-  duration: number
+  /** Seconds. */
+  duration: number | null
   user: string
   videos: { large?: PixabayVideoSize; medium?: PixabayVideoSize; small?: PixabayVideoSize; tiny?: PixabayVideoSize }
 }
 interface PixabayVideoResponse { hits: PixabayVideoHit[] }
 
+// Pixabay docs: "If a large video version is not available, an empty URL value
+// and a size of zero is returned." Such a rendition is skipped.
+const usableRendition = (r: PixabayVideoSize | undefined): r is PixabayVideoSize =>
+  !!r && !!r.url && r.size !== 0
+
+function pixabayVideoKind(t: string | undefined): string | undefined {
+  return t === 'film' || t === 'animation' ? t : undefined
+}
+
 function toVideoReference(h: PixabayVideoHit): EmittedReference | null {
-  const v = h.videos.large ?? h.videos.medium ?? h.videos.small ?? h.videos.tiny
+  const v = [h.videos.large, h.videos.medium, h.videos.small, h.videos.tiny].find(usableRendition)
   if (!v) return null // no usable rendition → skip rather than emit a preview-less reference
   const rights: RightsRecord = {
     license: 'pixabay',
@@ -173,15 +185,21 @@ function toVideoReference(h: PixabayVideoHit): EmittedReference | null {
     raw: { sourceTerms: 'https://pixabay.com/service/license-summary/', sourceUrl: h.pageURL },
   }
   const tags = splitTags(h.tags)
+  const kind = pixabayVideoKind(h.type)
+  const duration = h.duration
+  const hasDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
   return {
     modality: 'video',
+    ...(kind ? { kind } : {}),
     title: h.tags || undefined,
     ...(tags.length > 0 ? { tags } : {}),
     sourceUrl: h.pageURL,
     rights,
     ...(v.thumbnail ? { thumbnail: { url: v.thumbnail } } : {}),
+    // A rendition's size, not the original's, so it stays on preview and
+    // `visual` is left unset.
     preview: { url: v.url, mediaType: 'video/mp4', width: v.width, height: v.height },
-    visual: { width: v.width, height: v.height },
+    ...(hasDuration ? { video: { durationSec: duration } } : {}),
     raw: h,
   }
 }

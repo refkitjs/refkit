@@ -156,6 +156,8 @@ function toReference(p: FlickrPhoto): EmittedReference {
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: 'https://www.flickr.com/help/terms', sourceUrl },
   }
+  // url_l / url_m are ≤1024px renditions: their size goes on preview only.
+  // `visual` is the original's size, which this response does not carry.
   const previewUrl = p.url_l ?? p.url_m
   const previewW = p.url_l ? p.width_l : p.width_m
   const previewH = p.url_l ? p.height_l : p.height_m
@@ -168,7 +170,6 @@ function toReference(p: FlickrPhoto): EmittedReference {
     rights,
     ...(thumbUrl ? { thumbnail: { url: thumbUrl } } : {}),
     ...(previewUrl ? { preview: { url: previewUrl, mediaType: 'image/jpeg', width: previewW, height: previewH } } : {}),
-    ...(previewW && previewH ? { visual: { width: previewW, height: previewH } } : {}),
     raw: p,
   }
 }

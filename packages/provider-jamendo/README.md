@@ -17,4 +17,6 @@ const refkit = createRefkit({ providers: [jamendo(/* config */)] })
 const refs = await refkit.search({ query: 'cat', modalities: ['audio'] })
 ```
 
+Each result carries `audio.durationSec` (seconds) when Jamendo reports a positive duration, and the album art, when present, as its `thumbnail`.
+
 Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.

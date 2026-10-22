@@ -7,16 +7,26 @@ export {
 } from './license'
 export type { LicenseId, KnownLicenseId, LicenseFacts, Tri } from './license'
 export type { RehostPolicy, RightsRecord } from './rights'
-export { rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
+export { REHOST_POLICIES, rightsRecordSchema, licenseFactsSchema, factsOf } from './rights'
 export { buildAttribution } from './attribution'
 export type { Attribution, AttributionInput } from './attribution'
 export type {
   EmittedReference,
+  EmittedImageReference,
+  EmittedVideoReference,
+  EmittedAudioReference,
+  EmittedTextReference,
   Reference,
+  ImageReference,
+  VideoReference,
+  AudioReference,
+  TextReference,
   ReferenceMedia,
   MediaPreview,
   VisualMeta,
   TextMeta,
+  VideoMeta,
+  AudioMeta,
 } from './reference'
 export {
   emittedReferenceSchema, referenceSchema,
@@ -46,7 +56,7 @@ export type {
   WellKnownKind,
   ResourceKind,
 } from './controls'
-export { searchMetaSchema, providerSearchStatusSchema, searchControlKeySchema } from './schemas'
+export { searchMetaSchema, sourceStatusSchema, searchControlKeySchema } from './schemas'
 export { defineProvider } from './provider'
 export type {
   ReferenceProvider,
@@ -55,7 +65,7 @@ export type {
   ProviderCapabilities,
   ProviderOptionValue,
   ProviderOptions,
-  ProviderOptionsById,
+  SourceOptionsById,
   KeyValueCache,
 } from './provider'
 export {
@@ -67,8 +77,11 @@ export {
 export { normalizeQuery } from './query'
 export { runProviderSearch, providerCacheKey, stableStringify } from './provider-run'
 export type { ProviderRun, ProviderRunDeps } from './provider-run'
-export { selectProviders, PROVIDER_SKIP_REASONS } from './select'
-export type { ProviderSkipReason, ProviderSelection } from './select'
+export {
+  selectProviders, SOURCE_SKIP_REASONS,
+  SourceSelectionError, isSourceSelectionError, SOURCE_SELECTION_ERROR_CODES,
+} from './select'
+export type { SourceSkipReason, SourceSelectionErrorCode, ProviderSelection } from './select'
 export { runPass } from './pipeline'
 export type { PassDeps, PassOutcome } from './pipeline'
 export { createRefkit } from './client'
@@ -82,8 +95,8 @@ export type {
   SearchControlsMeta,
   SearchGateMeta,
   SearchThresholdMeta,
-  ProviderSearchStatus,
-  ProviderError,
+  SourceStatus,
+  SourceError,
 } from './client'
 export { lexicalReranker, tokenize, refText } from './rerank'
 export type { Reranker, RerankInput, LexicalRerankOptions } from './rerank'

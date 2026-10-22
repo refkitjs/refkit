@@ -20,4 +20,6 @@ const clips = await refkit.search({ query: 'forest', modalities: ['video'] })
 // every result carries source + license + attribution + canonicalUrl
 ```
 
-`pexels()` serves the image leg; add `pexelsVideo()` (same key) for video. Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.
+`pexels()` serves the image leg (source id `pexels`); add `pexelsVideo()` (same key) for video (source id `pexels-video`). A video result carries `video.durationSec` (seconds, when positive) and `visual`, the source video's size; its `preview` is an HD rendition when one exists.
+
+Gate by intended use with `refkit.evaluateUse(ref, 'commercial-product')`. See [`@refkit/core`](https://www.npmjs.com/package/@refkit/core) for the full API.

@@ -2,7 +2,7 @@ import {
   defineProvider, okJson, ccVersionFor,
   setIfString, setIfStringList, setIfBoolean, setIfPositiveInt, setIfNumber,
   CC_FAMILY_BY_TOKEN,
-  type EmittedReference, type RightsRecord, type LicenseId,
+  type EmittedReference, type RightsRecord, type LicenseId, type AudioMeta,
   type NormalizedQuery, type ProviderContext,
 } from '@refkit/core'
 
@@ -182,9 +182,18 @@ export function openverse(config: OpenverseConfig = {}) {
   })
 }
 
+// The one table that decides both `audio.format` and `preview.mediaType`, so the
+// two never disagree. Every type has the `audio/` prefix the audio variant's schema
+// requires (an audio-only WebM is `audio/webm`, not `video/webm`).
 const AUDIO_MIME: Record<string, string> = {
   mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', flac: 'audio/flac', opus: 'audio/opus',
+  mid: 'audio/midi', midi: 'audio/midi', webm: 'audio/webm',
 }
+
+// Source-specific `filetype` codes that name a format in AUDIO_MIME: Jamendo's
+// mp31 (96 kbps mp3) and mp32 (VBR mp3), and Wikimedia's ogx (an Ogg Vorbis
+// stream, served as application/ogg from a .ogg/.oga/.opus URL).
+const FILETYPE_ALIASES: Record<string, string> = { mp31: 'mp3', mp32: 'mp3', ogx: 'ogg' }
 
 interface OpenverseAudioResult {
   id: string
@@ -192,14 +201,51 @@ interface OpenverseAudioResult {
   creator: string | null
   foreign_landing_url: string
   url: string
+  /** Album art (`/v1/audio/<id>/thumb/`, image/jpeg); null when the item has none. */
   thumbnail: string | null
   license: string
   license_version: string
   license_url: string
   filetype?: string | null
-  waveform?: string | null
+  /** Milliseconds. */
+  duration?: number | null
+  /** Bits per second; null for Jamendo-sourced items. */
+  bit_rate?: number | null
+  /** Hertz; often null. */
+  sample_rate?: number | null
+  /** Top-level classification: audiobook, music, news, podcast, pronunciation,
+   *  sound_effect; null for Freesound-sourced items. */
+  category?: string | null
 }
 interface OpenverseAudioResponse { results: OpenverseAudioResult[] }
+
+const positive = (v: number | null | undefined): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/** `filetype` as a file format, case-insensitive, with the aliases above
+ *  resolved; a value that is not a key of AUDIO_MIME yields undefined. */
+function audioFormat(filetype: string | null | undefined): string | undefined {
+  const t = (filetype ?? '').toLowerCase()
+  const format = Object.hasOwn(FILETYPE_ALIASES, t) ? FILETYPE_ALIASES[t] : t
+  return Object.hasOwn(AUDIO_MIME, format) ? format : undefined
+}
+
+function audioMeta(r: OpenverseAudioResult, format: string | undefined): AudioMeta | undefined {
+  const meta: AudioMeta = {}
+  if (positive(r.duration)) meta.durationSec = r.duration / 1000
+  if (positive(r.bit_rate)) meta.bitrateKbps = r.bit_rate / 1000
+  if (positive(r.sample_rate)) meta.sampleRateHz = r.sample_rate
+  if (format) meta.format = format
+  return Object.keys(meta).length > 0 ? meta : undefined
+}
+
+/** Openverse `category` → kind, only for the values that clearly mean one of the
+ *  declared kinds (pronunciation, podcast, audiobook and news stay unset). */
+function audioKind(category: string | null | undefined): string | undefined {
+  if (category === 'music') return 'music'
+  if (category === 'sound_effect') return 'sound-effect'
+  return undefined
+}
 
 function toAudioReference(r: OpenverseAudioResult): EmittedReference {
   const license = mapOpenverseLicense(r.license)
@@ -211,14 +257,23 @@ function toAudioReference(r: OpenverseAudioResult): EmittedReference {
     rehostPolicy: 'cache-allowed',
     raw: { sourceTerms: r.license_url, sourceUrl: r.foreign_landing_url },
   }
+  const format = audioFormat(r.filetype)
+  const kind = audioKind(r.category)
+  const audio = audioMeta(r, format)
   return {
     modality: 'audio',
+    ...(kind ? { kind } : {}),
     title: r.title ?? undefined,
     sourceUrl: r.foreign_landing_url,
     rights,
-    // audio has no image; the waveform render is the closest visual handle
-    ...(r.waveform ? { thumbnail: { url: r.waveform } } : {}),
-    preview: { url: r.url, mediaType: AUDIO_MIME[r.filetype ?? ''] ?? 'audio/mpeg' },
+    // The album art. The `waveform` URL is JSON peak data, not an image, so it is
+    // never a thumbnail.
+    ...(r.thumbnail ? { thumbnail: { url: r.thumbnail } } : {}),
+    // A filetype outside AUDIO_MIME gets no preview rather than a guessed type: a
+    // host may re-serve this cache-allowed file under preview.mediaType. (Every
+    // filetype seen live in 2026-10 is in the table.)
+    ...(format ? { preview: { url: r.url, mediaType: AUDIO_MIME[format] } } : {}),
+    ...(audio ? { audio } : {}),
     raw: r,
   }
 }

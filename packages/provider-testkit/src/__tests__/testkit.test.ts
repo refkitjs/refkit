@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { defineProvider, type EmittedReference, type ProviderContext } from '@refkit/core'
+import {
+  defineProvider, type EmittedAudioReference, type EmittedImageReference, type EmittedReference, type EmittedTextReference,
+  type EmittedVideoReference, type Modality, type ProviderContext,
+} from '@refkit/core'
 import { expectLicenseMap, searchConformant, type LicenseMapResult } from '../index'
 
 // A minimal, otherwise-conformant emitted item. Individual tests override
 // exactly the field under examination.
-function baseRef(overrides: Partial<EmittedReference> = {}): EmittedReference {
+function baseRef(overrides: Partial<EmittedImageReference> = {}): EmittedImageReference {
   return {
     modality: 'image',
     sourceUrl: 'https://example.com/photo/1',
@@ -19,13 +22,52 @@ function baseRef(overrides: Partial<EmittedReference> = {}): EmittedReference {
   }
 }
 
+function audioRef(): EmittedAudioReference {
+  return {
+    modality: 'audio',
+    sourceUrl: 'https://example.com/track/1',
+    rights: {
+      license: 'CC0-1.0',
+      rehostPolicy: 'hotlink-required',
+      raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
+    },
+    thumbnail: { url: 'https://example.com/track/1-cover.jpg' },
+    preview: { url: 'https://example.com/track/1.mp3', mediaType: 'audio/mpeg' },
+    audio: { durationSec: 2.5 },
+  }
+}
+
+function videoRef(): EmittedVideoReference {
+  return {
+    modality: 'video',
+    sourceUrl: 'https://example.com/film/1',
+    rights: {
+      license: 'PD',
+      rehostPolicy: 'hotlink-required',
+      raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
+    },
+  }
+}
+
+function textRef(): EmittedTextReference {
+  return {
+    modality: 'text',
+    sourceUrl: 'https://example.com/book/1',
+    rights: {
+      license: 'PD',
+      rehostPolicy: 'hotlink-required',
+      raw: { sourceTerms: 'public domain', sourceUrl: 'https://example.com/terms' },
+    },
+  }
+}
+
 // Fixture-fetch fake provider: search() ignores ctx.fetch's real behavior and
 // just returns whatever result set the test configured, but still routes
 // through ctx.fetch once so the shape matches a real satellite.
-function fakeProvider(results: EmittedReference[]) {
+function fakeProvider(results: EmittedReference[], modalities: Modality[] = ['image']) {
   return defineProvider({
     id: 'fake',
-    modalities: ['image'],
+    modalities,
     async search(_query, ctx: ProviderContext) {
       await ctx.fetch('https://example.com/api')
       return results
@@ -41,7 +83,7 @@ describe('searchConformant', () => {
     const refs = await searchConformant(provider, fixtureFetch)
     expect(refs).toHaveLength(1)
     expect(refs[0].id).toMatch(/^fake:/) // stamped by core, not by the provider
-    expect(refs[0].source).toEqual({ providerId: 'fake', sourceUrl: 'https://example.com/photo/1' })
+    expect(refs[0].source).toEqual({ id: 'fake', url: 'https://example.com/photo/1' })
     expect(refs[0].canonicalUrl).toBe('https://example.com/photo/1')
   })
 
@@ -60,11 +102,77 @@ describe('searchConformant', () => {
     await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/thumbnail\.url is the item's landing page/)
   })
 
-  it('fails when an image provider emits a preview with non-image mediaType (D8)', async () => {
+  it('fails at the schema when an image emits a preview with a non-image mediaType (D8)', async () => {
     const provider = fakeProvider([
       baseRef({ preview: { url: 'https://example.com/photo/1', mediaType: 'text/html' } }),
     ])
-    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/image preview has non-image mediaType: text\/html/)
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/failed emittedReferenceSchema/)
+  })
+
+  it('fails at the schema when an audio item\'s preview is not audio/*', async () => {
+    const provider = fakeProvider([
+      { ...audioRef(), preview: { url: 'https://example.com/track/1.mp4', mediaType: 'video/mp4' } },
+    ], ['audio'])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/failed emittedReferenceSchema/)
+  })
+
+  it('applies the landing-page thumbnail rule to every modality, not only image providers', async () => {
+    const provider = fakeProvider([
+      { ...audioRef(), thumbnail: { url: 'https://example.com/track/1' } }, // === sourceUrl: the page itself
+    ], ['audio'])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/thumbnail\.url is the item's landing page/)
+  })
+
+  it('fails when a result\'s modality is not one the provider declares', async () => {
+    const provider = fakeProvider([baseRef(), audioRef()], ['image'])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/result #1 modality "audio" is not in the provider's declared modalities \[image\]/)
+  })
+
+  it('fails when a result\'s modality is declared but outside the query it ran', async () => {
+    // Declares video and text (like internet-archive), is asked for text only,
+    // and leaks a video: core rejects that item, so the testkit must too.
+    const provider = fakeProvider([textRef(), videoRef()], ['video', 'text'])
+    await expect(searchConformant(provider, fixtureFetch, { queryExtras: { modalities: ['text'] } }))
+      .rejects.toThrow(/result #1 modality "video" is not in the query's modalities \[text\]/)
+    await expect(searchConformant(provider, fixtureFetch)).resolves.toHaveLength(2) // default query: both declared
+  })
+
+  it('fails when parseEmitted drops a key: a field from another modality', async () => {
+    // The union type rejects this at compile time; the cast stands in for a
+    // provider whose types were loosened (any, JSON passthrough).
+    const provider = fakeProvider([{ ...baseRef(), text: { excerpt: 'e', excerptKind: 'passage' } } as unknown as EmittedReference])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/result #0 lost keys in parseEmitted: text/)
+  })
+
+  it('fails when parseEmitted drops a nested key, and names its path', async () => {
+    const provider = fakeProvider([
+      { ...baseRef(), visual: { width: 4, height: 3, colours: ['#fff'] } } as unknown as EmittedReference,
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/lost keys in parseEmitted: visual\.colours/)
+  })
+
+  it('fails when parseEmitted drops a key named like an Object.prototype member', async () => {
+    // `in` would find these on the prototype and miss that zod stripped them.
+    const provider = fakeProvider([
+      { ...baseRef(), constructor: 'Photo' } as unknown as EmittedReference,
+      { ...baseRef(), visual: { width: 4, height: 3, toString: 'x' } } as unknown as EmittedReference,
+    ])
+    await expect(searchConformant(provider, fixtureFetch)).rejects.toThrow(/result #0 lost keys in parseEmitted: constructor \(/)
+    await expect(searchConformant(fakeProvider([
+      { ...baseRef(), visual: { width: 4, height: 3, toString: 'x' } } as unknown as EmittedReference,
+    ]), fixtureFetch)).rejects.toThrow(/result #0 lost keys in parseEmitted: visual\.toString/)
+  })
+
+  it('does not inspect raw, and does not count a key set to undefined as lost', async () => {
+    // A self-referencing raw makes the skip observable: walking into it would
+    // never end, so the search only resolves if raw is left alone.
+    const raw: Record<string, unknown> = { anything: { goes: true } }
+    raw.self = raw
+    const provider = fakeProvider([
+      { ...baseRef(), raw },
+      { ...audioRef(), visual: undefined },
+    ], ['image', 'audio'])
+    await expect(searchConformant(provider, fixtureFetch)).resolves.toHaveLength(2)
   })
 
   it('fails when a result carries no sourceUrl', async () => {

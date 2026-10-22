@@ -30,7 +30,7 @@ Nailbook indexes nothing but nail designs, so it declares core's `accepts` predi
 **declines** any query that does not name nails — in English (`nail`, `manicure`, `gel`),
 Japanese (`ネイル`, `ジェル`, `マニキュア`) or Chinese (`美甲`, `指甲`, `甲油`). `nail` inside
 `snail` does not count. A declined search never issues a request: the source is reported in
-`meta.providers` as `skipped` with `reason: 'declined'`, and the other configured sources
+`meta.sources` as `skipped` with `reason: 'declined'`, and the other configured sources
 answer alone (a decline is routing, not a failure — no warning, no error).
 
 Naming the source explicitly bypasses acceptance, which is how a motif-only query still

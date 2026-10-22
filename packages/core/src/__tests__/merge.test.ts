@@ -7,7 +7,7 @@ import { evaluateUse } from '../evaluate-use'
 const make = (id: string, url: string, hash?: string): Reference => ({
   id,
   modality: 'image',
-  source: { providerId: id.split('-')[0], sourceUrl: url },
+  source: { id: id.split('-')[0], url: url },
   canonicalUrl: url,
   rights: { license: 'CC0-1.0', rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: url } },
   verifiedAt: '2026-06-22T00:00:00.000Z',
@@ -150,8 +150,8 @@ describe('mergeReferences (RRF)', () => {
 })
 
 describe('cross-source rights resolution (facts)', () => {
-  const ref = (providerId: string, license: string, facts?: LicenseFacts): Reference => ({
-    id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+  const ref = (sourceId: string, license: string, facts?: LicenseFacts): Reference => ({
+    id: `${sourceId}:1`, modality: 'image', source: { id: sourceId, url: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
     rights: { license, ...(facts ? { facts } : {}), rehostPolicy: 'cache-allowed', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
     verifiedAt: new Date().toISOString(), relevance: 0,
   })
@@ -203,8 +203,8 @@ describe('cross-source rights resolution (facts)', () => {
     // indeterminate side) must not be what opens the conflict, or agreeing
     // sources would spuriously report one.
     const seen: RightsConflict[] = []
-    const make = (providerId: string): Reference => ({
-      id: `${providerId}:1`, modality: 'image', source: { providerId, sourceUrl: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
+    const make = (sourceId: string): Reference => ({
+      id: `${sourceId}:1`, modality: 'image', source: { id: sourceId, url: 'https://x.test/a' }, canonicalUrl: 'https://x.test/a',
       rights: { license: 'unknown', rehostPolicy: 'no-store', raw: { sourceTerms: 't', sourceUrl: 'https://x.test/a' } },
       verifiedAt: new Date().toISOString(), relevance: 0,
     })

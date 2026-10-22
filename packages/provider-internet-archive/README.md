@@ -8,6 +8,8 @@ Search **Internet Archive** as license-tagged video · text references — a pro
 - **License:** per-item CC (dirty) → unknown fallback
 
 > **v1 scope:** only `mediatype: movies` (→ `video`) and `mediatype: texts` (→ `text`) are mapped. All other mediatypes (`audio`, `image`, `collection`, `software`, `web`, `data`, `etree`) are filtered out and are a documented follow-up.
+>
+> The search asks only for the mediatypes of the requested modalities: `modalities: ['text']` searches `texts` only, `['video']` searches `movies` only.
 
 ## Usage
 

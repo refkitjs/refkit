@@ -22,9 +22,9 @@ describe('P1 integration: createRefkit + openverse + pexels (offline)', () => {
   it('merges results across both sources', async () => {
     const rk = createRefkit({ providers: [openverse(), pexels({ apiKey: 'k' })], fetch: routedFetch })
     const refs = await rk.search({ query: 'sky', modalities: ['image'] })
-    const providers = new Set(refs.map(r => r.source.providerId))
-    expect(providers.has('openverse')).toBe(true)
-    expect(providers.has('pexels')).toBe(true)
+    const sources = new Set(refs.map(r => r.source.id))
+    expect(sources.has('openverse')).toBe(true)
+    expect(sources.has('pexels')).toBe(true)
     expect(refs.length).toBe(3) // 2 openverse + 1 pexels
     expect(refs[0].relevance).toBe(1) // RRF top normalized
   })
