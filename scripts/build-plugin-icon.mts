@@ -10,6 +10,11 @@ const svg = readFileSync(new URL('icon.svg', assets), 'utf8')
 
 // ---- rasterise to PNG (pure Rust, no browser) ----
 const { Resvg } = await import('@resvg/resvg-js')
-const png = new Resvg(svg, { fitTo: { mode: 'width', value: 512 } }).render().asPng()
+const png = new Resvg(svg, {
+  fitTo: { mode: 'width', value: 512 },
+  font: { loadSystemFonts: true, defaultFontFamily: 'Menlo' }, // the license-id background texture is monospace text
+})
+  .render()
+  .asPng()
 writeFileSync(new URL('icon.png', assets), png)
 console.log(`wrote plugins/refkit/assets/icon.png (${(png.length / 1024).toFixed(0)} KB, 512px)`)
