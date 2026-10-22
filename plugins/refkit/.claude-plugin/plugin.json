@@ -17,5 +17,8 @@
     "creative-commons",
     "public-domain",
     "moodboard"
-  ]
+  ],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/refkitjs/refkit/tree/main/plugins/refkit#readme",
+  "supportUrl": "https://github.com/refkitjs/refkit/issues"
 }

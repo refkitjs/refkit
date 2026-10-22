@@ -34,6 +34,8 @@
       "Can I use this Wikimedia Commons photo in an ad?"
     ],
     "websiteURL": "https://github.com/refkitjs/refkit",
-    "brandColor": "#0F172A"
+    "brandColor": "#0F172A",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.png"
   }
 }

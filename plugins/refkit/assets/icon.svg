@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- refkit: a fanned hand of reference cards (many sources), the front one carrying an "allowed" license badge,
+       over a field of license ids. The id rows come from a seeded generator, so they read as noise but never change. -->
+  <defs>
+    <rect id="card" x="158" y="120" width="196" height="236" rx="24"/>
+    <clipPath id="tile">
+      <rect width="512" height="512" rx="112"/>
+    </clipPath>
+    <clipPath id="picture">
+      <rect x="180" y="142" width="152" height="124" rx="12"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#000000"/>
+  <g clip-path="url(#tile)" font-family="Menlo, Monaco, Courier New, monospace" font-size="18" fill="#1C2029">
+    <text x="-87" y="30">unsplash CC-BY-SA-3.0 CC-BY-NC-ND CC-BY-4.0 PD CC0-1.0 CC0 CC-BY-NC-SA</text>
+    <text x="-7" y="60">CC-BY-ND-4.0 CC-BY-SA-3.0 CC-BY-NC-4.0 CC-BY-ND-4.0 CC-BY-NC-SA</text>
+    <text x="-65" y="90">CC-BY-NC-4.0 CC-BY-ND-4.0 proprietary CC0-1.0 CC-BY-NC-4.0 unsplash</text>
+    <text x="-18" y="120">unsplash unknown CC-BY-4.0 CC-BY-NC-SA proprietary CC-BY-SA-4.0</text>
+    <text x="-117" y="150">CC-BY-NC-4.0 PD PDM-1.0 CC-BY-2.0 CC-BY-NC-4.0 CC-BY-NC-ND pixabay</text>
+    <text x="-78" y="180">pixabay CC-BY-SA-4.0 pixabay proprietary CC-BY-4.0 CC-BY-NC-SA</text>
+    <text x="-109" y="210">pexels PDM-1.0 CC-BY-ND-4.0 CC-BY-4.0 CC-BY-SA-4.0 unsplash</text>
+    <text x="-12" y="240">CC-BY-SA-3.0 PDM-1.0 CC-BY-ND-4.0 CC0-1.0 CC-BY-NC-4.0 CC-BY-SA-4.0</text>
+    <text x="-49" y="270">PD unknown CC-BY-SA-4.0 CC0 CC-BY-4.0 unsplash CC-BY-4.0 pexels</text>
+    <text x="0" y="300">unknown CC-BY-4.0 PD CC0-1.0 CC-BY-NC-ND CC-BY-SA-3.0 PDM-1.0</text>
+    <text x="-64" y="330">PDM-1.0 unsplash CC-BY-4.0 CC-BY-SA-3.0 proprietary CC0-1.0</text>
+    <text x="-108" y="360">CC-BY-NC-4.0 CC0-1.0 CC-BY-SA-3.0 CC-BY-4.0 PDM-1.0 CC0-1.0</text>
+    <text x="-49" y="390">PDM-1.0 CC-BY-3.0 pixabay CC0-1.0 proprietary CC-BY-2.0 CC-BY-ND-4.0</text>
+    <text x="-88" y="420">CC-BY-2.0 CC0 PDM-1.0 unknown CC-BY-3.0 CC-BY-2.0 PDM-1.0 pexels</text>
+    <text x="-107" y="450">CC0 unsplash CC-BY-NC-ND CC-BY-NC-SA PDM-1.0 CC-BY-NC-SA proprietary</text>
+    <text x="-65" y="480">CC-BY-SA-3.0 proprietary CC-BY-NC-SA CC0-1.0 CC-BY-4.0 proprietary</text>
+    <text x="-88" y="510">CC-BY-3.0 CC0 PDM-1.0 PD CC-BY-NC-4.0 unknown pixabay CC0 CC-BY-NC-SA</text>
+  </g>
+  <g transform="translate(256 257) scale(1.18) translate(-256 -267)">
+    <g stroke="#000000" stroke-width="6">
+      <use href="#card" fill="#1E293B" transform="rotate(-18 256 440)"/>
+      <use href="#card" fill="#1E293B" transform="rotate(18 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(-12 256 440)"/>
+      <use href="#card" fill="#334155" transform="rotate(12 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(-6 256 440)"/>
+      <use href="#card" fill="#475569" transform="rotate(6 256 440)"/>
+    </g>
+    <use href="#card" fill="#F8FAFC"/>
+    <g clip-path="url(#picture)">
+      <rect x="180" y="142" width="152" height="124" fill="#E2E8F0"/>
+      <circle cx="300" cy="176" r="16" fill="#CBD5E1"/>
+      <polygon points="168,274 222,206 258,242 286,214 344,274" fill="#94A3B8"/>
+    </g>
+    <rect x="180" y="290" width="100" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="180" y="314" width="66" height="12" rx="6" fill="#E2E8F0"/>
+    <circle cx="352" cy="352" r="56" fill="#16A34A" stroke="#000000" stroke-width="14"/>
+    <path d="M326 353 L344 371 L379 334" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
