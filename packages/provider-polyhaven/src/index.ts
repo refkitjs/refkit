@@ -17,8 +17,10 @@ export interface PolyHavenConfig {
   /** How long, in ms, this provider instance reuses the asset list it downloaded.
    *  Poly Haven's list endpoint has no query or paging, so every search ranks the
    *  whole list (about 1 MB); caching it saves that download on later searches.
-   *  Concurrent searches share one in-flight download, and a failed download is
-   *  not cached. Default 3_600_000 (one hour); 0 disables the cache. */
+   *  Concurrent searches share one in-flight download; a failed download, or one
+   *  still unfinished after 30 s, is not cached. Default 3_600_000 (one hour).
+   *  0, a negative value or NaN turns the cache off (every search downloads the
+   *  list); Infinity keeps the list for the lifetime of the instance. */
   listTtlMs?: number
 }
 
@@ -39,6 +41,29 @@ type PolyHavenFiles = Record<string, unknown>
 interface PhFileLeaf { url?: string }
 
 const DEFAULT_LIST_TTL_MS = 3_600_000
+/** The shared list download runs without any search's signal, so it gets a
+ *  deadline of its own: a stalled download must not hold every search until
+ *  each one's deadline (Node's fetch gives up only after 300 s). */
+const LIST_TIMEOUT_MS = 30_000
+
+/** Run `start(signal)` under a fixed deadline: at `ms` the signal aborts and the
+ *  result rejects, even if the work ignores its signal. The timer is cleared as
+ *  soon as the work settles. Built on setTimeout rather than AbortSignal.timeout
+ *  so fake timers drive it in tests. */
+function withDeadline<T>(start: (signal: AbortSignal) => Promise<T>, ms: number, label: string): Promise<T> {
+  const ctrl = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`)
+      ctrl.abort(err)
+      reject(err)
+    }, ms)
+  })
+  // a synchronous throw from `start` becomes a rejection, so the timer is still cleared
+  const work = new Promise<T>(resolve => resolve(start(ctrl.signal)))
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer))
+}
 
 /** Lowercase words of a string, split on anything that isn't alphanumeric — the
  *  rule for both the query tokens and the asset fields they are matched against.
@@ -137,7 +162,8 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: 
     // textureImageUrl may resolve a .png fallback — derive the MIME from the extension
     // (core imageMediaType) rather than hardcoding jpeg (mislabeling a PNG as JPEG).
     preview: { url: imageUrl, mediaType: imageMediaType(undefined, imageUrl) },
-    raw: asset,
+    // a copy: `asset` belongs to the cached list, which later searches reuse
+    raw: { ...asset },
   }
 }
 
@@ -159,7 +185,10 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       // instead: an aborted search rejects at once but cannot fail the download
       // other searches share, and a download that outlives the deadline of the
       // search that started it still lands in the cache for the next search.
-      const entry: NonNullable<typeof cached> = { list: downloadList(ctx) }
+      // LIST_TIMEOUT_MS bounds it instead; expiry is just another failure.
+      const entry: NonNullable<typeof cached> = {
+        list: withDeadline(signal => downloadList(ctx, signal), LIST_TIMEOUT_MS, 'polyhaven list'),
+      }
       cached = entry
       entry.list.then(
         () => { entry.fetchedAt = Date.now() },

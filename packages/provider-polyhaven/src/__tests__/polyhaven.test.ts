@@ -281,6 +281,58 @@ describe('polyhaven asset list cache', () => {
     expect(server.listCalls()).toBe(2)
   })
 
+  it('turns the cache off for a negative or NaN listTtlMs, like 0', async () => {
+    for (const listTtlMs of [-1, Number.NaN]) {
+      const server = listServer()
+      const p = polyhaven({ listTtlMs })
+      await p.search(q('forest'), server.ctx())
+      await p.search(q('forest'), server.ctx())
+      expect(server.listCalls()).toBe(2)
+    }
+  })
+
+  it('keeps the list for the instance lifetime with listTtlMs: Infinity', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(0)
+    const server = listServer()
+    const p = polyhaven({ listTtlMs: Infinity })
+    await p.search(q('forest'), server.ctx())
+    vi.setSystemTime(365 * 24 * 3_600_000)
+    await p.search(q('forest'), server.ctx())
+    expect(server.listCalls()).toBe(1)
+  })
+
+  it('times out a stalled shared download at 30 s: its searches reject and the next search downloads afresh', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const server = listServer([() => new Promise<Response>(() => {})]) // the first list request never answers
+    const p = polyhaven()
+    const stalled = [p.search(q('forest'), server.ctx()), p.search(q('rock'), server.ctx())]
+    let settled = false
+    void Promise.allSettled(stalled).then(() => { settled = true })
+    const flush = () => new Promise(r => setImmediate(r)) // setImmediate is not faked: drains pending promise work
+    await vi.advanceTimersByTimeAsync(29_999)
+    await flush()
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await flush()
+    expect(settled).toBe(true)
+    for (const s of stalled) await expect(s).rejects.toThrow('polyhaven list timed out after 30000ms')
+    expect(ids(await p.search(q('forest'), server.ctx()))).toEqual(['forest_floor', 'mossy_forest_rock'])
+    expect(server.listCalls()).toBe(2)
+    expect(vi.getTimerCount()).toBe(0) // a settled download leaves no timer behind to hold the process open
+  })
+
+  it('emits a copy of the cached asset as raw, so mutating it cannot change the cache', async () => {
+    const server = listServer()
+    const p = polyhaven()
+    const [first] = await p.search(q('asphalt'), server.ctx())
+    Object.assign(first.raw as Record<string, unknown>, { name: 'Tampered', tags: ['tampered'] })
+    const [second] = await p.search(q('asphalt'), server.ctx())
+    expect(server.listCalls()).toBe(1) // served from the cache
+    expect(second.title).toBe('Aerial Asphalt 01')
+    expect(second.raw).toEqual(LIST.aerial_asphalt_01)
+  })
+
   it('shares one in-flight download between concurrent searches', async () => {
     const gate = deferred<Response>()
     const server = listServer([() => gate.promise])

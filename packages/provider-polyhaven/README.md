@@ -36,7 +36,7 @@ Poly Haven's list endpoint has no search parameter, so `polyhaven()` downloads t
 
 ### Asset list cache
 
-The list is about 1 MB, so each provider instance keeps the copy it downloaded for `listTtlMs` milliseconds (default `3_600_000`, one hour) and ranks later searches against it. Searches that run at the same time share one download, and a failed download is not kept. Set `listTtlMs: 0` to download the list on every search.
+The list is about 1 MB, so each provider instance keeps the copy it downloaded for `listTtlMs` milliseconds (default `3_600_000`, one hour) and ranks later searches against it. Searches that run at the same time share one download. A failed download is not kept, and neither is one still unfinished after 30 seconds: its searches fail and the next search starts a new download. Set `listTtlMs` to `0`, a negative number or `NaN` to download the list on every search; `Infinity` keeps the list for as long as the provider instance lives.
 
 ```ts
 polyhaven({ assetType: 'hdris', listTtlMs: 10 * 60_000 }) // re-download the HDRI list every 10 minutes
