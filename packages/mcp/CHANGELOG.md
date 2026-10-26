@@ -1,5 +1,12 @@
 # @refkit/mcp
 
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [b2963ef]
+  - @refkit/provider-polyhaven@0.5.2
+
 ## 0.9.1
 
 ### Patch Changes
