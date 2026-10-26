@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRefkit, evaluateUse, type ProviderContext } from '@refkit/core'
 import { polyhaven } from '../index'
@@ -161,16 +162,42 @@ describe('polyhaven relevance ranking', () => {
     expect(ids(await page(3))).toEqual(['a_dusk'])
   })
 
-  it('keeps every asset for a query with no tokens, most-downloaded first', async () => {
+  it('keeps every asset for an empty or whitespace-only query, most-downloaded first', async () => {
     const list = {
       a_room: { type: 0, name: 'A Room', download_count: 5 },
       b_room: { type: 0, name: 'B Room' }, // no download_count
       c_room: { type: 0, name: 'C Room', download_count: 50 },
       d_room: { type: 0, name: 'D Room', download_count: 5 },
     }
-    for (const text of ['', ' ?! ']) {
+    for (const text of ['', '  ', ' \t\n ']) {
       expect(ids(await hdriSearch(list, text))).toEqual(['c_room', 'a_room', 'd_room', 'b_room'])
     }
+  })
+
+  it('returns nothing for text with no matchable word: a non-Latin query, punctuation or an emoji', async () => {
+    const list = {
+      a_room: { type: 0, name: 'A Room', download_count: 5 },
+      b_sunset: { type: 0, name: 'B Sunset', categories: ['sunrise-sunset'], download_count: 50 },
+    }
+    for (const text of ['日落', '日落 hdri', ' ?! ', '🌅']) {
+      expect(ids(await hdriSearch(list, text)), text).toEqual([])
+    }
+  })
+
+  it('tokenises on Unicode letters, marks and digits: "crème" is one word, not "cr" + "me"', async () => {
+    const list = {
+      a_cr_me: { type: 0, name: 'Cr Me', download_count: 900 }, // what "cr" + "me" would match
+      b_creme_wall: { type: 0, name: 'Crème Wall', download_count: 1 },
+      c_beach: { type: 0, name: '日落 Beach', download_count: 1 },
+      // Devanagari vowel signs are marks with no composed form: split on them and
+      // "सूर्यास्त" (sunset) falls apart into letters that "सरसों" (mustard) also has
+      d_ghat: { type: 0, name: 'सूर्यास्त Ghat', download_count: 1 },
+      e_field: { type: 0, name: 'सरसों Field', download_count: 900 },
+    }
+    expect(ids(await hdriSearch(list, 'crème'))).toEqual(['b_creme_wall'])
+    expect(ids(await hdriSearch(list, 'cre\u0300me'))).toEqual(['b_creme_wall']) // decomposed (NFD) input
+    expect(ids(await hdriSearch(list, '日落'))).toEqual(['c_beach'])
+    expect(ids(await hdriSearch(list, 'सूर्यास्त'))).toEqual(['d_ghat'])
   })
 })
 
@@ -322,14 +349,19 @@ describe('polyhaven asset list cache', () => {
     expect(vi.getTimerCount()).toBe(0) // a settled download leaves no timer behind to hold the process open
   })
 
-  it('emits a copy of the cached asset as raw, so mutating it cannot change the cache', async () => {
+  it('emits a deep copy of the cached asset as raw, so mutating it cannot change the cache', async () => {
     const server = listServer()
     const p = polyhaven()
     const [first] = await p.search(q('asphalt'), server.ctx())
-    Object.assign(first.raw as Record<string, unknown>, { name: 'Tampered', tags: ['tampered'] })
+    const raw = first.raw as { name: string; tags: string[]; authors: Record<string, string> }
+    raw.name = 'Tampered'
+    raw.tags.push('tampered')
+    raw.authors.Mallory = 'All'
     const [second] = await p.search(q('asphalt'), server.ctx())
     expect(server.listCalls()).toBe(1) // served from the cache
     expect(second.title).toBe('Aerial Asphalt 01')
+    expect(second.tags).toEqual(['asphalt', 'road', 'flat'])
+    expect(second.rights.author).toBe('Rob Tuytel')
     expect(second.raw).toEqual(LIST.aerial_asphalt_01)
   })
 
@@ -359,5 +391,107 @@ describe('polyhaven asset list cache', () => {
     // the download the aborted search started is the one later searches reuse
     expect(ids(await p.search(q('rock'), server.ctx()))).toEqual(['mossy_forest_rock'])
     expect(server.listCalls()).toBe(1)
+  })
+})
+
+// — list body validation —
+
+describe('polyhaven list body validation', () => {
+  const body = (b: unknown) => () => new Response(JSON.stringify(b), { status: 200 })
+
+  it('rejects a null body and does not cache it: the next search downloads again and gets results', async () => {
+    const server = listServer([body(null)])
+    const p = polyhaven()
+    await expect(p.search(q('forest'), server.ctx())).rejects.toThrow('polyhaven list: unexpected response body')
+    expect(ids(await p.search(q('forest'), server.ctx()))).toEqual(['forest_floor', 'mossy_forest_rock'])
+    expect(server.listCalls()).toBe(2)
+  })
+
+  it('rejects an array, a non-object or an error-object body and does not cache it', async () => {
+    const bad = [[], 'maintenance', { error: 'rate limited' }]
+    const server = listServer(bad.map(body))
+    const p = polyhaven()
+    for (const b of bad) {
+      await expect(p.search(q('forest'), server.ctx()), JSON.stringify(b)).rejects.toThrow('polyhaven list: unexpected response body')
+    }
+    expect(ids(await p.search(q('forest'), server.ctx()))).toEqual(['forest_floor', 'mossy_forest_rock'])
+    expect(server.listCalls()).toBe(4)
+  })
+
+  it('skips list entries that are not asset objects', async () => {
+    const server = listServer([body({ broken: null, note: 'forest', ...LIST })])
+    expect(ids(await polyhaven().search(q('forest'), server.ctx()))).toEqual(['forest_floor', 'mossy_forest_rock'])
+  })
+})
+
+// — cache and abort behaviour, pinned —
+
+/** A fetch stub that never touches a request's signal (so it adds no abort
+ *  listeners of its own) and records the signal each /assets request carried.
+ *  The list reply can be delayed on the (fakeable) setTimeout. */
+function quietServer(listDelayMs = 0) {
+  const listSignals: Array<AbortSignal | null | undefined> = []
+  const fetchImpl = (async (input: string, init?: RequestInit) => {
+    const u = String(input)
+    if (u.includes('/assets')) {
+      listSignals.push(init?.signal)
+      if (listDelayMs > 0) await new Promise(r => setTimeout(r, listDelayMs))
+      return listResponse()
+    }
+    const m = u.match(/\/files\/([^/?]+)/)
+    const files = m ? (FILES_TEX as Record<string, unknown>)[m[1]] : undefined
+    return files ? new Response(JSON.stringify(files), { status: 200 }) : new Response('null', { status: 404 })
+  }) as typeof fetch
+  return { fetch: fetchImpl, listSignals, listCalls: () => listSignals.length }
+}
+
+describe('polyhaven cache and abort behaviour', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('removes its abort listener from the search signal once each search settles', async () => {
+    const server = quietServer()
+    const c = new AbortController()
+    const p = polyhaven()
+    for (const text of ['forest', 'rock', 'asphalt']) await p.search(q(text), { fetch: server.fetch, signal: c.signal })
+    expect(getEventListeners(c.signal, 'abort')).toHaveLength(0)
+  })
+
+  it("rejects a search whose signal is already aborted with the signal's reason", async () => {
+    const server = quietServer()
+    const c = new AbortController()
+    c.abort(new Error('cancelled'))
+    await expect(polyhaven().search(q('forest'), { fetch: server.fetch, signal: c.signal })).rejects.toThrow('cancelled')
+  })
+
+  it('starts no list download for a search whose signal is already aborted', async () => {
+    for (const config of [{}, { listTtlMs: 0 }]) {
+      const server = quietServer()
+      const c = new AbortController()
+      c.abort(new Error('cancelled'))
+      await expect(polyhaven(config).search(q('forest'), { fetch: server.fetch, signal: c.signal })).rejects.toThrow('cancelled')
+      expect(server.listCalls(), JSON.stringify(config)).toBe(0)
+    }
+  })
+
+  it('counts the TTL from when the download finished, not from when it started', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(0)
+    const server = quietServer(20_000) // the list takes 20 s to arrive
+    const p = polyhaven({ listTtlMs: 5_000 })
+    const first = p.search(q('forest'), { fetch: server.fetch })
+    await vi.advanceTimersByTimeAsync(20_000)
+    await first
+    await vi.advanceTimersByTimeAsync(4_999) // t = 24.999 s: 4.999 s after the download finished
+    const second = p.search(q('forest'), { fetch: server.fetch }) // a refetch would be recorded synchronously
+    expect(server.listCalls()).toBe(1)
+    expect(ids(await second)).toEqual(['forest_floor', 'mossy_forest_rock'])
+  })
+
+  it("passes the search's own signal to the list request when the cache is off", async () => {
+    const server = quietServer()
+    const c = new AbortController()
+    await polyhaven({ listTtlMs: 0 }).search(q('forest'), { fetch: server.fetch, signal: c.signal })
+    expect(server.listSignals).toHaveLength(1)
+    expect(server.listSignals[0]).toBe(c.signal)
   })
 })
