@@ -14,6 +14,14 @@ export interface PolyHavenConfig {
   assetType?: 'textures' | 'hdris'
   /** Max assets resolved per search; each costs one /files/<id> call (N+1). Default 12. */
   maxAssets?: number
+  /** How long, in ms, this provider instance reuses the asset list it downloaded.
+   *  Poly Haven's list endpoint has no query or paging, so every search ranks the
+   *  whole list (about 1 MB); caching it saves that download on later searches.
+   *  Concurrent searches share one in-flight download; a failed download, or one
+   *  still unfinished after 30 s, is not cached. Default 3_600_000 (one hour).
+   *  0, a negative value or NaN turns the cache off (every search downloads the
+   *  list); Infinity keeps the list for the lifetime of the instance. */
+  listTtlMs?: number
 }
 
 interface PolyHavenAsset {
@@ -23,12 +31,116 @@ interface PolyHavenAsset {
   tags?: string[]
   authors?: Record<string, string>
   thumbnail_url?: string
+  download_count?: number
 }
 type PolyHavenList = Record<string, PolyHavenAsset>
+
 // /files tree: maps/resolutions/formats → { url }. Loosely typed; we walk known image paths only.
 type PolyHavenFiles = Record<string, unknown>
 
 interface PhFileLeaf { url?: string }
+
+const DEFAULT_LIST_TTL_MS = 3_600_000
+/** The shared list download runs without any search's signal, so it gets a
+ *  deadline of its own: a stalled download must not hold every search until
+ *  each one's deadline (Node's fetch gives up only after 300 s). */
+const LIST_TIMEOUT_MS = 30_000
+
+/** Run `start(signal)` under a fixed deadline: at `ms` the signal aborts and the
+ *  result rejects, even if the work ignores its signal. The timer is cleared as
+ *  soon as the work settles. Built on setTimeout rather than AbortSignal.timeout
+ *  so fake timers drive it in tests. */
+function withDeadline<T>(start: (signal: AbortSignal) => Promise<T>, ms: number, label: string): Promise<T> {
+  const ctrl = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`)
+      ctrl.abort(err)
+      reject(err)
+    }, ms)
+  })
+  // a synchronous throw from `start` becomes a rejection, so the timer is still cleared
+  const work = new Promise<T>(resolve => resolve(start(ctrl.signal)))
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer))
+}
+
+/** NFC + lowercase, so composed and decomposed input ("crème" either way) compare equal. */
+const fold = (s: string): string => s.normalize('NFC').toLowerCase()
+
+/** Words of a string: runs of Unicode letters, combining marks and digits, after
+ *  `fold` — the rule for both the query tokens and the asset fields they are
+ *  matched against. Splitting on punctuation, not just whitespace, keeps
+ *  "forest, rock." from gluing a comma onto a token; Unicode classes keep "crème"
+ *  and "日落" whole instead of cutting them at every non-ASCII letter (marks are
+ *  part of a word in Indic scripts and in decomposed Latin). */
+const words = (s: string): string[] => fold(s).split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean)
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** The list body is id → asset object. Anything else — null, an array, a string,
+ *  or an object with entries but no asset among them such as `{"error": …}` —
+ *  rejects, so a bad 200 fails its searches and is not cached for the TTL. */
+function checkedList(body: unknown): PolyHavenList {
+  const values = isObject(body) ? Object.values(body) : undefined
+  if (!values || (values.length > 0 && !values.some(isObject))) {
+    throw new Error('polyhaven list: unexpected response body')
+  }
+  return body as PolyHavenList
+}
+
+/** How well an asset matches the query: each token adds its best match only —
+ *  3 for a word of the name or id, 2 for a tag or category or a word of one
+ *  ("sunset" in `sunrise-sunset`), 1 for a substring of any of those fields,
+ *  0 for none. A token that matches nothing (e.g. "hdri") adds 0. */
+function relevance(id: string, asset: PolyHavenAsset, tokens: string[]): number {
+  const labels = [...(asset.categories ?? []), ...(asset.tags ?? [])]
+  const nameWords = new Set([...words(id), ...words(asset.name ?? '')])
+  // A token has no separators, so it can equal a whole label only when the label
+  // is one word: the label's own words cover both cases.
+  const labelWords = new Set(labels.flatMap(words))
+  const fields = [id, asset.name ?? '', ...labels].map(fold)
+  let score = 0
+  for (const t of tokens) {
+    score += nameWords.has(t) ? 3 : labelWords.has(t) ? 2 : fields.some(f => f.includes(t)) ? 1 : 0
+  }
+  return score
+}
+
+/** Rank the list for a query — the list endpoint has no query param, so this is
+ *  the search. Keeps assets that match at least one token and orders them by
+ *  score, then download_count, then the list's own (alphabetical) order.
+ *
+ *  Only blank text (empty or whitespace) browses: it keeps every asset, so the
+ *  same order reduces to most-downloaded first — the alphabetical order means
+ *  nothing and would show every browse the same `aarfontein_*` assets. Text that
+ *  is not blank but yields no word (punctuation, an emoji such as 🌅) still asked
+ *  for something, and we cannot tell "?!" from a symbol that means "sunrise", so
+ *  it returns nothing rather than unrelated popular assets dressed as matches. */
+function rankAssets(list: PolyHavenList, text: string): [string, PolyHavenAsset][] {
+  const tokens = words(text)
+  const browse = text.trim() === ''
+  if (!browse && tokens.length === 0) return []
+  const downloads = ({ download_count: d }: PolyHavenAsset) => (typeof d === 'number' && Number.isFinite(d) ? d : 0)
+  return Object.entries(list)
+    .filter(([, asset]) => isObject(asset)) // one malformed entry must not sink the search
+    .map(([id, asset]) => ({ id, asset, score: relevance(id, asset, tokens) }))
+    .filter(e => browse || e.score > 0)
+    // stable sort: equal score and downloads keep the list's own order
+    .sort((x, y) => y.score - x.score || downloads(y.asset) - downloads(x.asset))
+    .map(e => [e.id, e.asset])
+}
+
+/** Settle with `p`, or reject with the signal's reason as soon as it aborts. */
+function raceAbort<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return p
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new Error('aborted'))
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
 
 /** First image URL for a texture: Diffuse (then a couple of fallbacks) → smallest res → jpg/png. */
 function textureImageUrl(files: PolyHavenFiles): string | undefined {
@@ -76,12 +188,45 @@ function toReference(id: string, asset: PolyHavenAsset, imageUrl: string, kind: 
     // textureImageUrl may resolve a .png fallback — derive the MIME from the extension
     // (core imageMediaType) rather than hardcoding jpeg (mislabeling a PNG as JPEG).
     preview: { url: imageUrl, mediaType: imageMediaType(undefined, imageUrl) },
-    raw: asset,
+    // a deep copy: `asset` belongs to the cached list, which later searches reuse,
+    // and its nested tags and authors feed their ranking, tags and attribution
+    raw: structuredClone(asset),
   }
 }
 
 export function polyhaven(config: PolyHavenConfig = {}) {
   const assetType = config.assetType ?? 'textures'
+  const listTtlMs = config.listTtlMs ?? DEFAULT_LIST_TTL_MS
+  const listUrl = new URL(`${PH_BASE}/assets`)
+  listUrl.searchParams.set('t', assetType)
+  const downloadList = (ctx: ProviderContext, signal?: AbortSignal) =>
+    ctx.fetch(listUrl.toString(), { signal }).then(res => okJson<unknown>(res, 'polyhaven list')).then(checkedList)
+
+  // The cached list: an in-flight download until `fetchedAt` is set, fresh for
+  // listTtlMs after that.
+  let cached: { list: Promise<PolyHavenList>; fetchedAt?: number } | undefined
+  const assetList = (ctx: ProviderContext): Promise<PolyHavenList> => {
+    // already cancelled: reject before any download starts (or any cache entry exists)
+    if (ctx.signal?.aborted) return Promise.reject(ctx.signal.reason ?? new Error('aborted'))
+    if (!(listTtlMs > 0)) return downloadList(ctx, ctx.signal)
+    if (!cached || (cached.fetchedAt !== undefined && Date.now() - cached.fetchedAt >= listTtlMs)) {
+      // Download WITHOUT this search's signal and race the signal per caller
+      // instead: an aborted search rejects at once but cannot fail the download
+      // other searches share, and a download that outlives the deadline of the
+      // search that started it still lands in the cache for the next search.
+      // LIST_TIMEOUT_MS bounds it instead; expiry is just another failure.
+      const entry: NonNullable<typeof cached> = {
+        list: withDeadline(signal => downloadList(ctx, signal), LIST_TIMEOUT_MS, 'polyhaven list'),
+      }
+      cached = entry
+      entry.list.then(
+        () => { entry.fetchedAt = Date.now() },
+        () => { if (cached === entry) cached = undefined }, // a failed download is not cached
+      )
+    }
+    return raceAbort(cached.list, ctx.signal)
+  }
+
   return defineProvider({
     id: assetType === 'hdris' ? 'polyhaven-hdri' : 'polyhaven',
     modalities: ['image'],
@@ -91,35 +236,14 @@ export function polyhaven(config: PolyHavenConfig = {}) {
       : 'CC0 PBR textures for 3D work (Poly Haven)',
     capabilities: { controls: ['page'] },
     async search(q: NormalizedQuery, ctx: ProviderContext): Promise<EmittedReference[]> {
-      const listUrl = new URL(`${PH_BASE}/assets`)
-      listUrl.searchParams.set('t', assetType)
-      const res = await ctx.fetch(listUrl.toString(), { signal: ctx.signal })
-      const list = await okJson<PolyHavenList>(res, 'polyhaven list')
-      let entries = Object.entries(list)
-      // Client-side keyword filter — the list endpoint has no query param. Match
-      // PER TOKEN, not on the whole phrase: asset metadata is single-word (id,
-      // name, categories, tags), so "forest rock" as one substring matches
-      // nothing while both of its words describe real assets. Assets covering
-      // more of the query rank first. Split on anything that isn't alphanumeric
-      // (not just whitespace) so punctuation from a natural-language query
-      // ("forest, rock.") doesn't glue onto a token and prevent it matching.
-      const tokens = (q.text ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
-      const fields = (id: string, a: PolyHavenAsset) => [id, a.name ?? '', ...(a.categories ?? []), ...(a.tags ?? [])].map(s => s.toLowerCase())
-      if (tokens.length > 0) {
-        entries = entries
-          // `fields` is built once per asset, not once per (asset, token) pair —
-          // the full list is thousands of assets wide.
-          .map(([id, a]) => {
-            const haystack = fields(id, a)
-            return { id, a, hits: tokens.filter(t => haystack.some(f => f.includes(t))).length }
-          })
-          .filter(e => e.hits > 0)
-          // stable sort — assets with equally many hits keep the list's own order
-          .sort((x, y) => y.hits - x.hits)
-          .map(e => [e.id, e.a] as [string, PolyHavenAsset])
-      }
+      // Client-side ranking — the list endpoint has no query param. Match PER
+      // TOKEN, not on the whole phrase: asset metadata is single-word (id, name,
+      // categories, tags), so "forest rock" as one substring matches nothing
+      // while both of its words describe real assets. The ranking must happen
+      // here, before the maxAssets window: core reranks only what we return.
+      const entries = rankAssets(await assetList(ctx), q.text ?? '')
       const n = Math.min(config.maxAssets ?? q.limit ?? 12, 30)
-      // the list endpoint returns everything — page = a window over the filtered list
+      // the list endpoint returns everything — page = a window over the ranked list
       const from = offsetForPage(q.controls?.page, n) ?? 0
       const picked = entries.slice(from, from + n)
       const refs = await Promise.all(picked.map(async ([id, asset]) => {
