@@ -1,6 +1,6 @@
 {
   "name": "refkit",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "License-aware reference search for creative work: find images, art, textures, audio and text across open sources, with a use verdict and attribution line per result.",
   "author": {
     "name": "refkitjs",

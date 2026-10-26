@@ -1,5 +1,23 @@
 # @refkit/mcp
 
+## 0.9.1
+
+### Patch Changes
+
+- a983747: Published from GitHub Actions through npm trusted publishing (OIDC) instead of a long-lived npm token, so every version now carries a signed provenance statement that links it to the exact commit and workflow run that built it. No code changes.
+- Updated dependencies [a983747]
+  - @refkit/core@0.10.1
+  - @refkit/provider-artic@0.5.1
+  - @refkit/provider-gutendex@0.5.1
+  - @refkit/provider-internet-archive@0.6.1
+  - @refkit/provider-met@0.5.1
+  - @refkit/provider-nailbook@0.3.1
+  - @refkit/provider-openverse@0.6.1
+  - @refkit/provider-poetrydb@0.5.1
+  - @refkit/provider-polyhaven@0.5.1
+  - @refkit/provider-rijksmuseum@0.5.1
+  - @refkit/provider-wikimedia-commons@0.6.1
+
 ## 0.9.0
 
 ### Minor Changes
