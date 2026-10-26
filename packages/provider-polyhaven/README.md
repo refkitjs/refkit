@@ -30,6 +30,18 @@ const refkit = createRefkit({ providers: [polyhaven(), polyhaven({ assetType: 'h
 const hdris = await refkit.search({ query: 'sunset', modalities: ['image'], sources: ['polyhaven-hdri'] })
 ```
 
+### Ranking
+
+Poly Haven's list endpoint has no search parameter, so `polyhaven()` downloads the whole list and ranks it itself. Each query word adds the score of its best match in an asset: 3 if it is a word of the asset's name or id, 2 if it is a tag or category or a word of one (`sunset` in `sunrise-sunset`), 1 if it only appears inside one of those fields. Assets that match no word are dropped. Equal scores go to the most-downloaded asset first. A query with no words returns every asset, most-downloaded first. `page` steps through this ranked list in windows of `maxAssets`.
+
+### Asset list cache
+
+The list is about 1 MB, so each provider instance keeps the copy it downloaded for `listTtlMs` milliseconds (default `3_600_000`, one hour) and ranks later searches against it. Searches that run at the same time share one download, and a failed download is not kept. Set `listTtlMs: 0` to download the list on every search.
+
+```ts
+polyhaven({ assetType: 'hdris', listTtlMs: 10 * 60_000 }) // re-download the HDRI list every 10 minutes
+```
+
 ### ambientCG sibling factory
 
 `ambientcg()` lives in the same package and returns the same CC0-normalized image references, hitting ambientCG's API instead:
