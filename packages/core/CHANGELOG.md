@@ -1,5 +1,11 @@
 # @refkit/core
 
+## 0.10.1
+
+### Patch Changes
+
+- a983747: Published from GitHub Actions through npm trusted publishing (OIDC) instead of a long-lived npm token, so every version now carries a signed provenance statement that links it to the exact commit and workflow run that built it. No code changes.
+
 ## 0.10.0
 
 ### Minor Changes
