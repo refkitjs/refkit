@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: write       # changesets commits the version PR + tags
       pull-requests: write  # changesets opens the "Version Packages" PR
+      id-token: write       # npm trusted publishing (OIDC): no npm token anywhere
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -19,13 +20,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing needs npm >= 11.5.1. Stay on 11: `changeset publish` reads
+      # `npm info --json` as an object, and npm 12 returns an array.
+      - run: npm install -g npm@11
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test:run
-      # Publishes with NPM_TOKEN. To switch to token-free OIDC later: add
-      # `id-token: write` above, `- run: npm i -g npm@latest`, drop the NPM_TOKEN
-      # env, and register this repo + release.yml as each package's trusted publisher.
+      # Publishes through npm trusted publishing: every public package lists this repo
+      # and `release.yml` as its trusted publisher on npmjs.com. With no NPM_TOKEN set,
+      # changesets/action (v1.9+) leaves ~/.npmrc alone and `changeset publish` ->
+      # `pnpm publish` -> `npm publish` exchanges the job's OIDC token, which also signs
+      # a provenance statement. An `_authToken` in any .npmrc would bypass OIDC.
       - name: Create release PR or publish
         uses: changesets/action@v1
         with:
@@ -33,5 +38,3 @@ jobs:
           publish: pnpm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
